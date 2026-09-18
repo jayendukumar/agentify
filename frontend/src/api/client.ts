@@ -6,6 +6,9 @@ import type {
   DocumentSummary,
   ProcessDetail,
   ProcessSummary,
+  VersionDetail,
+  VersionDiffResult,
+  VersionSummary,
 } from './types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
@@ -108,6 +111,31 @@ export function applyChatMessage(processId: string, messageId: string, confirm: 
     method: 'POST',
     body: JSON.stringify({ confirm }),
   })
+}
+
+export function finalizeProcess(processId: string): Promise<VersionSummary> {
+  return request(`/api/processes/${processId}/finalize`, { method: 'POST' })
+}
+
+export function listVersions(processId: string): Promise<VersionSummary[]> {
+  return request(`/api/processes/${processId}/versions`)
+}
+
+export function getVersion(processId: string, versionId: string): Promise<VersionDetail> {
+  return request(`/api/processes/${processId}/versions/${versionId}`)
+}
+
+export function restoreVersion(processId: string, versionId: string): Promise<VersionSummary> {
+  return request(`/api/processes/${processId}/versions/${versionId}/restore`, { method: 'POST' })
+}
+
+export function diffVersions(
+  processId: string,
+  fromVersionId: string,
+  toVersionId: string,
+): Promise<VersionDiffResult> {
+  const params = new URLSearchParams({ from_version_id: fromVersionId, to_version_id: toVersionId })
+  return request(`/api/processes/${processId}/versions/diff?${params.toString()}`)
 }
 
 export async function uploadDocuments(processId: string, files: FileList | File[]): Promise<DocumentSummary[]> {

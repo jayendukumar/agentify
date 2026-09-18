@@ -11,6 +11,7 @@ const getBpmn = vi.fn()
 const listProcesses = vi.fn()
 const updateBpmn = vi.fn()
 const generateBpmn = vi.fn()
+const finalizeProcess = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -25,6 +26,7 @@ vi.mock('../api/client', () => ({
   listProcesses: (...args: unknown[]) => listProcesses(...args),
   updateBpmn: (...args: unknown[]) => updateBpmn(...args),
   generateBpmn: (...args: unknown[]) => generateBpmn(...args),
+  finalizeProcess: (...args: unknown[]) => finalizeProcess(...args),
 }))
 
 // BpmnCanvas depends on real bpmn-js/SVG layout (see BpmnCanvas.test.tsx) --
@@ -154,5 +156,37 @@ describe('DiagramPage', () => {
 
     await waitFor(() => expect(updateBpmn).toHaveBeenCalledWith('proc-1', '<saved-xml/>'))
     expect(await screen.findByText(/diagram saved/i)).toBeInTheDocument()
+  })
+
+  it('shows a link to the version history page', async () => {
+    getProcess.mockResolvedValue(process1)
+    getBpmn.mockResolvedValue(bpmnDoc)
+    listProcesses.mockResolvedValue(summaries)
+    stubShouldMarkDirty = false
+
+    await renderDiagramPage()
+    await screen.findByTestId('bpmn-canvas-stub')
+
+    expect(screen.getByRole('link', { name: /version history/i })).toHaveAttribute(
+      'href',
+      '/processes/proc-1/versions',
+    )
+  })
+
+  it('finalizes the draft when Finalize is clicked', async () => {
+    getProcess.mockResolvedValue(process1)
+    getBpmn.mockResolvedValue(bpmnDoc)
+    listProcesses.mockResolvedValue(summaries)
+    finalizeProcess.mockResolvedValue({ id: 'ver-1', process_id: 'proc-1', label: null, created_at: '2026-01-01T00:00:00Z' })
+    stubShouldMarkDirty = false
+    const user = userEvent.setup()
+
+    await renderDiagramPage()
+    await screen.findByTestId('bpmn-canvas-stub')
+
+    await user.click(screen.getByRole('button', { name: /^finalize$/i }))
+
+    await waitFor(() => expect(finalizeProcess).toHaveBeenCalledWith('proc-1'))
+    expect(await screen.findByText(/finalized as version ver-1/i)).toBeInTheDocument()
   })
 })

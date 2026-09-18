@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ApiError, generateBpmn, getBpmn, getProcess, listProcesses, updateBpmn } from '../api/client'
+import { ApiError, finalizeProcess, generateBpmn, getBpmn, getProcess, listProcesses, updateBpmn } from '../api/client'
 import type { ProcessDetail, ProcessSummary } from '../api/types'
 import BpmnCanvas, { type BpmnCanvasHandle } from '../components/BpmnCanvas'
 import ChatPanel from '../components/ChatPanel'
@@ -25,6 +25,7 @@ export default function DiagramPage() {
   const [saveMessage, setSaveMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [refreshingLayout, setRefreshingLayout] = useState(false)
+  const [finalizing, setFinalizing] = useState(false)
 
   useEffect(() => {
     if (!processId) return
@@ -94,6 +95,21 @@ export default function DiagramPage() {
       setSaveMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to refresh layout' })
     } finally {
       setRefreshingLayout(false)
+    }
+  }
+
+  async function handleFinalize() {
+    if (!processId) return
+    setFinalizing(true)
+    setSaveMessage(null)
+    try {
+      const version = await finalizeProcess(processId)
+      await reloadDiagram()
+      setSaveMessage({ kind: 'info', text: `Finalized as version ${version.id}.` })
+    } catch (err) {
+      setSaveMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to finalize' })
+    } finally {
+      setFinalizing(false)
     }
   }
 
@@ -213,6 +229,16 @@ export default function DiagramPage() {
         >
           {refreshingLayout ? 'Refreshing...' : 'Refresh Layout'}
         </button>
+
+        <button
+          type="button"
+          onClick={handleFinalize}
+          disabled={finalizing || dirty}
+          title="Lock the current draft in as a reviewed as-is baseline"
+        >
+          {finalizing ? 'Finalizing...' : 'Finalize'}
+        </button>
+        <Link to={`/processes/${processId}/versions`}>Version History</Link>
 
         <button type="button" onClick={handleExportXml}>
           Export XML

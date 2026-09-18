@@ -1,15 +1,11 @@
 """SQLAlchemy ORM models for Epic 2 (Business Process Knowledge Store) --
 processes, documents, the extracted process schema (actors/elements/
 source_refs/flows), embeddings, a lightweight change log -- plus Epic 3's
-draft BPMN (BPMNDraftModel) and Epic 5's chat messages (ChatMessageModel),
-each promoted out of the in-memory store (app/store.py) once its own epic
-made the data real.
-
-Still deliberately does NOT model finalized diagram versions or the
-blueprint overlay -- those belong to Epics 6/7/8, still unimplemented (501
-stubs), and stay in the in-memory store until their own stories are built.
-Persisting placeholder data for features that don't exist yet would be
-scope creep.
+draft BPMN (BPMNDraftModel), Epic 5's chat messages (ChatMessageModel),
+Epic 6's finalized versions (VersionModel), and Epic 7's blueprint overlay
+(BlueprintOverlayModel), each promoted out of the in-memory store
+(app/store.py) once its own epic made the data real. app/store.py now only
+defines NotFoundError -- nothing left to hold in memory.
 """
 
 from __future__ import annotations
@@ -53,6 +49,10 @@ class ProcessModel(Base):
     )
     chat_messages: Mapped[list["ChatMessageModel"]] = relationship(
         back_populates="process", cascade="all, delete-orphan"
+    )
+    versions: Mapped[list["VersionModel"]] = relationship(back_populates="process", cascade="all, delete-orphan")
+    blueprint_overlay: Mapped["BlueprintOverlayModel | None"] = relationship(
+        back_populates="process", cascade="all, delete-orphan", uselist=False
     )
 
 
@@ -214,3 +214,47 @@ class ChatMessageModel(Base):
     decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     process: Mapped[ProcessModel] = relationship(back_populates="chat_messages")
+
+
+class VersionModel(Base):
+    """US6.1: an immutable snapshot of a finalized BPMN diagram -- one row
+    per finalize, kept forever (restore reads it, never mutates it). Only
+    the XML is snapshotted, not a copy of the process schema tables --
+    app/api/versions.py's restore_version is XML-only on purpose, since
+    the draft XML can already legitimately diverge from the schema tables
+    (a manual canvas edit via PUT /bpmn never touches them either).
+    """
+
+    __tablename__ = "versions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    xml: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    process: Mapped[ProcessModel] = relationship(back_populates="versions")
+
+
+class BlueprintOverlayModel(Base):
+    """US7.6: the agentic blueprint overlay -- one row per process,
+    replaced in place on regenerate (mirrors BPMNDraftModel; US7.7's
+    "re-run after baseline changes" is just calling generate again, no
+    separate history needed here the way finalized versions need one).
+    `nodes` stores the full list of per-node results (BlueprintNodeResult,
+    including any nested agent_spec) as a single JSON blob rather than
+    normalized per-node/per-agent-spec tables -- this is a generated,
+    whole-diagram artifact that's always read and regenerated as a unit,
+    and the only per-field mutation (override_blueprint_node) already
+    replaces one node's dict wholesale, so normalizing would add
+    relational complexity with no real query benefit.
+    """
+
+    __tablename__ = "blueprint_overlays"
+
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), primary_key=True)
+    baseline_version_id: Mapped[str] = mapped_column(String, nullable=False)
+    nodes: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    process: Mapped[ProcessModel] = relationship(back_populates="blueprint_overlay")

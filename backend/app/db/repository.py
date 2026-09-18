@@ -1,8 +1,7 @@
 """DB-backed persistence for what Epic 2 owns (processes, documents, the
-extracted process schema, embeddings) plus Epic 3's draft BPMN and Epic
-5's chat messages. Finalized versions and the blueprint overlay stay in
-app/store.py's in-memory store until their own epics are implemented --
-see app/db/models.py's module docstring.
+extracted process schema, embeddings) plus Epic 3's draft BPMN, Epic 5's
+chat messages, Epic 6's finalized versions, and Epic 7's blueprint
+overlay -- see app/db/models.py's module docstring.
 """
 
 from __future__ import annotations
@@ -14,13 +13,16 @@ from app.ids import new_id, utcnow
 from app.ingestion.embeddings import embed_texts
 from app.ingestion.extractors import ExtractedBlock
 from app.ingestion.merge import merge_process_schemas
+from app.schemas.blueprint import BlueprintNodeResult, BlueprintOverlay
 from app.schemas.chat import ChatMessageResult
 from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema, SourceRef
 from app.schemas.documents import IngestionStatus
+from app.schemas.versions import VersionDetail
 from app.store import NotFoundError
 
 from .models import (
     ActorModel,
+    BlueprintOverlayModel,
     BPMNDraftModel,
     ChatMessageModel,
     DocumentEmbeddingModel,
@@ -30,6 +32,7 @@ from .models import (
     ProcessModel,
     ProcessSchemaChangeModel,
     SourceRefModel,
+    VersionModel,
 )
 
 # -- processes ------------------------------------------------------------
@@ -347,3 +350,103 @@ def mark_chat_message_decided(session: Session, message: ChatMessageModel, *, ap
     message.decided_at = utcnow()
     session.flush()
     return _to_pydantic_chat_message(message)
+
+
+# -- versions (Epic 6, US6.1/US6.2) -------------------------------------------
+
+
+def _to_pydantic_version(version: VersionModel) -> VersionDetail:
+    return VersionDetail(
+        id=version.id,
+        process_id=version.process_id,
+        label=version.label,
+        created_at=version.created_at,
+        xml=version.xml,
+    )
+
+
+def add_version(session: Session, process_id: str, xml: str, label: str | None = None) -> VersionDetail:
+    get_process(session, process_id)  # 404s if missing
+    version = VersionModel(id=new_id("ver"), process_id=process_id, label=label, xml=xml)
+    session.add(version)
+    session.flush()
+    return _to_pydantic_version(version)
+
+
+def list_versions(session: Session, process_id: str) -> list[VersionDetail]:
+    get_process(session, process_id)  # 404s if missing
+    versions = session.scalars(
+        select(VersionModel).where(VersionModel.process_id == process_id).order_by(VersionModel.created_at)
+    )
+    return [_to_pydantic_version(v) for v in versions]
+
+
+def get_version(session: Session, process_id: str, version_id: str) -> VersionDetail:
+    version = session.get(VersionModel, version_id)
+    if version is None or version.process_id != process_id:
+        raise NotFoundError("version", version_id)
+    return _to_pydantic_version(version)
+
+
+def get_latest_version(session: Session, process_id: str) -> VersionDetail | None:
+    versions = list_versions(session, process_id)
+    return versions[-1] if versions else None
+
+
+# -- blueprint overlay (Epic 7, US7.6/US7.7) ----------------------------------
+
+
+def _to_pydantic_blueprint_overlay(overlay: BlueprintOverlayModel) -> BlueprintOverlay:
+    return BlueprintOverlay(
+        process_id=overlay.process_id,
+        baseline_version_id=overlay.baseline_version_id,
+        nodes=[BlueprintNodeResult.model_validate(node) for node in overlay.nodes],
+        generated_at=overlay.generated_at,
+    )
+
+
+def set_blueprint_overlay(
+    session: Session, process_id: str, baseline_version_id: str, nodes: list[BlueprintNodeResult]
+) -> BlueprintOverlay:
+    get_process(session, process_id)  # 404s if missing
+    node_dicts = [node.model_dump() for node in nodes]
+    overlay = session.get(BlueprintOverlayModel, process_id)
+    if overlay is None:
+        overlay = BlueprintOverlayModel(process_id=process_id, baseline_version_id=baseline_version_id, nodes=node_dicts)
+        session.add(overlay)
+    else:
+        overlay.baseline_version_id = baseline_version_id
+        overlay.nodes = node_dicts
+        overlay.generated_at = utcnow()
+    session.flush()
+    return _to_pydantic_blueprint_overlay(overlay)
+
+
+def get_blueprint_overlay(session: Session, process_id: str) -> BlueprintOverlay | None:
+    get_process(session, process_id)  # 404s if missing
+    overlay = session.get(BlueprintOverlayModel, process_id)
+    return _to_pydantic_blueprint_overlay(overlay) if overlay is not None else None
+
+
+def update_blueprint_node(
+    session: Session, process_id: str, node_id: str, *, verdict: str, justification: str
+) -> BlueprintOverlay:
+    get_process(session, process_id)  # 404s if missing
+    overlay = session.get(BlueprintOverlayModel, process_id)
+    if overlay is None:
+        raise NotFoundError("blueprint", process_id)
+
+    # Reassign a NEW list (not mutate overlay.nodes in place) so SQLAlchemy's
+    # plain JSON column change-tracking (identity-based) actually notices
+    # the update and flushes it -- mutating overlay.nodes[i] in place would
+    # silently not persist.
+    updated_nodes = [dict(node) for node in overlay.nodes]
+    match = next((node for node in updated_nodes if node.get("node_id") == node_id), None)
+    if match is None:
+        raise NotFoundError("blueprint node", node_id)
+    match["verdict"] = verdict
+    match["overridden"] = True
+    match["override_justification"] = justification
+    overlay.nodes = updated_nodes
+    session.flush()
+    return _to_pydantic_blueprint_overlay(overlay)

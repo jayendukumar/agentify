@@ -121,6 +121,26 @@ export interface BPMNDocument {
   generated_at: string
 }
 
+export interface VersionSummary {
+  id: string
+  process_id: string
+  label: string | null
+  created_at: string
+}
+
+export interface VersionDetail extends VersionSummary {
+  xml: string
+}
+
+export interface VersionDiffResult {
+  from_version_id: string
+  to_version_id: string
+  added_element_ids: string[]
+  removed_element_ids: string[]
+  changed_element_ids: string[]
+  labels: Record<string, string | null>
+}
+
 export interface BlueprintOverlay {
   process_id: string
   baseline_version_id: string

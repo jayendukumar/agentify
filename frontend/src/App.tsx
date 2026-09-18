@@ -2,6 +2,7 @@ import { Link, Route, Routes } from 'react-router-dom'
 import DiagramPage from './pages/DiagramPage'
 import ProcessDetailPage from './pages/ProcessDetailPage'
 import ProcessListPage from './pages/ProcessListPage'
+import VersionsPage from './pages/VersionsPage'
 
 function NotFoundPage() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/" element={<ProcessListPage />} />
           <Route path="/processes/:processId" element={<ProcessDetailPage />} />
           <Route path="/processes/:processId/diagram" element={<DiagramPage />} />
+          <Route path="/processes/:processId/versions" element={<VersionsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

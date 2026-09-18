@@ -29,7 +29,6 @@ from app.db.models import Base  # noqa: E402
 from app.db.session import get_engine  # noqa: E402
 from app.llm.client import get_llm_client  # noqa: E402
 from app.main import app  # noqa: E402
-from app.store import InMemoryStore, get_store  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -46,11 +45,6 @@ def _clean_db():
     yield
 
 
-@pytest.fixture
-def store():
-    return InMemoryStore()
-
-
 class FakeLLMClient:
     """Stands in for LLMClient in tests -- `complete` is an AsyncMock the
     test configures per-case, so no real network call is ever made."""
@@ -65,10 +59,8 @@ def fake_llm():
 
 
 @pytest.fixture
-def client(store, fake_llm):
-    app.dependency_overrides[get_store] = lambda: store
+def client(fake_llm):
     app.dependency_overrides[get_llm_client] = lambda: fake_llm
     with TestClient(app) as test_client:
         yield test_client
-    app.dependency_overrides.pop(get_store, None)
     app.dependency_overrides.pop(get_llm_client, None)

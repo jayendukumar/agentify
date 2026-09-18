@@ -592,3 +592,161 @@ ledger (`llm_usage.jsonl`) -- that's a structured cost record, this is
 general request/error/lifecycle logging. Minimal seed of Epic 10's
 "Logging" placeholder, not a full structured-logging or log-rotation
 solution.
+
+## 2026-09-18 -- Epic 6, Diagram Finalization & Versioning
+
+### Finalized versions promoted from the in-memory store to real persistence
+
+Same shape as Epic 5's chat-message promotion: `app/api/versions.py`'s
+four endpoints (finalize/list/diff/restore) were already fully built and
+tested against `app/store.py`'s in-memory store, which meant a finalized
+baseline -- the thing Epic 7's blueprint generation is supposed to trace
+back to -- was silently lost on every backend restart. New `VersionModel`
+(`app/db/models.py`) + `app/db/repository.py` CRUD, with the route logic
+itself unchanged. Verified live, not just via the (unchanged) test suite:
+finalized two versions against a running backend, restarted the process
+mid-session, and confirmed `GET /versions` still returned both -- the
+failure mode this promotion fixes is invisible from reading the code or
+from tests that never restart the process between assertions.
+
+### Restore stays XML-only, on purpose -- not extended to also snapshot the schema
+
+Considered also snapshotting `ProcessSchema` at finalize time so restore
+could put the schema tables back in sync with the restored XML, not just
+the draft BPMN row. Rejected: `PUT /bpmn` (manual canvas edits, Epic 4)
+already lets the draft XML diverge from `process_elements`/`process_flows`
+on purpose -- restoring a schema snapshot on top of that would silently
+overwrite a manual edit that was never supposed to touch the schema in the
+first place. Restore stays exactly what US6.2 asked for ("restore an
+earlier one" = get that diagram back), and the pre-existing draft/schema
+divergence is a boundary this epic didn't introduce and shouldn't try to
+paper over as a side effect.
+
+### `VersionDiffResult` gained a `labels` map for the frontend diff view
+
+`GET /versions/diff` only ever returned raw BPMN ids (`"Task_c"`) in its
+added/removed/changed lists -- fine for the existing id-only tests, but
+Epic 6's new `VersionsPage` needed something human-readable for a diff a
+Process Analyst is meant to read. Added `labels: dict[str, str | None]`
+(id -> element name, "to" version winning over "from") as a purely
+additive field rather than reshaping the existing three lists, so no
+existing caller/test needed to change.
+
+## 2026-09-19 -- Epic 6 follow-up, real Finalize error found via live testing
+
+### Real defect: Finalize's blocked-validation error leaked raw BPMN ids
+
+User clicked Finalize and got: `"Cannot finalize invalid BPMN:
+[\"'Task_el_8f055fa669de' (userTask) has no incoming flow...\", ...,
+\"Lanes with no DI shape...: ['Lane_actor_1f04adb2251b', ...]\"]"` -- a
+Python list repr of raw internal ids, not something a Process Analyst can
+act on. Root cause: `app/api/versions.py`'s `finalize_process` built its
+400 detail directly from `validate_bpmn`'s raw issue strings, never
+routing them through `humanize_validation_issues`
+(`app/bpmn/chat_ops.py`) -- the exact helper Epic 5 built for this exact
+problem, after this same user hit it in chat-apply and asked "how can we
+make such exception explainable to users without using underlying
+node_id". That fix only ever landed in `app/api/chat.py`; the sibling
+finalize endpoint (US6.3) was never updated to match when it started
+using the same `validate_bpmn` checklist. Fixed by resolving the current
+process schema and humanizing before raising, same as chat-apply; falls
+back to raw issues only if no schema exists yet (a manually-edited draft
+via `PUT /bpmn` can have none). Reusing `humanize_validation_issues`
+required no changes to it -- it already had a `"lane"` branch, unused
+until now since chat-apply diffs never produce lane-shape issues.
+
+Investigated the specific diagram that triggered this (`proc_cd46c74845c7`,
+"Persistence Proof" -- a 3-bare-task test process from earlier live
+testing, the same one `humanize_validation_issues`'s own docstring example
+id came from). Confirmed via `GET /api/processes/{id}` that its schema
+genuinely has zero `start_event`/`end_event` elements -- the "no
+incoming"/"no outgoing" issues are correct, not a bug. The third issue
+("lanes with no DI shape") *was* stale: this draft's `generated_at`
+predates the swim-lane DI-shape fix earlier in the session; regenerating
+via `POST /bpmn/generate` confirmed it picks up lane shapes now and that
+issue disappears, leaving only the two genuine missing-start/end-event
+issues -- a real gap in that schema, not something Finalize should paper
+over (US6.3's whole point).
+
+## 2026-09-19 -- Epic 7, Agentic Blueprint Generation Engine
+
+### Evaluate against the finalized version's XML, not the live schema
+
+Considered building the blueprint prompt from `ProcessSchema` (elements/
+flows), matching Epic 5's chat-ops convention of reasoning in bare schema
+ids. Rejected: a finalized version is an immutable XML snapshot (Epic 6)
+that can already have drifted from the schema tables -- a manual canvas
+edit via `PUT /bpmn` never touches them, and Epic 6's `restore_version` is
+deliberately XML-only for the same reason. Evaluating against the schema
+instead of the actual finalized XML could score nodes that aren't even in
+the diagram being finalized (schema has since moved on) or miss ones that
+are. `app/bpmn/nodes.py`'s `extract_flow_nodes` parses the version's XML
+directly (id, label, bpmn type, lane, predecessors/successors with flow
+conditions), and every result's `node_id` is the real BPMN element id
+(`Task_el_4`) -- a second, useful consequence: Epic 8's canvas overlay can
+highlight the exact element bpmn-js already renders with no id-translation
+layer, unlike chat-ops's bare-schema-id convention (which exists because
+that LLM call proposes *new* elements with no BPMN id yet -- a different
+problem).
+
+### One LLM call for the whole diagram, not one per node
+
+US7.5's consolidation recommendations ("these three sequential steps
+should be one agent") need cross-node context the model can only have if
+it sees the whole diagram at once -- per-node calls would need a separate
+second pass to reconcile consolidation groupings afterward. Same
+prompt-with-JSON-schema-contract pattern as `app/chat/prompts.py`
+(`##TOKEN##` substitution, not `.format()`, for the same
+literal-braces-in-the-example reason). `max_tokens=16000`, matching
+`chat_edit`/`document_extraction` -- Qwen3.7 Flash's reasoning overhead is
+now an established, not hypothetical, cost across every structured-output
+call site in this project.
+
+### Never trust the LLM's node coverage -- verified live against real automation reasoning
+
+Same principle as `app/ingestion/structuring.py`'s id remapping: the
+service drops any result whose `node_id` doesn't match a real node in the
+diagram, then hard-fails (`BlueprintServiceError`, -> 502) if any real node
+got no result at all, rather than silently completing the overlay with a
+placeholder. A blueprint that silently skipped a node would contradict
+US7.1 ("every node ... evaluated") in a way a user has no way to notice
+from the UI alone. Verified live (not just against the mocked test suite)
+with a real Qwen3.7 Flash call against an 8-node expense-reimbursement
+diagram with a decision gateway and a rework-adjacent exception branch:
+every node covered, correct consolidation (two nodes sharing one
+`agent_spec` with `consolidated_from_nodes` on both), the approval step
+correctly flagged `not_automatable` with a liability-based reason (not a
+generic one), and an exception-handling step correctly scored `partial`
+with a `review_before_action` checkpoint -- the rubric held up against a
+real model call, not just a hand-written fixture.
+
+### Real gap found (not fixed here): both real HR Onboarding test documents fail Finalize
+
+While picking a real finalized diagram to run the live blueprint check
+against, found that both previously-ingested "HR Onboarding" documents
+(from Epic 3/6 testing) still fail `POST /bpmn/generate`'s
+`validate_bpmn` checklist with "no incoming flow, not a start event" /
+"no outgoing flow, not an end event" on multiple nodes -- neither
+extracted schema has a `start_event`/`end_event` element at all, only bare
+tasks. This blocks Finalize entirely for both, meaning neither can
+actually reach US7.1's blueprint evaluation without a chat edit first
+adding start/end events. This looks like a real, not-yet-investigated gap
+in `app/ingestion/structuring.py`'s extraction prompt for multi-branch,
+multi-actor documents (out of scope for Epic 7 to fix) -- worth a
+follow-up look at why the LLM omits start/end events specifically on
+complex real documents when the schema explicitly supports them. Used a
+small hand-built valid diagram for this session's live verification
+instead of forcing a fix here.
+
+### In-memory store fully retired
+
+Blueprint overlay was the last thing left in `app/store.py`'s
+`InMemoryStore` (versions and chat messages were already promoted in
+Epics 5/6). With nothing left to hold, removed `InMemoryStore`,
+`ProcessSideData`, `get_store`, and `StoreDep` entirely rather than leave
+an empty scaffold around -- `app/store.py` now only defines
+`NotFoundError` (still used by `app/db/repository.py`'s lookups and
+`app/main.py`'s global exception handler). Also dropped the unused
+`new_id`/`utcnow` re-export from that module -- nothing imported them from
+there anymore (everything already used `app.ids` directly), a leftover
+from before Epic 2/3 promoted the first pieces of data out of the store.

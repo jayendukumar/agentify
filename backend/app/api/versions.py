@@ -3,12 +3,12 @@ import xml.etree.ElementTree as ET
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.bpmn.builder import _tag
+from app.bpmn.chat_ops import humanize_validation_issues
 from app.bpmn.validation import validate_bpmn
 from app.db import repository
-from app.ids import new_id, utcnow
 from app.schemas.versions import VersionDetail, VersionDiffResult, VersionSummary
 
-from .deps import DbDep, StoreDep
+from .deps import DbDep
 
 router = APIRouter(prefix="/api/processes/{process_id}", tags=["versions"])
 
@@ -37,7 +37,7 @@ def _element_labels(xml_str: str) -> dict[str, str | None]:
 
 
 @router.post("/finalize", response_model=VersionSummary, status_code=status.HTTP_201_CREATED)
-def finalize_process(process_id: str, db: DbDep, store: StoreDep) -> VersionSummary:
+def finalize_process(process_id: str, db: DbDep) -> VersionSummary:
     repository.get_process(db, process_id)  # 404s if missing
     draft = repository.get_draft_bpmn(db, process_id)
     if draft is None:
@@ -48,29 +48,38 @@ def finalize_process(process_id: str, db: DbDep, store: StoreDep) -> VersionSumm
     # US3.4), not just "is it well-formed XML".
     issues = validate_bpmn(draft.xml)
     if issues:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Cannot finalize invalid BPMN: {issues}")
+        # Same treatment as the chat-apply error (app/api/chat.py) -- raw
+        # issue strings quote internal BPMN ids ('Task_el_8f055...'),
+        # meaningless to the Process Analyst clicking Finalize. Swap in
+        # element/flow/lane labels when a schema exists to resolve them
+        # against; a manually-edited draft (PUT /bpmn) can have no schema
+        # at all, in which case humanize_validation_issues leaves ids as-is.
+        schema = repository.get_process_schema(db, process_id)
+        readable_issues = humanize_validation_issues(issues, schema) if schema else issues
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="Cannot finalize invalid BPMN: " + "; ".join(readable_issues)
+        )
 
-    version = VersionDetail(id=new_id("ver"), process_id=process_id, label=None, created_at=utcnow(), xml=draft.xml)
-    store.add_version(process_id, version)
+    version = repository.add_version(db, process_id, draft.xml)
     return VersionSummary(**version.model_dump(exclude={"xml"}))
 
 
 @router.get("/versions", response_model=list[VersionSummary])
-def list_versions(process_id: str, db: DbDep, store: StoreDep) -> list[VersionSummary]:
+def list_versions(process_id: str, db: DbDep) -> list[VersionSummary]:
     repository.get_process(db, process_id)  # 404s if missing
-    return [VersionSummary(**v.model_dump(exclude={"xml"})) for v in store.list_versions(process_id)]
+    return [VersionSummary(**v.model_dump(exclude={"xml"})) for v in repository.list_versions(db, process_id)]
 
 
 @router.get("/versions/diff", response_model=VersionDiffResult)
 def diff_versions(
-    process_id: str, db: DbDep, store: StoreDep, from_version_id: str = Query(...), to_version_id: str = Query(...)
+    process_id: str, db: DbDep, from_version_id: str = Query(...), to_version_id: str = Query(...)
 ) -> VersionDiffResult:
     # Registered before /versions/{version_id} -- FastAPI matches routes in
     # registration order, and a static path must be declared before a
     # path-param sibling that would otherwise swallow it (e.g. version_id="diff").
     repository.get_process(db, process_id)  # 404s if missing
-    from_version = store.get_version(process_id, from_version_id)
-    to_version = store.get_version(process_id, to_version_id)
+    from_version = repository.get_version(db, process_id, from_version_id)
+    to_version = repository.get_version(db, process_id, to_version_id)
 
     from_labels = _element_labels(from_version.xml)
     to_labels = _element_labels(to_version.xml)
@@ -78,6 +87,7 @@ def diff_versions(
     added = sorted(set(to_labels) - set(from_labels))
     removed = sorted(set(from_labels) - set(to_labels))
     changed = sorted(eid for eid in set(from_labels) & set(to_labels) if from_labels[eid] != to_labels[eid])
+    labels = {eid: to_labels.get(eid, from_labels.get(eid)) for eid in {*added, *removed, *changed}}
 
     return VersionDiffResult(
         from_version_id=from_version_id,
@@ -85,20 +95,23 @@ def diff_versions(
         added_element_ids=added,
         removed_element_ids=removed,
         changed_element_ids=changed,
+        labels=labels,
     )
 
 
 @router.get("/versions/{version_id}", response_model=VersionDetail)
-def get_version(process_id: str, version_id: str, db: DbDep, store: StoreDep) -> VersionDetail:
+def get_version(process_id: str, version_id: str, db: DbDep) -> VersionDetail:
     repository.get_process(db, process_id)  # 404s if missing
-    return store.get_version(process_id, version_id)
+    return repository.get_version(db, process_id, version_id)
 
 
 @router.post("/versions/{version_id}/restore", response_model=VersionSummary)
-def restore_version(process_id: str, version_id: str, db: DbDep, store: StoreDep) -> VersionSummary:
+def restore_version(process_id: str, version_id: str, db: DbDep) -> VersionSummary:
     repository.get_process(db, process_id)  # 404s if missing
-    version = store.get_version(process_id, version_id)
+    version = repository.get_version(db, process_id, version_id)
     # A restored version was already validated at finalize time and has no
-    # per-element confidence data of its own to carry forward.
+    # per-element confidence data of its own to carry forward. XML-only --
+    # does not touch the process schema tables, see VersionModel's
+    # docstring (app/db/models.py) for why that's a deliberate boundary.
     repository.set_draft_bpmn(db, process_id, version.xml, [])
     return VersionSummary(**version.model_dump(exclude={"xml"}))
