@@ -74,6 +74,7 @@ export interface BPMNDocument {
   process_id: string
   xml: string
   low_confidence_element_ids: string[]
+  validation_issues: string[]
   generated_at: string
 }
 

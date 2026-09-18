@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 // Port 3000 matches the `web` service in .claude/skills/local-stack-bootstrap/SKILL.md.
 // host pinned to IPv4 127.0.0.1 -- Vite's default "localhost" binds IPv6-only
@@ -12,5 +12,10 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 3000,
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/setupTests.ts',
+    globals: true,
   },
 })

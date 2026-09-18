@@ -67,6 +67,19 @@ export async function getBlueprint(processId: string): Promise<BlueprintOverlay 
   }
 }
 
+export async function getBpmn(processId: string): Promise<BPMNDocument | null> {
+  try {
+    return await request<BPMNDocument>(`/api/processes/${processId}/bpmn`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null
+    throw err
+  }
+}
+
+export function updateBpmn(processId: string, xml: string): Promise<BPMNDocument> {
+  return request(`/api/processes/${processId}/bpmn`, { method: 'PUT', body: JSON.stringify({ xml }) })
+}
+
 export async function uploadDocuments(processId: string, files: FileList | File[]): Promise<DocumentSummary[]> {
   const formData = new FormData()
   for (const file of Array.from(files)) {

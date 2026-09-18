@@ -141,6 +141,12 @@ export default function ProcessDetailPage() {
       </p>
       <h2>{process.name}</h2>
 
+      {process.has_draft_bpmn && (
+        <p>
+          <Link to={`/processes/${processId}/diagram`}>Open diagram &rarr;</Link>
+        </p>
+      )}
+
       <ProcessStepper steps={buildSteps(process, hasBlueprint)} />
 
       {!process.has_draft_bpmn && process.document_count > 0 && (
