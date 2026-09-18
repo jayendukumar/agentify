@@ -242,3 +242,71 @@ exercised them. Where this session worked well, it was because testing
 against reality happened *before* declaring something done, not after a
 user reported it. Worth protecting as a working practice, not just a
 one-off habit.
+
+## 2026-09-18 -- Epic 4, Process Diagram UI
+
+### Canvas engine: bpmn-js's full `Modeler`, not a custom canvas
+
+US4.1 (view), US4.2 (direct-manipulation edit), and US4.6 (undo/redo) were
+scoped as three separate user stories, but bpmn-js's `Modeler` build
+(`bpmn-js/lib/Modeler`) provides pan/zoom/select, drag/resize/connect
+editing, and a command-stack-backed undo/redo all as one library, built on
+the same DI-mandatory BPMN 2.0 XML the backend already guarantees
+(`bpmn-authoring` skill). The alternative -- a bespoke SVG canvas, or a
+generic (non-BPMN) diagramming library -- would have meant reimplementing
+BPMN-specific editing semantics (palette, connection rules, lane handling)
+that bpmn-js already gets right. Chosen deliberately for that reason, not
+just because US4.1 names it. See `frontend/src/components/BpmnCanvas.tsx`.
+
+### No metadata in the BPMN XML -> client-side join by stable ID prefix
+
+US4.3 (node/edge detail panel) needs actor/inputs/outputs/source-refs per
+element, but `backend/app/bpmn/builder.py` only ever emits `id`/`name` on
+each node -- no `<bpmn:extensionElements>`, no custom namespaced
+attributes carrying the source schema element id. Rather than changing the
+backend to embed metadata in the XML (which would need a corresponding
+change to `bpmn-authoring`'s ID/DI conventions and to validation), the
+frontend recovers the join itself: `mapping.py`'s existing ID convention
+(`Task_<schema-id>`, `Flow_<schema-id>`, `Lane_<schema-id>`) is stable and
+prefix-stripped client-side (`ElementDetailPanel.tsx`'s `classifyBpmnId`)
+against the already-fetched `ProcessSchema`. This keeps the BPMN XML a
+pure spec-conformant artifact and avoids a backend change whose blast
+radius would hit Epic 3's already-implemented generation/validation code
+for a UI-only need.
+
+### Dirty-state tracking deliberately decoupled from `commandStack.canUndo()`
+
+The obvious way to track "unsaved changes" is `commandStack.canUndo()` --
+but that stays `true` even immediately after a successful Save, since the
+undo stack itself isn't cleared by persisting. Using it directly would
+have shown "unsaved changes" right after a save that just succeeded.
+Instead, `BpmnCanvas`'s `commandStack.changed` handler always reports
+`dirty=true` (something changed since the last import), and `DiagramPage`
+owns resetting `dirty=false` explicitly after both a successful `PUT
+/bpmn` save and a fresh `importXML` -- two independent triggers for
+"clean," neither derived from the undo stack's internal position.
+
+### Frontend test tooling: bootstrapped from scratch, confirmed with user first
+
+No test runner existed anywhere in `frontend/` before this epic (no
+vitest/jest, no RTL, no config) -- confirmed by exploration before
+building. Rather than assume either "skip tests for this pass" or "add
+full coverage," this was posed as an explicit choice
+(`AskUserQuestion`); the user chose to bootstrap `vitest` + React Testing
+Library now rather than defer it, so Epic 4's new components ship with
+tests from the start instead of being the second frontend feature in a
+row with none.
+
+### Environment note: Chrome browser automation can't reach the local dev stack here
+
+Attempted a live click-through of the new diagram page via the
+`claude-in-chrome` browser tools against the already-running dev server
+(`http://127.0.0.1:3000`, confirmed reachable via `curl` from the shell in
+this same session). The automated browser tab could reach the open
+internet (`https://example.com` loaded fine) but got "Frame ... showing
+error page" for every `127.0.0.1:3000`/`localhost:3000` attempt --
+apparently the browser extension runs in a different network context than
+this shell/session. Not a code defect; verification for this epic ended up
+being done by the user manually in their own browser instead. Worth
+knowing before assuming browser-tool verification against `localhost` will
+work unmodified in a future session in this environment.
