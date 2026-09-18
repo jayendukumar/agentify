@@ -1,4 +1,12 @@
-import type { ApiErrorBody, BlueprintOverlay, BPMNDocument, DocumentSummary, ProcessDetail, ProcessSummary } from './types'
+import type {
+  ApiErrorBody,
+  BlueprintOverlay,
+  BPMNDocument,
+  ChatMessageResult,
+  DocumentSummary,
+  ProcessDetail,
+  ProcessSummary,
+} from './types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
@@ -78,6 +86,28 @@ export async function getBpmn(processId: string): Promise<BPMNDocument | null> {
 
 export function updateBpmn(processId: string, xml: string): Promise<BPMNDocument> {
   return request(`/api/processes/${processId}/bpmn`, { method: 'PUT', body: JSON.stringify({ xml }) })
+}
+
+export function listChatMessages(processId: string): Promise<ChatMessageResult[]> {
+  return request(`/api/processes/${processId}/chat/messages`)
+}
+
+export function sendChatMessage(
+  processId: string,
+  text: string,
+  selectedElementId?: string | null,
+): Promise<ChatMessageResult> {
+  return request(`/api/processes/${processId}/chat/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ text, selected_element_id: selectedElementId ?? null }),
+  })
+}
+
+export function applyChatMessage(processId: string, messageId: string, confirm: boolean): Promise<ChatMessageResult> {
+  return request(`/api/processes/${processId}/chat/messages/${messageId}/apply`, {
+    method: 'POST',
+    body: JSON.stringify({ confirm }),
+  })
 }
 
 export async function uploadDocuments(processId: string, files: FileList | File[]): Promise<DocumentSummary[]> {

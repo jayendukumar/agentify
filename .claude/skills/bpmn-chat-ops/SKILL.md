@@ -11,6 +11,16 @@ builds directly on the `bpmn-authoring` skill's ID conventions and
 validation checklist -- every diff produced here must still pass that
 validation before being applied.
 
+**Status: implemented** -- `backend/app/chat/` (`prompts.py`, `service.py`)
+for intent classification/prompting, `backend/app/bpmn/chat_ops.py` for
+diff application and id translation, `backend/app/api/chat.py` for the
+confirm/apply endpoints, `frontend/src/components/ChatPanel.tsx` for the
+UI. This document remains the reference for maintaining/extending that
+code; see `planning/decision-log.md`'s Epic 5 section for the real
+defects/design trade-offs found building it (same-diff temporary ids for
+`add_node`, validating only *newly introduced* diagram issues rather than
+blocking on pre-existing ones, etc.).
+
 ## Hard rule: never apply silently
 
 Every chat-driven edit MUST go through: **parse intent -> build diff ->

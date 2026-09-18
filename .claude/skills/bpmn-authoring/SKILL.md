@@ -56,6 +56,16 @@ otherwise.
 - Every element referenced by DI (`BPMNShape`/`BPMNEdge` `bpmnElement`
   attribute) must exist in the semantic model, and vice versa. A dangling DI
   reference or a semantic element with no DI shape is a validation failure.
+- **This applies to `<bpmn:lane>` elements too, not just flow nodes/flows.**
+  A lane with a fully-populated `flowNodeRef` list but no matching
+  `<bpmndi:BPMNShape bpmnElement="Lane_x">` is semantically valid BPMN but
+  **will not render as a visible swimlane band at all** -- confirmed by
+  reading bpmn-js's own import code (`BpmnTreeWalker.handleLane` only
+  visits/draws a lane via `visitIfDi`, which is a no-op when the DI map has
+  no entry for that lane's id). A multi-actor process with laneSets but no
+  lane DI shapes silently degrades to a flat, ungrouped scatter of nodes in
+  the rendered canvas -- this was a real defect (see the decision log's
+  "swim lanes never rendered" entry), not a hypothetical one.
 
 ## Mapping: process schema -> BPMN constructs
 
@@ -88,14 +98,80 @@ before changing this; it's a deliberate scope decision, not an oversight.
 Also: pools/message-flows for `external_party` actors aren't implemented
 -- every actor gets a lane in one pool regardless of type.
 
-## Auto-layout (US3.5)
+## Auto-layout (US3.5) -- swimlanes for a real multi-actor process
 
-Default to a left-to-right flow direction. Simple heuristic: assign each
-element a rank via topological sort/BFS from the start event(s), place ranks
-left-to-right (~180px horizontal spacing), and stack elements within the
-same rank vertically (~120px spacing) grouped by lane. This does not need to
-be a full graph-layout library initially -- correctness (no overlapping
-shapes, edges routed sensibly) matters more than optimality.
+Default to a left-to-right flow direction, **and real swimlane bands, not
+just a semantic grouping**. `app/bpmn/layout.py`:
+
+- **X (time/sequence)**: rank via `_rank_nodes` (Kahn's algorithm --
+  finalize a node's rank only once every predecessor already has one, so
+  rank = max(predecessor ranks) + 1 falls out exactly, no revisiting). A
+  node's actor doesn't affect its X position -- time flows left to right
+  regardless of who's doing the work. **Real extracted processes can
+  contain a genuine cycle** (a rework/retry loop, e.g. "if a check fails,
+  escalate and re-confirm clearance") -- not malformed extraction output,
+  just something a strict left-to-right rank can't represent for the nodes
+  actually inside the loop. Kahn's algorithm never finalizes a node whose
+  predecessor chain doesn't bottom out in already-ranked nodes, which is
+  exactly true of every node in (or only reachable via) a cycle -- those
+  get a deterministic fallback rank via a plain single-visit BFS instead.
+  **Do not** go back to a relaxation-based rank (re-queue a node whenever a
+  *longer* path to it is found) -- that's the textbook DAG approach but
+  never terminates on a cycle, and a real document hung the single
+  -threaded API process indefinitely with exactly this (see the decision
+  log). Kahn's algorithm's "never revisit a finalized node" property is
+  what guarantees termination either way.
+- **Y (actor/lane)**: each lane (including a catch-all band for elements
+  with no `actor_id`) gets a **fixed, non-overlapping vertical band**, in
+  lane declaration order, sized for the max number of that lane's nodes
+  landing on the same rank (usually 1). A node's Y comes from its own
+  lane's band + its row within that (lane, rank) pair -- **never** from a
+  row index computed within the rank alone. That was a real bug: two nodes
+  in *different* lanes at *different* ranks can each be "row 0 in their
+  rank," which produced the same Y for unrelated nodes and "row 1" for
+  whichever lane happened to have 2 members at some rank, regardless of
+  which lane it actually was -- the diagram looked like one undifferentiated
+  chain of boxes for any process with more than a couple of actors,
+  because nothing kept a given lane's nodes at a consistent height across
+  ranks *or* gave the lanes themselves a DI shape (see above).
+- **Lane DI shapes**: `compute_lane_bounds(model, node_layout)` computes
+  each lane's own bounds as the tight enclosing rectangle of its current
+  member nodes (padding: `_LANE_PADDING`), with every lane's X-extent
+  normalized to the full diagram width (`_LANE_X_MARGIN` overhang) so the
+  bands read as one shared swimlane structure. Always derived from the
+  nodes' *actual current* positions (including Epic 5 chat-apply's
+  preserved/dragged ones), not recomputed from a theoretical rank/row
+  formula -- so a lane's band always tightly fits what's really in it,
+  including after manual edits. An empty lane (no elements currently
+  assigned) still gets a thin placeholder band, stacked after the
+  populated ones, rather than vanishing from the diagram.
+- `isHorizontal="true"` on each lane's `BPMNShape` is the DI convention for
+  "stacked top-to-bottom, label rotated along the left edge" -- bpmn-js
+  actually defaults to `true` when this attribute is absent, but set it
+  explicitly for spec-conformance and other tools' compatibility, not
+  because bpmn-js strictly requires it.
+- **Edge routing**: `compute_edge_waypoints` -- never a straight line from
+  source-center to target-center. That reads fine in a tiny same-lane
+  example but cuts diagonally across every lane band and unrelated node in
+  between the moment source/target are in different lanes, which is the
+  common case in any real multi-actor process (found live: reported as
+  "wiring is messy, crossing over each other"). Three cases: same-lane
+  forward is a single straight horizontal segment; different-lane forward
+  is orthogonal (right, then vertical at the midpoint of the *gap* between
+  the two rank columns -- never on top of a node column -- then left into
+  the target); backward (`target.left < source.right`, covering both a
+  genuine rework loop and any same-rank edge) routes as a loop below the
+  *entire* diagram's lowest point, not just these two nodes, matching how
+  real BPMN tools draw a loop-back. A straight backward line would run
+  through everything between source and target.
+
+This does not need to be a full graph-layout library -- correctness (no
+overlapping shapes within a lane, edges routed sensibly, lanes that
+actually render as lanes) matters more than optimality. A newly auto-placed
+node can still visually overlap a *preserved* one from a prior draft if the
+graph shape changed a lot (Epic 5's "preserve positions" chat-edit path) --
+accepted, with "Refresh Layout" (a full relayout with no preserved
+positions) as the user-facing escape hatch.
 
 ## Validation checklist (US3.4)
 
@@ -108,7 +184,8 @@ Before returning generated or edited BPMN to the UI, verify:
       outgoing flow (no orphans/dead ends).
 - [ ] Gateway fork/join pairing is consistent (see above).
 - [ ] Every DI shape/edge references an existing semantic element and vice
-      versa.
+      versa -- **including lanes** (a lane with no DI shape silently fails
+      to render as a swimlane, see "ID conventions" above).
 - [ ] No duplicate IDs.
 
 On validation failure, do not silently emit the invalid diagram -- either

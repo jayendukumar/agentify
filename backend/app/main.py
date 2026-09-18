@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import blueprint, bpmn, chat, documents, processes, versions
+from app.config import get_settings
 from app.llm.exceptions import (
     LLMAuthenticationError,
     LLMBadRequestError,
@@ -14,7 +15,28 @@ from app.llm.exceptions import (
 )
 from app.store import NotFoundError
 
-logging.basicConfig(level=logging.INFO)
+
+def _configure_logging() -> None:
+    """Epic 10: console output alone (the previous logging.basicConfig)
+    doesn't survive past the terminal it ran in -- app_log_enabled adds a
+    rotating-free (dev-scale, see the app_log_path setting) file handler
+    alongside it, so request/LLM-call/error logs persist across restarts
+    for later review, not just the current session's console scrollback.
+    """
+    settings = get_settings()
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if settings.app_log_enabled:
+        settings.app_log_file_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(settings.app_log_file_path, encoding="utf-8"))
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
+        force=True,  # re-configure cleanly even if something already called basicConfig
+    )
+
+
+_configure_logging()
 
 app = FastAPI(
     title="Agentic Solution Generator API",

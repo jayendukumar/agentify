@@ -18,7 +18,7 @@ import xml.etree.ElementTree as ET
 
 from app.schemas.common import ProcessSchema
 
-from .layout import compute_layout
+from .layout import NodeLayout, compute_edge_waypoints, compute_lane_bounds, compute_layout
 from .mapping import BpmnModel, map_schema_to_bpmn
 
 NS = {
@@ -35,12 +35,21 @@ def _tag(prefix: str, local: str) -> str:
     return f"{{{NS[prefix]}}}{local}"
 
 
-def build_bpmn_xml(process_id: str, schema: ProcessSchema) -> tuple[str, list[str]]:
+def build_bpmn_xml(
+    process_id: str, schema: ProcessSchema, preferred_positions: dict[str, NodeLayout] | None = None
+) -> tuple[str, list[str]]:
     """Returns (xml_string, low_confidence_element_ids) -- the latter is
     US3.6: which *source schema* element ids (not BPMN node ids) the
-    generated diagram is unsure about, so the UI can flag them."""
+    generated diagram is unsure about, so the UI can flag them.
+
+    preferred_positions (Epic 5): BPMN-node-id -> NodeLayout to reuse
+    as-is instead of auto-placing -- see app/bpmn/layout.py's module
+    docstring. None (the default, used by POST /bpmn/generate) means a
+    full auto-relayout, unchanged from before Epic 5.
+    """
     model = map_schema_to_bpmn(process_id, schema)
-    layout = compute_layout(model)
+    layout = compute_layout(model, preferred_positions)
+    lane_bounds = compute_lane_bounds(model, layout)
 
     definitions = ET.Element(
         _tag("bpmn", "definitions"),
@@ -86,6 +95,27 @@ def build_bpmn_xml(process_id: str, schema: ProcessSchema) -> tuple[str, list[st
         diagram, _tag("bpmndi", "BPMNPlane"), {"id": f"Plane_{process_id}", "bpmnElement": f"Process_{process_id}"}
     )
 
+    # A lane only renders as a visible swimlane band if it has its own DI
+    # shape -- bpmn-js's importer skips drawing a lane entirely when this
+    # is missing, even though the semantic <bpmn:lane>/flowNodeRefs are
+    # otherwise complete (confirmed by reading bpmn-js's own import code;
+    # see the decision log). Emitted before node shapes so a lane's band
+    # sits behind its member tasks, matching how bpmn-js orders them itself.
+    for lane in model.lanes:
+        box = lane_bounds.get(lane.id)
+        if box is None:
+            continue
+        lane_shape = ET.SubElement(
+            plane,
+            _tag("bpmndi", "BPMNShape"),
+            {"id": f"Shape_{lane.id}", "bpmnElement": lane.id, "isHorizontal": "true"},
+        )
+        ET.SubElement(
+            lane_shape,
+            _tag("dc", "Bounds"),
+            {"x": str(box.x), "y": str(box.y), "width": str(box.width), "height": str(box.height)},
+        )
+
     for node in model.nodes:
         box = layout[node.id]
         shape = ET.SubElement(
@@ -97,14 +127,15 @@ def build_bpmn_xml(process_id: str, schema: ProcessSchema) -> tuple[str, list[st
             {"x": str(box.x), "y": str(box.y), "width": str(box.width), "height": str(box.height)},
         )
 
+    diagram_bottom = max((box.bottom for box in layout.values()), default=0)
     for flow in model.flows:
         source_box = layout[flow.source_ref]
         target_box = layout[flow.target_ref]
         edge = ET.SubElement(
             plane, _tag("bpmndi", "BPMNEdge"), {"id": f"Edge_{flow.id}", "bpmnElement": flow.id}
         )
-        ET.SubElement(edge, _tag("di", "waypoint"), {"x": str(source_box.right), "y": str(source_box.center_y)})
-        ET.SubElement(edge, _tag("di", "waypoint"), {"x": str(target_box.left), "y": str(target_box.center_y)})
+        for x, y in compute_edge_waypoints(source_box, target_box, diagram_bottom):
+            ET.SubElement(edge, _tag("di", "waypoint"), {"x": str(x), "y": str(y)})
 
     xml_bytes = ET.tostring(definitions, encoding="unicode", xml_declaration=False)
     xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_bytes

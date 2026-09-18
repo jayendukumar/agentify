@@ -14,8 +14,9 @@ ChatIntent = Literal[
     "add_flow",
     "delete_flow",
     "reroute_flow",
-    "explain",
 ]
+
+ChatReplyKind = Literal["edit", "explain", "clarify"]
 
 
 class DiagramDiffOperation(BaseModel):
@@ -38,17 +39,22 @@ class DiagramDiff(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     text: str
+    selected_element_id: str | None = None
 
 
 class ChatMessageResult(BaseModel):
     id: str
     process_id: str
     request_text: str
+    selected_element_id: str | None = None
+    kind: ChatReplyKind
     reply_text: str
     proposed_diff: DiagramDiff | None = None
     needs_confirmation: bool
     applied: bool
+    declined: bool
     created_at: datetime
+    decided_at: datetime | None = None
 
 
 class ChatApplyRequest(BaseModel):

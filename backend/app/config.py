@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     llm_usage_log_enabled: bool = True
     llm_usage_log_path: str = ".data/llm_usage.jsonl"
 
+    # Epic 10 (cross-cutting logging): a persistent app log file alongside
+    # the console output logging.basicConfig already gave us -- distinct
+    # from llm_usage_log_path above, which is a structured cost/usage
+    # ledger, not general request/error logging.
+    app_log_enabled: bool = True
+    app_log_path: str = ".data/app.log"
+
     document_storage_path: str = ".data/uploads"
 
     # Matches docker-compose.yml's `db` service (Epic 2, US2.2/US2.3 -- pgvector
@@ -41,6 +48,11 @@ class Settings(BaseSettings):
     @property
     def usage_log_path(self) -> Path:
         path = Path(self.llm_usage_log_path)
+        return path if path.is_absolute() else _ENV_FILE.parent / path
+
+    @property
+    def app_log_file_path(self) -> Path:
+        path = Path(self.app_log_path)
         return path if path.is_absolute() else _ENV_FILE.parent / path
 
     @property

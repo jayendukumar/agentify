@@ -310,3 +310,285 @@ this shell/session. Not a code defect; verification for this epic ended up
 being done by the user manually in their own browser instead. Worth
 knowing before assuming browser-tool verification against `localhost` will
 work unmodified in a future session in this environment.
+
+## 2026-09-18 -- Epic 5, Conversational Diagram Editing
+
+### Chat edits mutate the `ProcessSchema`, not the live BPMN XML directly
+
+Two ways to apply a chat-confirmed diff existed: patch the current draft's
+XML in place (preserves anything about the XML the schema doesn't know
+about, e.g. a manually-added canvas-only node from Epic 4), or apply the
+diff to the `ProcessSchema` and fully regenerate XML via the existing
+`build_bpmn_xml` -- the same deterministic path `POST /generate` already
+uses. Chose the schema path: the `bpmn-chat-ops` skill's diff shape is
+explicitly framed in canonical-schema terms (`ProcessElement`/`ProcessFlow`),
+and reusing one generation path keeps `validate_bpmn` meaningful without a
+second XML-patching engine that could drift from it. Accepted cost: a node
+added only via direct canvas manipulation (no schema backing) can't be
+referenced by a chat instruction and is invisible to this path -- consistent
+with Epic 4's existing "manually added -- no extracted metadata" UI case,
+not a new gap.
+
+### Layout: preserve positions by default, explicit "Refresh Layout" to relayout
+
+Regenerating from the schema on every chat edit would auto-relayout the
+*entire* diagram each time, discarding any position the user had left a
+node at. Raised as a tradeoff and the user's steer was to keep manual
+layout by default and offer an explicit escape hatch: `compute_layout`
+(`app/bpmn/layout.py`) now takes a `preferred_positions` map, and chat-apply
+extracts it from the current draft's own DI (`extract_node_positions`)
+before rebuilding, so only genuinely new nodes get auto-placed. A new
+**Refresh Layout** button on `DiagramPage` calls the existing, unmodified
+`POST /bpmn/generate` (no positions passed) to force a full relayout on
+demand. Verified live: after a chat-applied `add_node`, the new node's
+auto-placed position collided with a preserved node's (BFS rank-based
+placement doesn't know about positions it didn't compute) -- Refresh
+Layout resolved it cleanly. This overlap case is accepted, not fixed
+further, since the escape hatch exists precisely for it.
+
+### Diff element/flow ids: bare schema ids in the LLM's reasoning, translated to rendered BPMN ids at the API boundary
+
+The LLM reasons and emits diffs using the bare schema ids already in the
+`ProcessSchema` context it's given (`el-3`, `f-4`) rather than BPMN node
+ids (`Task_el-3`) -- deriving the right prefix depends on element *type*
+mapping (`app/bpmn/mapping.py`) that only the backend should own, not
+something to ask an LLM to get right. `app/chat/service.py` translates
+`target_element_ids`/operation ids to rendered BPMN ids before persisting,
+so what's stored/returned already matches what `BpmnCanvas` can highlight,
+matching the `bpmn-chat-ops` skill's stated reason for using BPMN ids
+(canvas highlighting). `apply_diagram_diff` (`app/bpmn/chat_ops.py`)
+accepts either form via `strip_bpmn_id`, since it has to handle a
+just-generated diff (bare ids) and a stored/replayed one (rendered ids)
+alike.
+
+### Real defect: same-diff temporary ids needed for `add_node`
+
+First real LLM call (Qwen3.7 Flash) for "add a step between X and Y"
+produced an `add_element` op plus two `add_flow` ops wiring the new node
+in -- but with `"to": null`/`"from": null`, because the new element has no
+id until the backend mints one at apply time, and the LLM had no way to
+reference "the node I'm adding in this same message." Invisible from
+reading the code or from the mocked test suite (which only ever exercised
+diffs referencing *existing* ids); only showed up once a real model
+proposed a real multi-op diff. Fixed by letting the LLM optionally give an
+`add_element` payload a throwaway string id (e.g. `"new-1"`) that later ops
+in the *same* diff can reference in `from`/`to`; `apply_diagram_diff` does
+a first pass minting the real id for every such temp id before applying
+any operation, so ordering within the diff doesn't matter. Documented in
+the system prompt with a worked example after this was found, not before --
+the first prompt version didn't mention the mechanism because the need
+wasn't obvious until a real model hit it.
+
+### Real defect: chat-apply was blocking on pre-existing, unrelated validation issues -- twice, in two different ways
+
+`POST /bpmn/generate` deliberately does not block on `validate_bpmn`
+issues from imperfect extraction (see the Epic 3 entry above) -- but the
+first version of chat-apply blocked on *any* issue in the post-edit
+diagram, full stop. Against a real seeded process whose generated draft
+already had two pre-existing issues (no start/end events extracted, so the
+first/last task legitimately has no incoming/outgoing flow), this made
+every chat edit on that process fail with "invalid diagram," including
+edits (like a rename) that had nothing to do with those nodes. First fix:
+compute `validate_bpmn` on the current draft *before* the edit too, and
+only block on issue *strings* present after the edit but not before.
+
+That first fix was still too strict, found by the user testing a second
+real case: appending a node after the process's last step (also with no
+explicit end event) moves the "no outgoing flow" complaint from the old
+last node (now fixed -- it has an outgoing flow to the new node) to the
+new last node (which doesn't have one yet either). Same total problem,
+but a different node id embedded in the message text, so a strict
+set-difference on issue strings saw it as "a new problem" and blocked a
+genuinely net-neutral edit. Redesigned again: compare issue *counts*
+before/after, not string identity -- block only if the edit leaves
+strictly more issues than it found. A chat edit must not make things
+worse (by count), but doesn't have to spontaneously fix pre-existing
+problems, and shouldn't be penalized for a problem legitimately moving
+from one node to another. Verified live both times against the real
+process that exposed each version of the bug.
+
+### Chat-apply error messages: raw BPMN ids swapped for element labels
+
+The 400 response for a blocked chat-apply was surfacing `validate_bpmn`'s
+issue strings verbatim (e.g. `'Task_el_8f055fa669de' (userTask) has no
+outgoing flow...`) -- meaningful to a developer, not to the Process
+Analyst who has to decide what to do next. The user flagged this directly
+after hitting it live. `app/bpmn/chat_ops.humanize_validation_issues`
+regex-extracts each quoted BPMN id from an issue string and replaces it
+with the element's label (or, for a flow id, "the connection from X to
+Y") via the same `strip_bpmn_id` join already used elsewhere in this
+epic -- applied only at the chat-apply error boundary, not inside
+`validate_bpmn` itself, since `PUT /bpmn`'s manual-edit path has no
+`ProcessSchema` to label against and validation issues elsewhere in the
+app (e.g. `BPMNDocument.validation_issues`) are developer/diagnostic
+surfaces, not conversational ones.
+
+### Chat-edit prompt: explicit reconnection rules for `add_node`, after a real bad diff
+
+The same live "append after the last step" test also exposed the LLM
+constructing a genuinely wrong diff on the first prompt version: it
+removed *two* unrelated flows and rewired one backwards, disconnecting
+three nodes, when the correct diff for that case is a single `add_flow`
+(the anchor node had no outgoing flow to remove in the first place). The
+system prompt didn't previously spell out *how* to work out an add_node's
+reconnection -- it only said an add_flow was needed. Added explicit
+per-case rules (anchor-has-outgoing vs anchor-has-no-outgoing vs inserting
+before an anchor) plus a direction sanity check ("from" happens before
+"to"). Re-tested the identical live instruction after the prompt change
+and got the minimal, correct one-`add_flow` diff. Not a guarantee against
+future bad diffs from other phrasings -- the `apply_diagram_diff` +
+`validate_bpmn` safety net (never applies without validating) is what
+actually protects the diagram either way; the prompt change just reduces
+how often a good instruction produces a diff that trips that net.
+
+### Real defect: `chat_edit` LLM calls needed the same `max_tokens` headroom as document extraction
+
+Same root cause `structuring.py` already documents for `document_extraction`
+-- Qwen3.7 Flash spends part of its output budget on internal reasoning
+before the visible JSON reply. The initial `max_tokens=4000` for the new
+`chat_edit` operation hit that cap on a real call (`finish_reason="length"`,
+empty `result.text`, confirmed via `.data/llm_usage.jsonl` showing
+`output_tokens: 4000` exactly). Raised to 16000, matching
+`document_extraction`'s established budget.
+
+### Chat messages promoted from the in-memory store to real DB persistence
+
+`app/db/models.py`/`app/store.py` had already earmarked this move for
+"once Epic 5 is real," mirroring `BPMNDraftModel`'s promotion for Epic 3 --
+new `ChatMessageModel`/`chat_messages` table, migration
+`027a54473dd3_add_chat_messages_table`. Necessary for US5.5's audit trail
+to actually survive a restart, which an in-memory store can't do.
+
+### Environment note: `uvicorn --reload` (WatchFiles) proved unreliable here
+
+Across this session, `WatchFiles detected changes... Reloading...` fired
+once and then silently stopped picking up further edits to other files in
+the same `backend/` tree -- confirmed by a code change (the `max_tokens`
+fix above) having zero effect on live behavior until the server was fully
+stopped and restarted. Root cause not diagnosed (Windows-specific
+file-watcher flakiness is a known category of issue for this tool, but
+wasn't confirmed further). Practical takeaway for future sessions: after
+more than one or two backend edits, do a full `TaskStop` + restart and
+confirm `Application startup complete` in the log before trusting live
+manual verification against the dev server, rather than assuming
+`--reload` picked up the latest change.
+
+## 2026-09-18 -- BPMN swim-lane layout, Epic 10 logging seed
+
+User uploaded a real, complex HR Onboarding document (5-7 actors,
+18-20 steps) specifically to stress-test the diagram generator beyond the
+small examples used so far. It surfaced three real, previously-invisible
+defects -- none caught by the existing mocked test suite, all found by
+actually generating a diagram from real extracted data.
+
+### Real defect: swim lanes never rendered at all
+
+Reported as "the diagram is just one flow of various nodes" despite the
+schema correctly extracting 5 distinct actors. Root cause, confirmed by
+reading bpmn-js's own import source (not assumed): `BpmnTreeWalker.
+handleLane` only draws a lane via `visitIfDi`, a no-op when the DI map has
+no entry for that lane's id -- and `app/bpmn/builder.py` never emitted a
+`<bpmndi:BPMNShape>` for any `<bpmn:lane>`, only for flow nodes. The
+semantic `<bpmn:laneSet>`/`flowNodeRef`s were always complete; the visual
+swimlane bands simply never existed. Compounding this, the *node*
+Y-position algorithm (`row = index within this rank's node list`) wasn't
+lane-consistent either -- a rank with only 2 of 5 lanes present would put
+those nodes at rows 0-1, colliding with a *different* rank's unrelated
+lanes also at rows 0-1. Fixed with two changes: `compute_layout` now gives
+every lane a fixed, non-overlapping Y-band (by lane declaration order,
+sized for max concurrent same-lane nodes per rank) so a lane's Y no longer
+depends on what else is happening at a given rank; `compute_lane_bounds`
+(new) computes each lane's own DI bounds from its members' actual
+positions, and `builder.py` emits a `BPMNShape` per lane. `validate_bpmn`
+gained a matching check (a lane's DI shape is now part of "every semantic
+element needs DI and vice versa," not just flow nodes) so this class of
+regression fails loudly instead of silently degrading. Knowledge captured
+in the `bpmn-authoring` skill for future sessions, not just this fix.
+
+### Real defect: an undeclared actor/element reference crashed ingestion outright
+
+A second HR document failed to ingest at all: `structuring.py`'s id-remap
+step used `actor_remap.get(element.actor_id, element.actor_id)` --
+falling back to the *original* (never-remapped) local id when the LLM
+referenced an actor id it never actually declared in `actors`. That stale
+local id then hit `process_elements.actor_id`'s FK constraint at persist
+time. Fixed by dropping the fallback (`actor_remap.get(element.actor_id)`
+-> `None`, which `actor_id`'s optionality already supports cleanly) for
+elements, and -- since `ProcessFlow.from_`/`to` are required, non-nullable
+fields, so the same trick isn't available -- by dropping any flow whose
+endpoints still reference an undeclared element after remapping, rather
+than let it reach the DB. Re-uploading the same real file after the fix
+succeeded end-to-end (7 actors, 18 elements, 20 flows).
+
+### Real defect: a genuine rework loop hung the entire API process
+
+The same document's extracted flow graph contained an actual cycle -- "Confirm
+start clearance" could flow to "Deferral of start if checks incomplete"
+and back to "Confirm start clearance" again, a legitimate rework/retry
+pattern in a real business process, not malformed extraction output.
+`layout.py`'s rank computation was an *unbounded* longest-path relaxation
+(re-queue a node whenever a longer path to it is found) -- sound for a DAG,
+but a cycle keeps producing "longer paths" forever. Generating this
+diagram hung the single-threaded FastAPI process indefinitely (confirmed:
+even `/healthz`, with zero dependencies, stopped responding). Diagnosed by
+writing a small offline script against the actual persisted schema to
+detect the cycle directly, rather than guessing from the hang alone.
+
+First fix was a hard iteration bound (Bellman-Ford's standard termination
+count for an acyclic graph) -- stops the hang, but a *test* for the
+follow-up edge-routing fix below exposed that an arbitrary cutoff mid
+-relaxation can leave a cyclic component's nodes in an unstable relative
+order (which of two nodes in a 2-cycle ends up with the higher rank number
+depends on exactly where the bound happens to land), which then fed wrong
+"is this edge forward or backward" decisions downstream. Replaced with
+`_rank_nodes`: proper Kahn's-algorithm topological ranking (a node is only
+finalized once every predecessor already has a rank, giving exact longest
+-path semantics with no revisits needed) for the DAG portion, falling back
+to a plain single-visit BFS -- never revisits a rank once set, so it can't
+oscillate -- for whatever's left unranked, which is exactly the nodes in or
+only reachable via a cycle. No arbitrary bound needed at all; termination
+is structural (each node touched a fixed number of times), not a cutoff.
+Regression tests run the layout/build functions on a worker thread with a
+wall-clock timeout (no `pytest-timeout` dependency available) so a future
+regression here fails a test instead of hanging the suite.
+
+### Real defect: diagonal edges read as visual noise across real swimlanes
+
+User's words, after checking the rendered HR Onboarding diagram: "wiring
+is [messy] and over each other." Root cause: `builder.py` drew every
+`sequenceFlow` as a straight 2-point line from the source's right-center to
+the target's left-center, regardless of how far apart they were. That's
+invisible-ish in a small same-lane chain, but once real swimlanes exist
+(the earlier fix in this session) a straight line between two nodes in
+*different* lanes cuts diagonally across every lane band and unrelated
+node in between -- which is also not how any real BPMN tool draws a
+sequence flow; they all use orthogonal (Manhattan-style) routing. Worse,
+a backward flow (the rework loop from the previous entry) got the exact
+same straight-line treatment, drawing a line running backward through
+everything between source and target.
+
+Fixed with `compute_edge_waypoints` (`app/bpmn/layout.py`), three cases:
+same-lane forward stays a single straight horizontal segment (no need to
+bend what's already clean); different-lane forward routes as
+right-vertical-left through the midpoint of the gap between the two rank
+columns (a lane-agnostic gap where no node ever sits, so this doesn't
+guarantee zero crossings for a flow that skips multiple ranks, but
+replaces a diagonal cutting through everything with two axis-aligned
+bends); backward (`target.left < source.right` -- covers both a genuine
+loop-back and same-rank edges) routes as a loop below the *entire*
+diagram's lowest point, not just these two nodes, matching how real BPMN
+tools draw a rework loop. Verified live: the real "Confirm start
+clearance" <-> "Deferral" loop now draws down-across-up below all 7 lanes
+instead of a nonsensical backward diagonal.
+
+### Epic 10: seeded persistent app logging
+
+`app/main.py` only ever called `logging.basicConfig(level=logging.INFO)`
+-- console output that doesn't survive past the terminal it ran in. Added
+`APP_LOG_ENABLED`/`APP_LOG_PATH` (mirroring the existing
+`LLM_USAGE_LOG_ENABLED`/`LLM_USAGE_LOG_PATH` pattern) and a `FileHandler`
+alongside the console one. Deliberately kept distinct from the LLM usage
+ledger (`llm_usage.jsonl`) -- that's a structured cost record, this is
+general request/error/lifecycle logging. Minimal seed of Epic 10's
+"Logging" placeholder, not a full structured-logging or log-rotation
+solution.

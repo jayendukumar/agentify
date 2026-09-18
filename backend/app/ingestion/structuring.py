@@ -194,12 +194,28 @@ def _assign_globally_unique_ids(extracted: _ExtractedSchema) -> None:
     for element in extracted.elements:
         element.id = element_remap[element.id]
         if element.actor_id is not None:
-            element.actor_id = actor_remap.get(element.actor_id, element.actor_id)
+            # The model sometimes references an actor id it never declared
+            # in `actors` (real failure found against a real, complex
+            # multi-actor document -- see the decision log) -- null it out
+            # rather than leave the stale local id in place, which would
+            # violate process_elements' actor_id FK the moment this schema
+            # is persisted. actor_id is optional, so this degrades to "no
+            # actor assigned" instead of a hard failure.
+            element.actor_id = actor_remap.get(element.actor_id)
 
     for flow in extracted.flows:
         flow.id = new_id("flow")
         flow.from_ = element_remap.get(flow.from_, flow.from_)
         flow.to = element_remap.get(flow.to, flow.to)
+
+    # Same trust issue, but from_/to are required fields on ProcessFlow --
+    # can't null them out, so drop any flow that still references an
+    # element id the model never declared (i.e. remapping above left it
+    # untouched) rather than let a dangling foreign key reach the DB.
+    valid_element_ids = {element.id for element in extracted.elements}
+    extracted.flows = [
+        flow for flow in extracted.flows if flow.from_ in valid_element_ids and flow.to in valid_element_ids
+    ]
 
 
 async def structure_process(

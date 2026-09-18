@@ -1,8 +1,8 @@
 """DB-backed persistence for what Epic 2 owns (processes, documents, the
-extracted process schema, embeddings) plus Epic 3's draft BPMN. Chat,
-finalized versions, and the blueprint overlay stay in app/store.py's
-in-memory store until their own epics are implemented -- see
-app/db/models.py's module docstring.
+extracted process schema, embeddings) plus Epic 3's draft BPMN and Epic
+5's chat messages. Finalized versions and the blueprint overlay stay in
+app/store.py's in-memory store until their own epics are implemented --
+see app/db/models.py's module docstring.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from app.ids import new_id, utcnow
 from app.ingestion.embeddings import embed_texts
 from app.ingestion.extractors import ExtractedBlock
 from app.ingestion.merge import merge_process_schemas
+from app.schemas.chat import ChatMessageResult
 from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema, SourceRef
 from app.schemas.documents import IngestionStatus
 from app.store import NotFoundError
@@ -21,6 +22,7 @@ from app.store import NotFoundError
 from .models import (
     ActorModel,
     BPMNDraftModel,
+    ChatMessageModel,
     DocumentEmbeddingModel,
     DocumentModel,
     ProcessElementModel,
@@ -215,6 +217,19 @@ def merge_process_schema(
     session.flush()
 
 
+def set_process_schema(session: Session, process_id: str, schema: ProcessSchema) -> None:
+    """Epic 5: persist a chat-diff-mutated schema directly, bypassing
+    merge_process_schema's re-merge algorithm -- a chat edit is a direct
+    replacement of specific elements/flows (already resolved by
+    app/bpmn/chat_ops.apply_diagram_diff), not a merge of freshly-extracted
+    document content."""
+    get_process(session, process_id)  # 404s if missing
+    _replace_schema_rows(session, process_id, schema)
+    process = get_process(session, process_id)
+    process.updated_at = utcnow()
+    session.flush()
+
+
 def list_schema_changes(session: Session, process_id: str) -> list[ProcessSchemaChangeModel]:
     get_process(session, process_id)  # 404s if missing
     return list(
@@ -262,3 +277,73 @@ def set_draft_bpmn(
         draft.generated_at = utcnow()
     session.flush()
     return draft
+
+
+# -- chat messages (Epic 5, US5.5 audit trail) --------------------------------
+
+
+def _to_pydantic_chat_message(message: ChatMessageModel) -> ChatMessageResult:
+    return ChatMessageResult(
+        id=message.id,
+        process_id=message.process_id,
+        request_text=message.request_text,
+        selected_element_id=message.selected_element_id,
+        kind=message.kind,
+        reply_text=message.reply_text,
+        proposed_diff=message.proposed_diff,
+        needs_confirmation=message.needs_confirmation,
+        applied=message.applied,
+        declined=message.declined,
+        created_at=message.created_at,
+        decided_at=message.decided_at,
+    )
+
+
+def add_chat_message(
+    session: Session,
+    process_id: str,
+    *,
+    request_text: str,
+    selected_element_id: str | None,
+    kind: str,
+    reply_text: str,
+    proposed_diff: dict | None,
+    needs_confirmation: bool,
+) -> ChatMessageResult:
+    get_process(session, process_id)  # 404s if missing
+    message = ChatMessageModel(
+        id=new_id("msg"),
+        process_id=process_id,
+        request_text=request_text,
+        selected_element_id=selected_element_id,
+        kind=kind,
+        reply_text=reply_text,
+        proposed_diff=proposed_diff,
+        needs_confirmation=needs_confirmation,
+    )
+    session.add(message)
+    session.flush()
+    return _to_pydantic_chat_message(message)
+
+
+def list_chat_messages(session: Session, process_id: str) -> list[ChatMessageResult]:
+    get_process(session, process_id)  # 404s if missing
+    messages = session.scalars(
+        select(ChatMessageModel).where(ChatMessageModel.process_id == process_id).order_by(ChatMessageModel.created_at)
+    )
+    return [_to_pydantic_chat_message(m) for m in messages]
+
+
+def get_chat_message(session: Session, process_id: str, message_id: str) -> ChatMessageModel:
+    message = session.get(ChatMessageModel, message_id)
+    if message is None or message.process_id != process_id:
+        raise NotFoundError("chat message", message_id)
+    return message
+
+
+def mark_chat_message_decided(session: Session, message: ChatMessageModel, *, applied: bool) -> ChatMessageResult:
+    message.applied = applied
+    message.declined = not applied
+    message.decided_at = utcnow()
+    session.flush()
+    return _to_pydantic_chat_message(message)

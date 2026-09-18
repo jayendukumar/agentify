@@ -1,14 +1,15 @@
 """SQLAlchemy ORM models for Epic 2 (Business Process Knowledge Store) --
 processes, documents, the extracted process schema (actors/elements/
 source_refs/flows), embeddings, a lightweight change log -- plus Epic 3's
-draft BPMN (BPMNDraftModel), added once BPMN generation was real to
-generate something.
+draft BPMN (BPMNDraftModel) and Epic 5's chat messages (ChatMessageModel),
+each promoted out of the in-memory store (app/store.py) once its own epic
+made the data real.
 
-Still deliberately does NOT model chat messages, finalized diagram
-versions, or the blueprint overlay -- those belong to Epics 5/6/7/8, still
-unimplemented (501 stubs), and stay in the in-memory store (app/store.py)
-until their own stories are built. Persisting placeholder data for
-features that don't exist yet would be scope creep.
+Still deliberately does NOT model finalized diagram versions or the
+blueprint overlay -- those belong to Epics 6/7/8, still unimplemented (501
+stubs), and stay in the in-memory store until their own stories are built.
+Persisting placeholder data for features that don't exist yet would be
+scope creep.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import ForeignKey, Index, JSON, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -49,6 +50,9 @@ class ProcessModel(Base):
     )
     draft_bpmn: Mapped["BPMNDraftModel | None"] = relationship(
         back_populates="process", cascade="all, delete-orphan", uselist=False
+    )
+    chat_messages: Mapped[list["ChatMessageModel"]] = relationship(
+        back_populates="process", cascade="all, delete-orphan"
     )
 
 
@@ -184,3 +188,29 @@ class BPMNDraftModel(Base):
     generated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     process: Mapped[ProcessModel] = relationship(back_populates="draft_bpmn")
+
+
+class ChatMessageModel(Base):
+    """US5.5: one row per chat turn -- the audit trail of chat-driven
+    diagram edits (what was asked, what was proposed, whether/when it was
+    applied or declined). `proposed_diff` stores the DiagramDiff (see
+    app/schemas/chat.py) as JSON; null for a plain explain/clarify reply
+    that never proposed a change.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    request_text: Mapped[str] = mapped_column(Text, nullable=False)
+    selected_element_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    reply_text: Mapped[str] = mapped_column(Text, nullable=False)
+    proposed_diff: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    needs_confirmation: Mapped[bool] = mapped_column(nullable=False, default=False)
+    applied: Mapped[bool] = mapped_column(nullable=False, default=False)
+    declined: Mapped[bool] = mapped_column(nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    process: Mapped[ProcessModel] = relationship(back_populates="chat_messages")

@@ -10,6 +10,7 @@ const getProcess = vi.fn()
 const getBpmn = vi.fn()
 const listProcesses = vi.fn()
 const updateBpmn = vi.fn()
+const generateBpmn = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -23,6 +24,7 @@ vi.mock('../api/client', () => ({
   getBpmn: (...args: unknown[]) => getBpmn(...args),
   listProcesses: (...args: unknown[]) => listProcesses(...args),
   updateBpmn: (...args: unknown[]) => updateBpmn(...args),
+  generateBpmn: (...args: unknown[]) => generateBpmn(...args),
 }))
 
 // BpmnCanvas depends on real bpmn-js/SVG layout (see BpmnCanvas.test.tsx) --
@@ -50,6 +52,10 @@ vi.mock(
 
 vi.mock('../components/ElementDetailPanel', () => ({
   default: () => <div data-testid="element-detail-panel-stub" />,
+}))
+
+vi.mock('../components/ChatPanel', () => ({
+  default: () => <div data-testid="chat-panel-stub" />,
 }))
 
 const process1: ProcessDetail = {

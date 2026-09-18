@@ -45,7 +45,26 @@ def test_build_includes_diagram_interchange():
     diagram = root.find("{http://www.omg.org/spec/BPMN/20100524/DI}BPMNDiagram")
     assert diagram is not None
     shapes = diagram.findall(".//{http://www.omg.org/spec/BPMN/20100524/DI}BPMNShape")
-    assert len(shapes) == 3  # start, task, end
+    assert len(shapes) == 4  # start, task, end, + one lane shape (actor a1)
+
+
+def test_build_gives_each_lane_its_own_di_shape():
+    # A lane with no DI shape never renders as a visible swimlane band in
+    # bpmn-js, even though its semantic flowNodeRefs are complete -- see
+    # app/bpmn/layout.py's module docstring.
+    xml_str, _ = build_bpmn_xml("proc-1", _linear_schema())
+    root = ET.fromstring(xml_str)
+    diagram = root.find("{http://www.omg.org/spec/BPMN/20100524/DI}BPMNDiagram")
+    lane_shape = next(
+        s
+        for s in diagram.findall(".//{http://www.omg.org/spec/BPMN/20100524/DI}BPMNShape")
+        if s.get("bpmnElement") == "Lane_a1"
+    )
+    assert lane_shape.get("isHorizontal") == "true"
+    bounds = lane_shape.find("{http://www.omg.org/spec/DD/20100524/DC}Bounds")
+    assert bounds is not None
+    assert float(bounds.get("width")) > 0
+    assert float(bounds.get("height")) > 0
 
 
 def test_build_process_is_not_executable():

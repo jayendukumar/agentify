@@ -70,6 +70,49 @@ export interface DocumentDetail extends DocumentSummary {
   error_message: string | null
 }
 
+export type ChatIntent =
+  | 'add_node'
+  | 'delete_node'
+  | 'rename_node'
+  | 'reassign_actor'
+  | 'change_type'
+  | 'add_flow'
+  | 'delete_flow'
+  | 'reroute_flow'
+
+export type ChatReplyKind = 'edit' | 'explain' | 'clarify'
+
+export interface DiagramDiffOperation {
+  op: 'add_element' | 'remove_element' | 'update_element' | 'add_flow' | 'remove_flow' | 'update_flow'
+  element_id: string | null
+  flow_id: string | null
+  element: Record<string, unknown> | null
+  flow: Record<string, unknown> | null
+  fields: Record<string, unknown> | null
+}
+
+export interface DiagramDiff {
+  intent: ChatIntent
+  summary: string
+  target_element_ids: string[]
+  operations: DiagramDiffOperation[]
+}
+
+export interface ChatMessageResult {
+  id: string
+  process_id: string
+  request_text: string
+  selected_element_id: string | null
+  kind: ChatReplyKind
+  reply_text: string
+  proposed_diff: DiagramDiff | null
+  needs_confirmation: boolean
+  applied: boolean
+  declined: boolean
+  created_at: string
+  decided_at: string | null
+}
+
 export interface BPMNDocument {
   process_id: string
   xml: string

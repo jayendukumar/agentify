@@ -134,6 +134,60 @@ async def test_structure_process_ids_are_globally_unique_across_calls():
 
 
 @pytest.mark.asyncio
+async def test_structure_process_drops_element_reference_to_undeclared_actor():
+    # Real failure found against a real, complex multi-actor document: the
+    # model referenced actor_id "actor-it-support" on an element without
+    # that actor ever appearing in the "actors" array. Left as-is, the
+    # stale local id survives remapping unchanged and violates
+    # process_elements' actor_id FK the moment this schema is persisted --
+    # see app.db.repository._replace_schema_rows.
+    payload = {
+        "actors": [{"id": "actor-1", "name": "HR", "type": "role"}],
+        "elements": [
+            {
+                "id": "el-1",
+                "type": "task",
+                "label": "Undeclared-actor step",
+                "actor_id": "actor-it-support",  # never declared above
+                "source_refs": [{"document_id": "d", "location": "page 1", "excerpt": "x"}],
+                "confidence": "high",
+            }
+        ],
+        "flows": [],
+    }
+    client = _client_with_response(json.dumps(payload))
+
+    schema = await structure_process(client, document_id="doc-1", filename="sop.pdf", blocks=_BLOCKS, process_name="P")
+
+    assert schema.elements[0].actor_id is None
+
+
+@pytest.mark.asyncio
+async def test_structure_process_drops_flow_referencing_undeclared_element():
+    payload = {
+        "actors": [],
+        "elements": [
+            {
+                "id": "el-1",
+                "type": "task",
+                "label": "Real step",
+                "source_refs": [{"document_id": "d", "location": "page 1", "excerpt": "x"}],
+                "confidence": "high",
+            }
+        ],
+        "flows": [
+            {"id": "f-1", "from": "el-1", "to": "el-99", "condition": None},  # el-99 never declared
+        ],
+    }
+    client = _client_with_response(json.dumps(payload))
+
+    schema = await structure_process(client, document_id="doc-1", filename="sop.pdf", blocks=_BLOCKS, process_name="P")
+
+    assert schema.flows == []
+    assert len(schema.elements) == 1  # the valid element itself is untouched
+
+
+@pytest.mark.asyncio
 async def test_structure_process_strips_source_marker_from_location():
     # A real live run showed the model sometimes copies the whole
     # "[SOURCE paragraph 1]" marker instead of just "paragraph 1" -- this

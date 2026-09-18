@@ -80,6 +80,13 @@ def validate_bpmn(xml_str: str) -> list[str]:
     if duplicate_flow_ids:
         issues.append(f"Duplicate flow ids: {sorted(duplicate_flow_ids)}")
 
+    lane_ids = {
+        lane.get("id")
+        for lane_set in process.findall(_tag("bpmn", "laneSet"))
+        for lane in lane_set.findall(_tag("bpmn", "lane"))
+        if lane.get("id")
+    }
+
     for el in process:
         local = el.tag.split("}", 1)[-1]
         node_id = el.get("id")
@@ -105,7 +112,17 @@ def validate_bpmn(xml_str: str) -> list[str]:
         missing_shapes = node_id_set - shape_refs
         if missing_shapes:
             issues.append(f"Elements with no DI shape: {sorted(missing_shapes)}")
-        dangling_shapes = shape_refs - node_id_set
+        # Lanes need their own DI shape to render as a visible swimlane band
+        # at all -- bpmn-js silently skips drawing a lane with no matching
+        # BPMNShape even though its semantic flowNodeRefs are otherwise
+        # complete (see app/bpmn/layout.py's module docstring). Checked
+        # separately from missing_shapes since a lane id is never a flow
+        # node id -- also why lane ids must be excluded from the dangling
+        # -shapes check below, not just added to it.
+        missing_lane_shapes = lane_ids - shape_refs
+        if missing_lane_shapes:
+            issues.append(f"Lanes with no DI shape (will not render as a swimlane): {sorted(missing_lane_shapes)}")
+        dangling_shapes = shape_refs - node_id_set - lane_ids
         if dangling_shapes:
             issues.append(f"DI shapes referencing elements that don't exist: {sorted(dangling_shapes)}")
         missing_edges = set(flow_ids) - edge_refs

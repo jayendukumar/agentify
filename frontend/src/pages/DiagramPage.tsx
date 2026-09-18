@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ApiError, getBpmn, getProcess, listProcesses, updateBpmn } from '../api/client'
+import { ApiError, generateBpmn, getBpmn, getProcess, listProcesses, updateBpmn } from '../api/client'
 import type { ProcessDetail, ProcessSummary } from '../api/types'
 import BpmnCanvas, { type BpmnCanvasHandle } from '../components/BpmnCanvas'
+import ChatPanel from '../components/ChatPanel'
 import ElementDetailPanel from '../components/ElementDetailPanel'
 import { downloadBlob, downloadText, svgToPngBlob } from '../lib/exportPng'
 
@@ -23,6 +24,7 @@ export default function DiagramPage() {
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [refreshingLayout, setRefreshingLayout] = useState(false)
 
   useEffect(() => {
     if (!processId) return
@@ -67,6 +69,33 @@ export default function DiagramPage() {
   const handleDirtyChange = useCallback((isDirty: boolean) => {
     setDirty(isDirty)
   }, [])
+
+  // Re-fetches the diagram + process without the full-page loading state --
+  // used after a chat-applied edit (which mutates the schema + draft BPMN
+  // server-side) and after Refresh Layout (POST /generate).
+  const reloadDiagram = useCallback(async () => {
+    if (!processId) return
+    const [processDetail, bpmnDoc] = await Promise.all([getProcess(processId), getBpmn(processId)])
+    setProcess(processDetail)
+    setHasDraft(bpmnDoc !== null)
+    setXml(bpmnDoc?.xml ?? null)
+    setDirty(false)
+  }, [processId])
+
+  async function handleRefreshLayout() {
+    if (!processId) return
+    setRefreshingLayout(true)
+    setSaveMessage(null)
+    try {
+      await generateBpmn(processId)
+      await reloadDiagram()
+      setSaveMessage({ kind: 'info', text: 'Layout refreshed.' })
+    } catch (err) {
+      setSaveMessage({ kind: 'error', text: err instanceof ApiError ? err.message : 'Failed to refresh layout' })
+    } finally {
+      setRefreshingLayout(false)
+    }
+  }
 
   async function handleSave() {
     if (!processId || !canvasRef.current) return
@@ -176,6 +205,15 @@ export default function DiagramPage() {
           {saving ? 'Saving...' : 'Save'}
         </button>
 
+        <button
+          type="button"
+          onClick={handleRefreshLayout}
+          disabled={refreshingLayout || dirty}
+          title="Re-run auto-layout from the current process data -- discards manual node positions"
+        >
+          {refreshingLayout ? 'Refreshing...' : 'Refresh Layout'}
+        </button>
+
         <button type="button" onClick={handleExportXml}>
           Export XML
         </button>
@@ -198,6 +236,12 @@ export default function DiagramPage() {
           onDirtyChange={handleDirtyChange}
         />
         <ElementDetailPanel elementId={selectedElementId} schema={process.process_schema} />
+        <ChatPanel
+          processId={processId}
+          selectedElementId={selectedElementId}
+          dirty={dirty}
+          onApplied={reloadDiagram}
+        />
       </div>
     </div>
   )
