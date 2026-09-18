@@ -816,3 +816,59 @@ coverage; a follow-up session with the browser extension connected should
 still do one visual pass of the overlay coloring and detail panel before
 calling Epic 8 fully done. Smoke-test process deleted afterward
 (`DELETE /api/processes/{id}`), no residue left in the dev DB.
+
+## 2026-09-19 -- Real Finalize failure on "HR Onboarding 2", extraction-gap pattern confirmed a third time
+
+### Root cause: an inconsistent fan-out, not just a missing start event
+
+User hit Finalize on `proc_51eb5a63bf6e` ("HR Onboarding 2") and got three
+"has no incoming flow" errors. Inspected the actual persisted schema
+rather than guessing: `"Classify requirements"` (the genuine first step)
+had no `start_event` predecessor at all -- consistent with the already-
+logged Epic 7 gap (`app/ingestion/structuring.py`'s prompt explicitly says
+"omit start/end events rather than guessing", and apparently guesses wrong
+on the conservative side often enough that this is now three real
+documents in a row). But the other two flagged nodes,
+`"Prepare payroll and benefits"` and `"Provision technology and access"`,
+revealed a different and more interesting failure: both already had
+correct *outgoing* flows into `"Confirm day one readiness"`, and the same
+document elsewhere extracted an equivalent 3-way parallel fan-out/fan-in
+correctly (`"Welcome and verify arrival"` -> 3 tasks -> `"Enable first
+week"`). So the model clearly intended the same pattern here (`"Define
+role readiness"` fanning out to 3 parallel tasks) but only emitted the
+fan-out edge for one of the three branches, while still emitting all
+three fan-in edges. This is an internal-consistency defect in one LLM
+response, not an ambiguous-document case where omission-by-design was the
+right call -- confirms `_assign_globally_unique_ids`
+(`app/ingestion/structuring.py`) has no graph-completeness check at all
+today, only a dangling-foreign-key check on flows.
+
+### Fixed live via chat-editing, not a code change
+
+Used the actual running chat-ops feature (Epic 5) to fix the two real
+gaps against the live process: one `add_node` message inserted the
+missing start event ahead of "Classify requirements" (correctly wired via
+its own `add_flow` operation), one `add_flow` message added both missing
+parallel-branch edges in a single diff. Regenerated BPMN
+(`validation_issues: []`) and finalized successfully
+(`ver_07e2bb88ff15`) afterward -- confirms the chat-ops path is a working
+recovery mechanism for this class of extraction gap today, independent of
+whether extraction itself ever gets hardened.
+
+### Proposed follow-up (not started): a dedicated gap-analysis step, not just a better prompt
+
+Discussed with the user going further than re-tuning the structuring
+prompt: real source documents will keep being incomplete/ambiguous no
+matter how the prompt is worded, and multiple documents describing the
+same process can also disagree with each other (not yet handled anywhere
+in `app/ingestion/merge.py`). Proposed direction -- not yet scoped as an
+epic, no code written -- is a distinct gap-analysis step that flags
+structural gaps (orphan nodes, missing start/end, inconsistent fan-out
+like this one) and cross-document conflicts, and asks the user a
+concrete question with options (plus an explicit "do nothing") rather
+than either silently guessing (today's extraction behavior) or silently
+blocking with a raw validator error (today's Finalize behavior). Next
+step is to scope this as its own planning epic before any implementation
+-- open questions include where in the pipeline it runs (post-ingestion,
+pre-finalize, or both) and whether v1 covers single-document structural
+gaps only or also cross-document conflicts.
