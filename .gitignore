@@ -1,0 +1,13 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Env files at the root, if any ever appear (backend/ and frontend/ have
+# their own .gitignore covering their respective .env files already)
+.env
+.env.local
