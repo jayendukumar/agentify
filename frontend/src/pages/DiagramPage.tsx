@@ -239,6 +239,7 @@ export default function DiagramPage() {
           {finalizing ? 'Finalizing...' : 'Finalize'}
         </button>
         <Link to={`/processes/${processId}/versions`}>Version History</Link>
+        <Link to={`/processes/${processId}/blueprint`}>Agentic Blueprint</Link>
 
         <button type="button" onClick={handleExportXml}>
           Export XML

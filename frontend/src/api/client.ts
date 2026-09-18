@@ -1,6 +1,7 @@
 import type {
   ApiErrorBody,
   BlueprintOverlay,
+  BlueprintVerdict,
   BPMNDocument,
   ChatMessageResult,
   DocumentSummary,
@@ -76,6 +77,41 @@ export async function getBlueprint(processId: string): Promise<BlueprintOverlay 
     if (err instanceof ApiError && err.status === 404) return null
     throw err
   }
+}
+
+export function generateBlueprint(processId: string, versionId?: string | null): Promise<BlueprintOverlay> {
+  return request(`/api/processes/${processId}/blueprint/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ version_id: versionId ?? null }),
+  })
+}
+
+export function overrideBlueprintNode(
+  processId: string,
+  nodeId: string,
+  verdict: BlueprintVerdict,
+  justification: string,
+): Promise<BlueprintOverlay> {
+  return request(`/api/processes/${processId}/blueprint/nodes/${nodeId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ verdict, justification }),
+  })
+}
+
+// Not JSON (returns text/markdown), so this bypasses the request() helper.
+export async function exportBlueprint(processId: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/api/processes/${processId}/blueprint/export?format=markdown`)
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const body = (await response.json()) as ApiErrorBody
+      detail = body.detail ?? detail
+    } catch {
+      // response body wasn't JSON -- fall back to statusText
+    }
+    throw new ApiError(response.status, detail)
+  }
+  return response.text()
 }
 
 export async function getBpmn(processId: string): Promise<BPMNDocument | null> {

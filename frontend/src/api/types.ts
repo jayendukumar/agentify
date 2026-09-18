@@ -141,10 +141,50 @@ export interface VersionDiffResult {
   labels: Record<string, string | null>
 }
 
+export type BlueprintVerdict = 'automatable' | 'partial' | 'not_automatable'
+export type BlueprintStepType =
+  | 'data_retrieval_transformation'
+  | 'rule_based_decision'
+  | 'document_generation'
+  | 'communication_notification'
+  | 'judgment_based_decision'
+  | 'exception_handling'
+  | 'approval_compliance_signoff'
+  | 'physical_manual_action'
+export type HumanCheckpoint = 'none' | 'review_before_action' | 'review_after_action' | 'escalation_on_exception'
+
+export interface AgentIOField {
+  name: string
+  source_or_destination: string
+  format: string
+}
+
+export interface AgentSpec {
+  name: string
+  purpose: string
+  trigger: string
+  required_inputs: AgentIOField[]
+  expected_outputs: AgentIOField[]
+  tools_systems_needed: string[]
+  human_checkpoint: HumanCheckpoint
+  consolidated_from_nodes: string[]
+}
+
+export interface BlueprintNodeResult {
+  node_id: string
+  verdict: BlueprintVerdict
+  step_type: BlueprintStepType
+  rationale: string
+  agent_spec: AgentSpec | null
+  not_automatable_reason: string | null
+  overridden: boolean
+  override_justification: string | null
+}
+
 export interface BlueprintOverlay {
   process_id: string
   baseline_version_id: string
-  nodes: unknown[]
+  nodes: BlueprintNodeResult[]
   generated_at: string
 }
 

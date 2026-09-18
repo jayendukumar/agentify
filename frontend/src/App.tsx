@@ -1,4 +1,5 @@
 import { Link, Route, Routes } from 'react-router-dom'
+import BlueprintPage from './pages/BlueprintPage'
 import DiagramPage from './pages/DiagramPage'
 import ProcessDetailPage from './pages/ProcessDetailPage'
 import ProcessListPage from './pages/ProcessListPage'
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/processes/:processId" element={<ProcessDetailPage />} />
           <Route path="/processes/:processId/diagram" element={<DiagramPage />} />
           <Route path="/processes/:processId/versions" element={<VersionsPage />} />
+          <Route path="/processes/:processId/blueprint" element={<BlueprintPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

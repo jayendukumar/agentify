@@ -173,6 +173,21 @@ describe('DiagramPage', () => {
     )
   })
 
+  it('shows a link to the agentic blueprint page', async () => {
+    getProcess.mockResolvedValue(process1)
+    getBpmn.mockResolvedValue(bpmnDoc)
+    listProcesses.mockResolvedValue(summaries)
+    stubShouldMarkDirty = false
+
+    await renderDiagramPage()
+    await screen.findByTestId('bpmn-canvas-stub')
+
+    expect(screen.getByRole('link', { name: /agentic blueprint/i })).toHaveAttribute(
+      'href',
+      '/processes/proc-1/blueprint',
+    )
+  })
+
   it('finalizes the draft when Finalize is clicked', async () => {
     getProcess.mockResolvedValue(process1)
     getBpmn.mockResolvedValue(bpmnDoc)

@@ -750,3 +750,69 @@ an empty scaffold around -- `app/store.py` now only defines
 `new_id`/`utcnow` re-export from that module -- nothing imported them from
 there anymore (everything already used `app.ids` directly), a leftover
 from before Epic 2/3 promoted the first pieces of data out of the store.
+
+## 2026-09-19 -- Epic 8, Agentic Blueprint Interactive Visualization
+
+### Read-only NavigatedViewer for the blueprint canvas, not the existing editable BpmnCanvas
+
+`DiagramPage`'s `BpmnCanvas` wraps bpmn-js's `Modeler`, which ships a
+palette and context pad for editing -- fine for the draft-editing page,
+misleading on a page whose only job is to show what the finalized diagram
+already locked in (US8.1/US7.6's "non-destructive overlay" point extends
+to the UI: nothing here should look editable). Added a second, smaller
+component (`BlueprintCanvas.tsx`) built on `bpmn-js/lib/NavigatedViewer`
+instead -- pan/zoom/selection only, no editing modules, confirmed via
+`node_modules/bpmn-js/lib/Viewer.js` that `SelectionModule` is already
+part of the base `Viewer` (so `selection.changed` and click-to-select work
+identically to the Modeler-based canvas) without pulling in the
+edit-specific modules `NavigatedViewer` doesn't include.
+
+### Overlay coloring via `canvas.addMarker`, not embedding style in the BPMN XML
+
+Verdict color-coding (green/amber/red per node) is applied client-side as
+CSS marker classes (`canvas.addMarker(nodeId, "blueprint-node-automatable")`
+etc., targeting `.djs-visual > :first-child` the way bpmn-js's own
+highlighting examples do) rather than writing color into the finalized
+XML. Consistent with the overlay being separate, regenerable data
+(US7.6/US7.7) -- the finalized diagram XML must stay exactly what was
+locked in, and re-running blueprint generation or an override must not
+require re-touching that XML. Markers are re-applied whenever the overlay
+changes (regenerate, override) via a `diagramReady` state flag rather than
+a ref-based readiness check, since the marker-apply effect needs to
+re-fire both when the diagram finishes importing and when `markers` itself
+changes -- a plain ref gate (`xml === importedXmlRef.current`) only covers
+the first case.
+
+### Agent count dedupes by `consolidated_from_nodes`, not by counting nodes with an `agent_spec`
+
+US8.3's "total number of agents identified" isn't `nodes.filter(n =>
+n.agent_spec).length` -- Epic 7's consolidation puts the *same* agent spec
+on every node in a consolidated group (each carrying an identical
+`consolidated_from_nodes` list), so naively counting nodes would
+double-count a two-node consolidated agent as two agents. `BlueprintPage`
+instead dedupes on the sorted `consolidated_from_nodes` list (falling back
+to the node's own id when that list is empty), giving one agent per
+distinct group regardless of how many nodes share it.
+
+### Live-verified the full generate/override/export round trip against a real backend + LLM call
+
+All four existing real processes in the local dev DB (`Persistence
+Proof`, both `HR Onboarding` documents) still fail `POST /bpmn/generate`'s
+validation with missing start/end events -- the same gap logged under
+Epic 7 above, not a new one, and still not itself in scope here. Rather
+than block Epic 8 verification on fixing that ingestion gap, hand-built a
+minimal valid 4-node BPMN diagram (start event -> two tasks -> end event),
+`PUT` it as a draft, finalized it, and drove the actual
+`/blueprint/generate` (real Qwen3.7 Flash call, ~47s), `/blueprint`
+(GET), `/blueprint/nodes/{id}` (PATCH override), and `/blueprint/export`
+endpoints against it -- the exact calls `BlueprintPage` makes. Override
+correctly flipped the node's verdict and the very next export reflected
+the overridden verdict, confirming the override write path and the export
+read path agree. Chrome browser automation (for a true click-through of
+the rendered page) wasn't available this session (extension not
+connected) -- this real-API verification plus the passing frontend test
+suite (`BlueprintPage.test.tsx`, `DiagramPage.test.tsx`) is the fallback
+coverage; a follow-up session with the browser extension connected should
+still do one visual pass of the overlay coloring and detail panel before
+calling Epic 8 fully done. Smoke-test process deleted afterward
+(`DELETE /api/processes/{id}`), no residue left in the dev DB.

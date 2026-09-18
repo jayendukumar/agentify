@@ -490,3 +490,116 @@ button:disabled {
   padding-left: 1.1rem;
   font-size: 0.9rem;
 }
+
+/* Blueprint overlay markers on the read-only bpmn-js canvas (BlueprintCanvas)
+   -- targets the shape's own SVG node (:first-child of .djs-visual), the
+   same convention bpmn-js's own highlighting examples use. */
+.blueprint-node-automatable .djs-visual > :first-child {
+  fill: #d1fae5 !important;
+  stroke: #059669 !important;
+}
+
+.blueprint-node-partial .djs-visual > :first-child {
+  fill: #fef3c7 !important;
+  stroke: #d97706 !important;
+}
+
+.blueprint-node-not-automatable .djs-visual > :first-child {
+  fill: #fee2e2 !important;
+  stroke: #dc2626 !important;
+}
+
+.blueprint-title {
+  margin: 0;
+}
+
+.badge.verdict-automatable {
+  background: #d1fae5;
+}
+
+.badge.verdict-partial {
+  background: #fef3c7;
+}
+
+.badge.verdict-not_automatable {
+  background: #fee2e2;
+}
+
+.blueprint-summary {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.blueprint-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.blueprint-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.blueprint-not-automatable {
+  flex-basis: 100%;
+  font-size: 0.9rem;
+}
+
+.blueprint-not-automatable summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.blueprint-not-automatable ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--muted);
+}
+
+.agent-spec {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.agent-spec h4 {
+  margin: 0 0 0.3rem;
+}
+
+.agent-spec ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.blueprint-override-form {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.blueprint-override-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+
+.blueprint-override-form select,
+.blueprint-override-form textarea {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+.blueprint-override-actions {
+  display: flex;
+  gap: 0.5rem;
+}

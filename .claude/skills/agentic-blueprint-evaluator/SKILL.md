@@ -10,20 +10,26 @@ evaluated node-by-node to produce the agentic blueprint overlay (planning
 epic: `planning/epics/07-agentic-blueprint-engine.md` and
 `planning/epics/08-blueprint-visualization.md`).
 
-**Status: implemented (Epic 7 engine only -- Epic 8 visualization is still
-frontend-only work)** -- `app/bpmn/nodes.py` parses a finalized version's
-XML directly (not the live process schema, which can have drifted -- see
-`VersionModel`'s docstring) into per-node context; `app/blueprint/`
-(`prompts.py`, `service.py`) builds the one-call-per-diagram prompt from
-that context and reconciles the LLM's response against the real node ids
-(never trusting the response's node_id list, same principle as
+**Status: implemented (Epic 7 engine and Epic 8 visualization)** --
+`app/bpmn/nodes.py` parses a finalized version's XML directly (not the
+live process schema, which can have drifted -- see `VersionModel`'s
+docstring) into per-node context; `app/blueprint/` (`prompts.py`,
+`service.py`) builds the one-call-per-diagram prompt from that context and
+reconciles the LLM's response against the real node ids (never trusting
+the response's node_id list, same principle as
 `app/ingestion/structuring.py`); `app/api/blueprint.py` +
 `app/db/repository.py`'s `set_blueprint_overlay`/`get_blueprint_overlay`/
 `update_blueprint_node` persist the overlay as one JSON blob per process
-(`BlueprintOverlayModel`), replaced in place on regenerate (US7.7). This
-document remains the reference for maintaining/extending that code; see
-`planning/decision-log.md`'s Epic 7 section for real defects/design
-trade-offs found building it.
+(`BlueprintOverlayModel`), replaced in place on regenerate (US7.7).
+`frontend/src/pages/BlueprintPage.tsx` (with `BlueprintCanvas.tsx`,
+`BlueprintDetailPanel.tsx`) presents it: a read-only bpmn-js
+`NavigatedViewer` with verdict color-coded overlay markers (US8.1), a
+click-to-inspect agent spec panel with an override form (US8.2/US8.5), a
+summary dashboard (US8.3), and a markdown export button hitting the
+existing `/blueprint/export` endpoint (US8.4). This document remains the
+reference for maintaining/extending that code; see
+`planning/decision-log.md`'s Epic 7 and Epic 8 sections for real
+defects/design trade-offs found building it.
 
 ## Step-type taxonomy (US7.2)
 
