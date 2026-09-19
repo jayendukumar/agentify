@@ -13,6 +13,7 @@ from app.llm.exceptions import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
+from app.request_context import RequestIDLogFilter, request_id_middleware
 from app.store import NotFoundError
 
 
@@ -22,15 +23,20 @@ def _configure_logging() -> None:
     rotating-free (dev-scale, see the app_log_path setting) file handler
     alongside it, so request/LLM-call/error logs persist across restarts
     for later review, not just the current session's console scrollback.
+    US10.1: every handler also gets RequestIDLogFilter so %(request_id)s
+    is always populated, in or out of a request (see app/request_context.py).
     """
     settings = get_settings()
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     if settings.app_log_enabled:
         settings.app_log_file_path.parent.mkdir(parents=True, exist_ok=True)
         handlers.append(logging.FileHandler(settings.app_log_file_path, encoding="utf-8"))
+    request_id_filter = RequestIDLogFilter()
+    for handler in handlers:
+        handler.addFilter(request_id_filter)
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        format="%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s",
         handlers=handlers,
         force=True,  # re-configure cleanly even if something already called basicConfig
     )
@@ -57,6 +63,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.middleware("http")(request_id_middleware)
 
 app.include_router(auth.router)
 app.include_router(processes.router)
