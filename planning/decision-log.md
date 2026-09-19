@@ -974,3 +974,45 @@ files including new `GapReviewPage.test.tsx`); Chrome extension wasn't
 connected this session either (same gap noted in the Epic 8 entry above),
 so no visual click-through of the actual rendered page -- real-API
 verification plus the passing test suite is the fallback coverage again.
+
+## 2026-09-19 -- Epic 11 follow-up, fixed the two LLM output quality gaps
+
+### Told the model the actual document count instead of trusting it to tally source_refs itself
+
+The `cross_document`-on-a-single-document defect (previous entry) was
+fixed by computing `len({ref.document_id for element in schema.elements
+for ref in element.source_refs})` in `app/gap_analysis/prompts.py`'s new
+`_document_count_note` and stating it explicitly in the prompt ("This
+process currently has 1 source document(s) ... do not use kind:
+cross_document for anything here") rather than just tightening the
+existing prose rule further. Same reasoning as giving the LLM the actual
+node list instead of trusting it to enumerate a diagram correctly
+(blueprint/chat prompts already do this) -- a fact the backend already
+knows for certain is a more reliable guardrail than asking the model to
+derive it correctly under load. Also explicitly listed "an element with
+no source_refs alone" under "do not flag" (it may simply have been
+chat-added, which never sets source_refs by design) -- the original
+defect's root cause was treating missing source_refs itself as
+conflict evidence.
+
+### Made "no reasoning in the question field" an explicit, example-driven rule
+
+The verbose chain-of-thought leakage ("Wait, let's look closer... Let's
+trace the data...") wasn't something the original prompt's generic
+"specific, plain-English question" instruction was enough to prevent in
+practice. Added a concrete rule: reason silently, write down only the
+conclusion, never phrases like "wait"/"let me look closer"/"let's trace",
+and a length heuristic ("if question runs longer than two sentences, it
+almost certainly contains reasoning that doesn't belong there").
+
+### Live-verified both fixes together on a real never-analyzed process
+
+Ran `/gap-findings/analyze` against `proc_723dad49ec51` ("HR Onboarding",
+a real single-document process, confirmed via `document_count: 1`) with
+the fixed prompt. Both real findings came back as clean 2-3 sentence
+plain-English questions with zero reasoning-trace leakage, and both
+correctly classified `"structural"` -- no spurious `"cross_document"` on
+this single-document process, the exact defect this fix targets. Full
+backend suite stayed green (173 tests, prompt-only change, no test needed
+updating -- consistent with `app/blueprint/prompts.py` having no
+dedicated prompt-text test file either, just service/API-level coverage).
