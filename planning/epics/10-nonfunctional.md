@@ -1,5 +1,13 @@
 # Epic 10 -- Cross-Cutting / Non-Functional
 
+**Status: all 5 stories implemented.** US10.3 (LLM cost/usage tracking)
+was already done (`app/llm/usage.py`). US10.2 (consistent UI error
+handling) was already largely met page-by-page; the one real gap (a
+top-level React error boundary) plus US10.1 (request-id log
+correlation), US10.4 (access control), and US10.5 (the data-privacy
+decision) were built 2026-09-19 -- see `planning/decision-log.md`'s
+Epic 9/10 entries.
+
 Goal: Quality, observability, cost, and security concerns that thread
 through every other epic rather than belonging to one feature.
 

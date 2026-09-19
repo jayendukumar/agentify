@@ -1,5 +1,11 @@
 # Epic 9 -- Platform Foundations
 
+**Status: all 10 stories implemented.** Most (US9.1-9.6, US9.8, US9.10)
+were already done as a side effect of building Epics 1-8/11; US9.7
+(Docker Compose full-stack bring-up) and US9.9 (auth) were the two
+genuinely missing pieces, built 2026-09-19 -- see
+`planning/decision-log.md`'s Epic 9/10 entries.
+
 Goal: The engineering scaffolding every other epic depends on -- backend
 API, frontend app, databases, and a local development/test environment.
 

@@ -1086,3 +1086,31 @@ underlying code was still correct by luck (nothing in those epics'
 time), but the verification itself was never real. `tsc -b` (or `tsc -b
 --noEmit` to skip emitting `.tsbuildinfo`/build artifacts) is the correct
 command for this project going forward, not `tsc -p . --noEmit`.
+
+### Live-verified the Docker Compose full stack, and found a real routing gotcha doing it
+
+`docker compose build api web` (~500s, mostly torch/sentence-transformers)
+then `docker compose up -d` reported all three containers healthy, but
+`curl 127.0.0.1:8000/healthz` and `127.0.0.1:3000/` were actually still
+being answered by this session's own long-running native `uvicorn
+--reload`/`vite` dev processes, not the new containers -- confirmed by
+checking the api container's own log after a curl and seeing no matching
+request line. Root cause: the native processes bind `127.0.0.1:8000`/
+`127.0.0.1:3000` specifically, while Docker Desktop's port-publish binds
+the wildcard `0.0.0.0:8000`/`0.0.0.0:3000` -- Windows socket routing
+prefers the more specific interface match, so a request to `127.0.0.1`
+always won for the native process regardless of the container being
+perfectly healthy. Not a Docker or code bug -- just meant the containers
+were silently never receiving traffic during the first verification pass.
+Stopped the native dev processes, re-verified: the api container answered
+(confirmed via its own request log line), served real data from the
+shared `db` (existing processes from this session's testing showed up,
+proving migrations ran and it's the same database), a real
+login->session-cookie->authenticated-request round trip worked, and the
+web container served the actual built static bundle (no `@vite/client`/
+`@react-refresh` dev-mode markers) with the correct baked-in API base URL
+and a working SPA fallback for a client-side route. Stopped the
+containers and restarted the native dev servers afterward -- Docker isn't
+meant to replace the day-to-day dev loop (per the "simple built
+containers, not hot-reload" choice), so leaving them running would have
+left active development pointed at non-reloading containers instead.
