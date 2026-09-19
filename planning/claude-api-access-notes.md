@@ -17,6 +17,42 @@ needs (see the market scan below). Revisit this if:
   hard steps).
 - OpenRouter itself becomes a reliability/cost concern at scale.
 
+## Data privacy decision (2026-09-19, Epic 10, US10.5)
+
+**Decision: do not upload real, sensitive business process documents
+against the current default provider (OpenRouter -> Qwen3.7 Flash,
+Alibaba Cloud-hosted) without revisiting this.** Every document ingested
+by this project so far (HR onboarding, order fulfillment, etc., used
+throughout development and testing) has been a synthetic/test fixture,
+not a real company's actual process documentation -- this decision
+exists because that will not always be true, not because it already
+happened.
+
+Why this can't just default to "swap providers": the whole reason
+Qwen3.7 Flash was chosen (see "Decision" above) is a ~30-80x cost
+advantage over every Western-hosted alternative capable of this
+project's vision/tool-calling/structured-output needs, and that
+advantage is exactly what a cost-sensitive default should optimize for
+when the data isn't sensitive. Forcing every user onto a pricier
+Western-hosted model by default would be over-correcting for a risk that
+doesn't exist for most documents this tool will actually process (test
+fixtures, synthetic examples, already-public process documentation).
+
+**Mitigation path, not yet built:** the backend's LLM integration layer
+(`app/llm/`, US9.3) already sits behind a provider-agnostic interface --
+swapping the model for a specific ingestion run only requires changing
+`LLM_MODEL`/`LLM_BASE_URL` (see the "pragmatic middle ground" market-scan
+note below for a Western-hosted alternative), no code change. What's
+*not* built yet: any UI/config mechanism to select a different provider
+per-document or per-process based on sensitivity, or an automated warning
+at upload time beyond the static notice now shown on the upload page
+(`frontend/src/pages/ProcessDetailPage.tsx`) -- today this is a
+documented policy a user must apply themselves by setting
+`LLM_MODEL`/`LLM_BASE_URL` for the whole deployment before ingesting
+sensitive material, not a per-document runtime choice. Worth building
+if/when this tool is actually used against real confidential process
+documentation, not before.
+
 Everything below this point is background: what a Claude.ai subscription
 does and doesn't cover, and the full provider comparison this decision was
 made from. Kept for reference in case the provider choice is revisited.
