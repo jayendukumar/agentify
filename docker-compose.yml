@@ -16,5 +16,33 @@ services:
       timeout: 5s
       retries: 10
 
+  # US9.7: one-command full-stack bring-up (simple built containers, not
+  # hot-reload dev mode -- see backend/Dockerfile / frontend/Dockerfile).
+  # Requires backend/.env to exist first (copy from backend/.env.example
+  # and fill in OPENROUTER_API_KEY) -- api's env_file below reads it.
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - backend/.env
+    environment:
+      # Overrides whatever backend/.env has for local (non-Docker) dev --
+      # inside the compose network the db is reachable by service name,
+      # not 127.0.0.1.
+      DATABASE_URL: postgresql+psycopg://agentic:agentic@db:5432/agentic_solution_generator
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
 volumes:
   db-data:

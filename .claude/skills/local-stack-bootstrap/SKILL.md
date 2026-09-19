@@ -9,12 +9,21 @@ This skill governs the local development environment (planning epic:
 `planning/epics/09-platform-foundations.md`). The project targets local
 development and local testing only -- no cloud deployment assumed yet.
 
-**`db` is implemented** (Epic 2): `docker-compose.yml` at the repo root
-(`pgvector/pgvector:pg16` image), migrations in `backend/migrations/`
-(Alembic), models in `backend/app/db/models.py`. `api`/`web` aren't
-containerized yet (Epic 9, US9.7) -- both run directly via `uvicorn`/`vite`
-against the dockerized `db`. Epic 9 should extend this compose file, not
-create a second one.
+**`db`/`api`/`web` are all implemented** (Epic 2, Epic 9 US9.7):
+`docker-compose.yml` at the repo root brings up all three with
+`docker compose up -d --build` -- `db` (`pgvector/pgvector:pg16`),
+`api` (`backend/Dockerfile`, simple built container, not hot-reload --
+runs `alembic upgrade head` then `uvicorn` on start), `web`
+(`frontend/Dockerfile`, multi-stage `vite build` -> `nginx` serving the
+static bundle, with an SPA `try_files` fallback in `frontend/nginx.conf`).
+**Requires `backend/.env` to exist first** (copy from
+`backend/.env.example`, fill in `OPENROUTER_API_KEY`) -- `api`'s
+`env_file` reads it; `DATABASE_URL` is overridden in compose to point at
+`db` by its service name, not `127.0.0.1`. This is for one-command
+full-stack bring-up/demo/CI, not the primary local dev loop -- iterate via
+`.venv`/`uvicorn --reload` and `npm run dev` as before; Docker doesn't
+hot-reload here on purpose (a deliberate simplicity choice, see the
+decision log).
 
 ## Target service layout
 
