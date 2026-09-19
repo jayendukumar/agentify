@@ -1,14 +1,16 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, status
 
-from app.bpmn.builder import build_bpmn_xml
-from app.bpmn.chat_ops import DiagramDiffError, apply_diagram_diff, humanize_validation_issues
-from app.bpmn.layout import extract_node_positions
-from app.bpmn.validation import validate_bpmn
+from app.bpmn.chat_ops import DiagramApplyRegressionError, DiagramDiffError, apply_diff_and_persist
 from app.chat.service import ChatServiceError, handle_chat_message
 from app.db import repository
+from app.gap_analysis.service import run_gap_analysis
 from app.schemas.chat import ChatApplyRequest, ChatMessageRequest, ChatMessageResult, DiagramDiff
 
 from .deps import DbDep, LLMDep
+
+logger = logging.getLogger("app.api.chat")
 
 router = APIRouter(prefix="/api/processes/{process_id}/chat", tags=["chat"])
 
@@ -56,7 +58,9 @@ def list_chat_messages(process_id: str, db: DbDep) -> list[ChatMessageResult]:
 
 
 @router.post("/messages/{message_id}/apply", response_model=ChatMessageResult)
-def apply_chat_message(process_id: str, message_id: str, body: ChatApplyRequest, db: DbDep) -> ChatMessageResult:
+async def apply_chat_message(
+    process_id: str, message_id: str, body: ChatApplyRequest, db: DbDep, llm: LLMDep
+) -> ChatMessageResult:
     message = repository.get_chat_message(db, process_id, message_id)
 
     if not message.needs_confirmation:
@@ -67,53 +71,36 @@ def apply_chat_message(process_id: str, message_id: str, body: ChatApplyRequest,
     if not body.confirm:
         return repository.mark_chat_message_decided(db, message, applied=False)
 
-    # bpmn-chat-ops hard rule: parse intent -> build diff (already done,
-    # POST /messages) -> present -> confirm (here) -> apply diff -> validate
-    # result -> log to audit trail. Nothing below is persisted unless the
-    # regenerated diagram validates clean.
-    schema = repository.get_process_schema(db, process_id)
-    if schema is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Process has no schema to apply this change to")
-
     diff = message.proposed_diff
     if diff is None:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="This chat message has no diff to apply")
 
+    # bpmn-chat-ops hard rule: parse intent -> build diff (already done,
+    # POST /messages) -> present -> confirm (here) -> apply diff -> validate
+    # result -> log to audit trail. Nothing is persisted unless the
+    # regenerated diagram validates clean (apply_diff_and_persist).
     try:
-        updated_schema = apply_diagram_diff(schema, DiagramDiff.model_validate(diff))
+        apply_diff_and_persist(db, process_id, DiagramDiff.model_validate(diff))
+    except DiagramApplyRegressionError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except DiagramDiffError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Could not apply diagram diff: {exc}") from exc
 
-    current_draft = repository.get_draft_bpmn(db, process_id)
-    preferred_positions = extract_node_positions(current_draft.xml) if current_draft else {}
-    # A generated draft from imperfect extracted data can already carry
-    # validation issues unrelated to this edit (POST /bpmn/generate
-    # deliberately doesn't block on those -- see app/api/bpmn.py). Blocking
-    # here on ALL issues would make chat editing unusable on any such
-    # diagram; only block if the edit leaves MORE issues than before.
-    #
-    # Deliberately a count comparison, not "any issue string not seen
-    # before": found live that a legitimate append-to-the-end edit moves
-    # the "no outgoing flow" complaint from the old last node (now fixed,
-    # it has an outgoing flow to the new node) to the new last node (which
-    # doesn't have one yet either) -- same total problem, different node
-    # id in the message text, so a strict set-difference wrongly treated a
-    # net-neutral edit as "introducing a new problem" and blocked it.
-    pre_existing_issues = validate_bpmn(current_draft.xml) if current_draft else []
+    result = repository.mark_chat_message_decided(db, message, applied=True)
+    # Commit the successful edit on its own before attempting gap analysis
+    # below -- best-effort must mean best-effort: if run_gap_analysis
+    # fails partway through a flush and we rolled back the shared session,
+    # that rollback would silently undo this already-successful apply too.
+    # Committing first makes the edit durable regardless of what happens next.
+    db.commit()
 
-    xml, low_confidence_element_ids = build_bpmn_xml(process_id, updated_schema, preferred_positions)
-    new_issues = validate_bpmn(xml)
-    if len(new_issues) > len(pre_existing_issues):
-        # humanize_validation_issues swaps raw BPMN ids (meaningless to a
-        # Process Analyst) for the element/flow's own label, using the
-        # post-edit schema so a newly-added node's id resolves too.
-        introduced_issues = [issue for issue in new_issues if issue not in pre_existing_issues] or new_issues
-        readable_issues = humanize_validation_issues(introduced_issues, updated_schema)
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail="Applying this change would break the diagram: " + "; ".join(readable_issues),
-        )
+    # Epic 11, US11.5: the schema just changed, so re-run gap analysis --
+    # best-effort, must not fail an otherwise-successful chat edit.
+    try:
+        await run_gap_analysis(db, llm, process_id)
+        db.commit()
+    except Exception as gap_exc:
+        db.rollback()
+        logger.warning("gap_analysis_failed", extra={"process_id": process_id, "error": str(gap_exc)})
 
-    repository.set_process_schema(db, process_id, updated_schema)
-    repository.set_draft_bpmn(db, process_id, xml, low_confidence_element_ids)
-    return repository.mark_chat_message_decided(db, message, applied=True)
+    return result

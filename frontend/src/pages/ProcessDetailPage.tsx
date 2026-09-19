@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ApiError, generateBpmn, getBlueprint, getProcess, listDocuments, uploadDocuments } from '../api/client'
+import { ApiError, generateBpmn, getBlueprint, getProcess, listDocuments, listGapFindings, uploadDocuments } from '../api/client'
 import type { DocumentSummary, ProcessDetail } from '../api/types'
 import ProcessSchemaView from '../components/ProcessSchemaView'
 import ProcessStepper, { type StepperStep } from '../components/ProcessStepper'
@@ -48,6 +48,7 @@ export default function ProcessDetailPage() {
   const [process, setProcess] = useState<ProcessDetail | null>(null)
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
   const [hasBlueprint, setHasBlueprint] = useState(false)
+  const [openGapCount, setOpenGapCount] = useState(0)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [bpmnAction, setBpmnAction] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
@@ -58,14 +59,16 @@ export default function ProcessDetailPage() {
     if (!processId) return
     setLoadError(null)
     try {
-      const [processDetail, documentList, blueprint] = await Promise.all([
+      const [processDetail, documentList, blueprint, openGaps] = await Promise.all([
         getProcess(processId),
         listDocuments(processId),
         getBlueprint(processId),
+        listGapFindings(processId, 'open'),
       ])
       setProcess(processDetail)
       setDocuments(documentList)
       setHasBlueprint(blueprint !== null)
+      setOpenGapCount(openGaps.length)
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Failed to load process')
     }
@@ -144,6 +147,14 @@ export default function ProcessDetailPage() {
       {process.has_draft_bpmn && (
         <p>
           <Link to={`/processes/${processId}/diagram`}>Open diagram &rarr;</Link>
+        </p>
+      )}
+
+      {(process.document_count > 0 || openGapCount > 0) && (
+        <p>
+          <Link to={`/processes/${processId}/gaps`}>
+            Review gaps{openGapCount > 0 ? ` (${openGapCount})` : ''} &rarr;
+          </Link>
         </p>
       )}
 

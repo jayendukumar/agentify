@@ -2,10 +2,11 @@
 processes, documents, the extracted process schema (actors/elements/
 source_refs/flows), embeddings, a lightweight change log -- plus Epic 3's
 draft BPMN (BPMNDraftModel), Epic 5's chat messages (ChatMessageModel),
-Epic 6's finalized versions (VersionModel), and Epic 7's blueprint overlay
-(BlueprintOverlayModel), each promoted out of the in-memory store
-(app/store.py) once its own epic made the data real. app/store.py now only
-defines NotFoundError -- nothing left to hold in memory.
+Epic 6's finalized versions (VersionModel), Epic 7's blueprint overlay
+(BlueprintOverlayModel), and Epic 11's gap findings (GapFindingModel),
+each promoted out of the in-memory store (app/store.py) once its own epic
+made the data real. app/store.py now only defines NotFoundError --
+nothing left to hold in memory.
 """
 
 from __future__ import annotations
@@ -34,6 +35,13 @@ class ProcessModel(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    # Epic 11: set every time a gap-analysis run completes (0 or more
+    # findings -- "completed" is the signal, not "found something"). Null
+    # means gap analysis has never successfully run for this process --
+    # Finalize (app/api/versions.py) treats that as a hard block distinct
+    # from "there are open findings", since a never-run process was never
+    # actually checked at all.
+    gap_analysis_completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     documents: Mapped[list["DocumentModel"]] = relationship(back_populates="process", cascade="all, delete-orphan")
     actors: Mapped[list["ActorModel"]] = relationship(back_populates="process", cascade="all, delete-orphan")
@@ -53,6 +61,9 @@ class ProcessModel(Base):
     versions: Mapped[list["VersionModel"]] = relationship(back_populates="process", cascade="all, delete-orphan")
     blueprint_overlay: Mapped["BlueprintOverlayModel | None"] = relationship(
         back_populates="process", cascade="all, delete-orphan", uselist=False
+    )
+    gap_findings: Mapped[list["GapFindingModel"]] = relationship(
+        back_populates="process", cascade="all, delete-orphan"
     )
 
 
@@ -258,3 +269,33 @@ class BlueprintOverlayModel(Base):
     generated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     process: Mapped[ProcessModel] = relationship(back_populates="blueprint_overlay")
+
+
+class GapFindingModel(Base):
+    """Epic 11: one row per detected process gap (structural or
+    cross-document), and the permanent audit trail of what the user did
+    about it -- never mutated back to "open" once resolved/dismissed, same
+    lifecycle shape as ChatMessageModel. `options` stores the LLM-proposed
+    resolutions as JSON (each a {label, diff} pair, `diff` shaped like
+    DiagramDiff -- see app/schemas/chat.py -- and applied through the same
+    apply_diagram_diff/apply_diff_and_persist path chat-ops uses, so
+    resolving a finding is not a separate apply mechanism). "Dismiss" is
+    not one of `options` -- it's a status a finding can always move to
+    regardless of what the LLM proposed, handled by
+    mark_gap_finding_dismissed rather than an option index.
+    """
+
+    __tablename__ = "gap_findings"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    target_element_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    options: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="open")
+    chosen_option_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    process: Mapped[ProcessModel] = relationship(back_populates="gap_findings")

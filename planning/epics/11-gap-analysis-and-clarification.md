@@ -1,9 +1,12 @@
 # Epic 11 -- Process Gap Analysis & Clarification
 
-**Status: proposed, not scoped or agreed in detail yet.** Drafted from a
-real, recurring problem (see `planning/decision-log.md`'s 2026-09-19
-entries) rather than from a spec -- the open questions below need the
-user's input before this turns into implementation work.
+**Status: implemented.** Drafted from a real, recurring problem and
+implemented the same day (see `planning/decision-log.md`'s 2026-09-19
+entries for the design decisions, defects found, and live verification).
+`app/gap_analysis/` (detection), `GapFindingModel`/`app/api/gap_analysis.py`
+(persistence + API), `app/bpmn/validation.py::validate_bpmn_integrity` +
+`app/api/versions.py::finalize_process` (Finalize's new gates), and
+`frontend/src/pages/GapReviewPage.tsx` (the dedicated pick-an-option UI).
 
 Goal: Treat source documents as inherently imperfect rather than trying to
 make extraction or BPMN generation silently paper over that. Detect gaps
@@ -75,28 +78,49 @@ document or make a chat/manual edit, so that the flagged-gaps list never
 goes stale against the current state of the process (same principle as
 Epic 7's US7.7).
 
-## Open questions -- needs the user's input before scoping further
+## Design decisions (2026-09-19)
 
-- **Where in the pipeline does this run?** Automatically right after
-  ingestion/merge (proactive, before the user even opens the diagram),
-  as a step the user triggers before Finalize (reactive, effectively
-  replacing/absorbing US6.3's validation with something more helpful),
-  or both?
-- **Detection split:** structural gaps (orphan nodes, missing start/end)
-  are deterministically detectable straight from `ProcessSchema` with no
-  LLM call, the same way `app/bpmn/validation.py` already works. Cross-
-  document conflicts (US11.4) look like they need an LLM judgment call
-  (or at least embedding similarity from Epic 2's vector store) to notice
-  "these two steps are probably the same thing described differently."
-  Is v1 scoped to structural-only (cheap, no new LLM call) with
-  cross-document conflicts as a v2, or both from the start?
-- **Where do dismissed/resolved gaps live?** Needs a persisted record per
-  process (US11.3) -- new table, or an extension of an existing one
-  (`process_schema_changes` from Epic 2 is the closest existing fit)?
-- **Relationship to US6.3:** does this replace Finalize's existing
-  validation entirely, or does Finalize keep its hard structural check as
-  a final backstop while this epic adds the earlier, friendlier layer on
-  top?
-- **Resolution UI:** does resolving a gap go through the existing chat-ops
-  diff/confirm flow (Epic 5), reusing that machinery, or does it need its
-  own lighter-weight "pick an option" UI distinct from free-text chat?
+- **Pipeline placement: runs after ingestion.** Gap analysis is a
+  proactive step triggered automatically once a document is
+  ingested/merged into the process's `ProcessSchema` -- not something the
+  user has to remember to run before Finalize. Per US11.5, it also
+  re-runs after later document uploads or edits, so it never goes stale.
+- **Detection: LLM-based**, for both structural gaps (US11.1) and
+  cross-document conflicts (US11.4) -- not split into a deterministic
+  structural pass plus a separate LLM pass for conflicts. One call (or
+  one call per process, mirroring `app/blueprint/service.py`'s
+  one-call-per-diagram pattern) takes the full `ProcessSchema` and
+  returns flagged gaps, each with a question and a small set of concrete
+  resolution options, using a JSON-schema-contract prompt like
+  `app/blueprint/prompts.py`/`app/chat/prompts.py` already do. Note:
+  `app/bpmn/validation.py`'s XML/DI-integrity checks (malformed XML,
+  dangling shape/edge references, duplicate ids) are a different,
+  lower-level concern -- whether the *generated BPMN XML* is well-formed,
+  not whether the *process content* has a gap -- and stay as a
+  deterministic internal safety net on `app/bpmn/builder.py`'s output;
+  they aren't gaps a user resolves through this epic's UI, and shouldn't
+  normally fire at all if the builder is correct.
+- **Persistence: a dedicated audit table.** Every gap-analysis question
+  posed and the user's response (including an explicit dismissal) is
+  recorded, not just a per-gap boolean -- a full audit trail of what was
+  flagged, when, and what the user decided, per process. New table
+  (working name `gap_findings`), not an extension of Epic 2's
+  `process_schema_changes` (that log is about schema mutations, not
+  questions/answers).
+- **Relationship to US6.3: replaces Finalize's existing hard validation.**
+  `app/api/versions.py`'s `finalize_process` currently calls
+  `validate_bpmn` directly and blocks on its content-completeness issues
+  ("no incoming flow", "no outgoing flow"). Those checks move to this
+  epic's gap analysis instead -- Finalize should block only on
+  *unresolved* gap-analysis findings (found and neither resolved nor
+  dismissed), not by re-deriving the same problem from raw BPMN XML.
+  `validate_bpmn`'s XML/DI-integrity checks (previous bullet) remain as
+  Finalize's structural safety net, since those aren't things gap
+  analysis's content-level LLM pass would catch or that a user should
+  need to manually resolve.
+- **Resolution UI: a lighter, dedicated "pick an option" UI**, not the
+  existing chat-ops free-text/diff-confirm flow (Epic 5). Each finding
+  renders as its question with selectable option buttons (plus dismiss);
+  picking one still applies through the same underlying diff/apply
+  machinery Epic 5 already built (`DiagramDiff`/`operations`), just
+  without the user having to type a sentence to get there.

@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import blueprint, bpmn, chat, documents, processes, versions
+from app.api import blueprint, bpmn, chat, documents, gap_analysis, processes, versions
 from app.config import get_settings
 from app.llm.exceptions import (
     LLMAuthenticationError,
@@ -63,6 +63,7 @@ app.include_router(bpmn.router)
 app.include_router(chat.router)
 app.include_router(versions.router)
 app.include_router(blueprint.router)
+app.include_router(gap_analysis.router)
 
 
 @app.exception_handler(NotFoundError)

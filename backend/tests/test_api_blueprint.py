@@ -34,6 +34,16 @@ def _valid_xml(process_id: str) -> str:
 
 def _finalize(client, process_id, xml=None):
     client.put(f"/api/processes/{process_id}/bpmn", json={"xml": xml or _valid_xml(process_id)})
+    # Epic 11: Finalize now requires gap analysis to have run at least
+    # once (app/api/versions.py) -- these tests aren't exercising gap
+    # analysis itself, so seed the flag directly rather than wiring a
+    # real LLM call through every blueprint test here.
+    session = get_session_factory()()
+    try:
+        repository.mark_gap_analysis_completed(session, process_id)
+        session.commit()
+    finally:
+        session.close()
     return client.post(f"/api/processes/{process_id}/finalize").json()
 
 

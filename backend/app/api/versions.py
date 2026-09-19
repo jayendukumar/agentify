@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.bpmn.builder import _tag
 from app.bpmn.chat_ops import humanize_validation_issues
-from app.bpmn.validation import validate_bpmn
+from app.bpmn.validation import validate_bpmn_integrity
 from app.db import repository
 from app.schemas.versions import VersionDetail, VersionDiffResult, VersionSummary
 
@@ -38,15 +38,36 @@ def _element_labels(xml_str: str) -> dict[str, str | None]:
 
 @router.post("/finalize", response_model=VersionSummary, status_code=status.HTTP_201_CREATED)
 def finalize_process(process_id: str, db: DbDep) -> VersionSummary:
-    repository.get_process(db, process_id)  # 404s if missing
+    process = repository.get_process(db, process_id)  # 404s if missing
     draft = repository.get_draft_bpmn(db, process_id)
     if draft is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="No draft BPMN to finalize -- generate or edit one first")
 
-    # Resolves this story's original TODO: the full bpmn-authoring
-    # validation checklist (app/bpmn/validation.py, built for Epic 3,
-    # US3.4), not just "is it well-formed XML".
-    issues = validate_bpmn(draft.xml)
+    # Epic 11: content-completeness ("no incoming/outgoing flow") used to
+    # be checked here directly against the generated XML -- that's now
+    # gap analysis's job, run automatically after ingestion/edits
+    # (app/gap_analysis/) and resolved by the user through the gap-review
+    # UI, not a raw validator error at Finalize time. Two gates replace
+    # the old single validate_bpmn call:
+    if process.gap_analysis_completed_at is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Run gap analysis before finalizing -- this process has never been checked for "
+            "structural or cross-document gaps",
+        )
+
+    open_findings = repository.list_gap_findings(db, process_id, status="open")
+    if open_findings:
+        questions = "; ".join(f.question for f in open_findings)
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot finalize -- {len(open_findings)} unresolved gap finding(s): {questions}",
+        )
+
+    # Deterministic backstop: is the generated XML itself well-formed and
+    # renderable (should never legitimately fail if app/bpmn/builder.py is
+    # correct -- not a content gap a user resolves through this epic's UI).
+    issues = validate_bpmn_integrity(draft.xml)
     if issues:
         # Same treatment as the chat-apply error (app/api/chat.py) -- raw
         # issue strings quote internal BPMN ids ('Task_el_8f055...'),

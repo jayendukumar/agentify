@@ -872,3 +872,105 @@ step is to scope this as its own planning epic before any implementation
 -- open questions include where in the pipeline it runs (post-ingestion,
 pre-finalize, or both) and whether v1 covers single-document structural
 gaps only or also cross-document conflicts.
+
+## 2026-09-19 -- Epic 11, Process Gap Analysis & Clarification, implemented
+
+User resolved all five open design questions from the Epic 11 proposal
+above (`planning/epics/11-gap-analysis-and-clarification.md`): runs
+automatically after ingestion, LLM-based detection for both structural and
+cross-document gaps, a dedicated audit table for every question/response,
+replaces Finalize's hard content-completeness validation entirely, and a
+lighter dedicated pick-an-option UI rather than reusing chat-ops. Full
+implementation plan approved via plan mode before any code
+(`app/gap_analysis/`, `GapFindingModel`, `app/api/gap_analysis.py`,
+`GapReviewPage.tsx`).
+
+### `validate_bpmn` split into structural vs. integrity, not a new function from scratch
+
+`app/bpmn/validation.py`'s content-completeness checks ("no incoming/
+outgoing flow") moved to gap analysis's domain; Finalize now only
+deterministically checks XML/DI integrity (malformed XML, dangling refs,
+missing DI) via a new `validate_bpmn_integrity`. Kept the public
+`validate_bpmn` returning the combined list unchanged so its three other
+existing call sites (draft advisory display, chat-apply's regression-count
+check) and every pre-existing test needed zero changes -- only
+`app/api/versions.py`'s finalize_process switched functions.
+
+### Shared `apply_diff_and_persist` extracted from chat-apply, reused by gap-finding resolve
+
+A resolution option's `diff` is exactly a `DiagramDiff` (same shape
+chat-ops already produces), so gap-finding resolve applies it through the
+identical apply -> rebuild XML -> regression-check -> persist sequence
+`app/api/chat.py`'s apply endpoint used inline. Extracted into
+`app/bpmn/chat_ops.py::apply_diff_and_persist` rather than duplicated --
+correctness-critical logic (the regression check has its own real-bug
+history, see that function's docstring) that two call sites needed
+identically. `chat.py`'s own tests needed no changes; behavior is
+unchanged, just relocated.
+
+### Finalize's `gap_analysis_completed_at is None` gate is a genuinely separate state from "no findings"
+
+"Never checked" and "checked, found nothing" must not collapse into one
+state -- a process created before this migration, or one whose ingestion-
+time gap-analysis LLM call silently failed (best-effort by design, must
+not fail ingestion), would otherwise finalize with zero gap-analysis
+coverage and no signal to the user that nothing was actually checked.
+`ProcessModel.gap_analysis_completed_at` is set on every successful run
+regardless of finding count, checked before the open-findings check.
+Live-verified: a real never-analyzed process (`proc_723dad49ec51`, "HR
+Onboarding") correctly got "Run gap analysis before finalizing", distinct
+from the "N unresolved gap finding(s)" message a checked-but-unresolved
+process gets.
+
+### Real defect prevented, not just detected: a genuinely malformed LLM-authored diff was safely rejected
+
+Live-verified against `proc_cd46c74845c7` ("Persistence Proof", the same
+bare-3-task diagram from the Epic 7 entry above): the real gap-analysis
+LLM call proposed an "add an end event" option whose `add_flow` operation
+referenced a temporary id (`"new-end-1"`) that its own `add_element`
+operation never actually set (`"id"` field missing from the element
+payload) -- exactly the failure mode `app/chat/prompts.py`'s prompt rules
+explicitly warn against ("never invent a temporary id and then forget to
+use it"), just from a different prompt (`app/gap_analysis/prompts.py`)
+reusing the same diff-construction rules. Resolving with that option
+correctly 400'd ("'Order Process Complete' (endEvent) has no incoming
+flow and is not a start event") via the existing regression-check
+machinery in `apply_diff_and_persist`, the finding stayed `open` (not
+silently marked resolved), and resolving with the diagram's other,
+well-formed option worked cleanly. This is exactly why gap-finding resolve
+reuses chat-apply's existing defenses rather than a new, unvalidated apply
+path -- an LLM-authored diff is not inherently more trustworthy than a
+chat-authored one just because it came from a different prompt.
+
+### Real LLM output quality gaps found, worth a future prompt revisit (not fixed here)
+
+Two things worth flagging, neither a code defect: (1) some findings'
+`question` text leaked visible chain-of-thought reasoning ("Wait, let's
+look closer... Let's trace the data...") instead of the one-sentence
+plain-English question the prompt asks for -- schema-valid JSON, so
+nothing broke, just poor UX if shown verbatim in the gap-review UI's
+question line. (2) `kind: "cross_document"` fired on a genuinely
+single-document process for an element that merely lacked source_refs,
+not an actual cross-document conflict -- the taxonomy distinction between
+"structural" and "cross_document" isn't being applied precisely when
+there's only one document to reason about. Both are prompt-tuning issues
+in `app/gap_analysis/prompts.py`, not addressed in this pass; worth a
+follow-up if real usage shows this is more than an edge case.
+
+### Live end-to-end verification
+
+Ran the real flow against `proc_cd46c74845c7` with actual Qwen3.7 Flash
+calls throughout: `/gap-findings/analyze` found 2 real findings (missing
+start event; a genuine logical inconsistency where "Payment verification"'s
+output fed nowhere while the warehouse task's input bypassed it entirely
+via a direct flow) -- resolved one via its diff, dismissed the other as a
+legitimate judgment call. The resolve's automatic re-run (US11.5) then
+correctly caught a *new* gap the fix itself introduced (no end event) and
+Finalize correctly blocked on it before I'd even tried to finalize. After
+resolving/dismissing every subsequent round (including the malformed-diff
+case above), `POST /finalize` succeeded (`ver_bcdd96bcd591`). Frontend:
+`npx tsc --noEmit` clean, full `npm test -- --run` green (40 tests, 7
+files including new `GapReviewPage.test.tsx`); Chrome extension wasn't
+connected this session either (same gap noted in the Epic 8 entry above),
+so no visual click-through of the actual rendered page -- real-API
+verification plus the passing test suite is the fallback coverage again.

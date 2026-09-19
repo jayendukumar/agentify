@@ -3,12 +3,22 @@ ProcessSchema, and translate between bare schema ids (what the LLM and the
 diff operate on) and rendered BPMN ids (what the canvas and validate_bpmn
 see) -- see app/bpmn/mapping.py's own prefix convention, which this
 mirrors rather than duplicates.
+
+apply_diff_and_persist (Epic 11) also lives here rather than as a second
+copy in each API router: it's apply_diagram_diff end-to-end (apply ->
+rebuild XML -> regression check -> persist), needed identically by
+app/api/chat.py's chat-apply and app/api/gap_analysis.py's finding-resolve
+-- correctness-critical logic (the regression check has its own real-bug
+history, see its docstring below) that two routers should call, not each
+reimplement.
 """
 
 from __future__ import annotations
 
 import re
 from typing import Literal
+
+from sqlalchemy.orm import Session
 
 from app.ids import new_id
 from app.schemas.chat import DiagramDiff, DiagramDiffOperation
@@ -164,6 +174,51 @@ def apply_diagram_diff(schema: ProcessSchema, diff: DiagramDiff) -> ProcessSchem
     for op in diff.operations:
         _apply_operation(updated, op, temp_id_map)
     return updated
+
+
+class DiagramApplyRegressionError(DiagramDiffError):
+    """Raised when applying a diff would leave the diagram with MORE
+    validate_bpmn issues than it had before (a net-new problem, not the
+    same total problem re-labeled under a different node id -- see the
+    len() comparison below, added after a real false positive: a
+    legitimate append-to-the-end edit moves the "no outgoing flow"
+    complaint from the old last node to the new one, same total problem,
+    different id, which a strict set-difference wrongly flagged as
+    introducing a new one)."""
+
+
+def apply_diff_and_persist(db: Session, process_id: str, diff: DiagramDiff) -> ProcessSchema:
+    """Apply diff -> rebuild BPMN XML -> regression-check -> persist
+    schema + draft BPMN, as one unit. Shared by app/api/chat.py's
+    chat-apply and app/api/gap_analysis.py's finding-resolve."""
+    # Imported here, not at module level, to keep this module's own unit
+    # tests (test_bpmn_chat_ops.py) free of a DB/session dependency for
+    # every other function in it -- only this one function needs one.
+    from app.bpmn.builder import build_bpmn_xml
+    from app.bpmn.layout import extract_node_positions
+    from app.bpmn.validation import validate_bpmn
+    from app.db import repository
+
+    schema = repository.get_process_schema(db, process_id)
+    if schema is None:
+        raise DiagramDiffError("Process has no schema to apply this change to")
+
+    updated_schema = apply_diagram_diff(schema, diff)
+
+    current_draft = repository.get_draft_bpmn(db, process_id)
+    preferred_positions = extract_node_positions(current_draft.xml) if current_draft else {}
+    pre_existing_issues = validate_bpmn(current_draft.xml) if current_draft else []
+
+    xml, low_confidence_element_ids = build_bpmn_xml(process_id, updated_schema, preferred_positions)
+    new_issues = validate_bpmn(xml)
+    if len(new_issues) > len(pre_existing_issues):
+        introduced_issues = [issue for issue in new_issues if issue not in pre_existing_issues] or new_issues
+        readable_issues = humanize_validation_issues(introduced_issues, updated_schema)
+        raise DiagramApplyRegressionError("Applying this change would break the diagram: " + "; ".join(readable_issues))
+
+    repository.set_process_schema(db, process_id, updated_schema)
+    repository.set_draft_bpmn(db, process_id, xml, low_confidence_element_ids)
+    return updated_schema
 
 
 _QUOTED_BPMN_ID = re.compile(r"'([A-Za-z]+_[^']+)'")

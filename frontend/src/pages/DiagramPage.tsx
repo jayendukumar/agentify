@@ -240,6 +240,7 @@ export default function DiagramPage() {
         </button>
         <Link to={`/processes/${processId}/versions`}>Version History</Link>
         <Link to={`/processes/${processId}/blueprint`}>Agentic Blueprint</Link>
+        <Link to={`/processes/${processId}/gaps`}>Gap Review</Link>
 
         <button type="button" onClick={handleExportXml}>
           Export XML

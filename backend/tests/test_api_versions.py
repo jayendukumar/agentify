@@ -35,9 +35,26 @@ def _xml_v2(process_id: str) -> str:
     return xml
 
 
+def _mark_gap_analysis_completed(process_id: str) -> None:
+    # Epic 11: Finalize now requires gap analysis to have run at least
+    # once (app/api/versions.py's gap_analysis_completed_at gate) --
+    # these tests aren't exercising gap analysis itself (see
+    # test_api_gap_analysis.py for that), so seed the flag directly
+    # rather than wiring a real LLM call through every finalize test
+    # here, same "seed via a direct session" pattern this file already
+    # uses for schemas (test_finalize_error_uses_element_labels_not_raw_bpmn_ids).
+    session = get_session_factory()()
+    try:
+        repository.mark_gap_analysis_completed(session, process_id)
+        session.commit()
+    finally:
+        session.close()
+
+
 def _finalize(client, process_id, xml):
     r = client.put(f"/api/processes/{process_id}/bpmn", json={"xml": xml})
     assert r.status_code == 200
+    _mark_gap_analysis_completed(process_id)
     r = client.post(f"/api/processes/{process_id}/finalize")
     assert r.status_code == 201
     return r.json()
@@ -120,39 +137,96 @@ def test_finalize_rejects_malformed_xml(client):
     assert r.status_code == 400
 
 
-def test_finalize_error_uses_element_labels_not_raw_bpmn_ids(client):
-    # POST /bpmn/generate (unlike PUT /bpmn) doesn't block on validation
-    # issues (app/api/bpmn.py) -- a schema missing a start event is exactly
-    # how a real invalid draft reaches finalize for US6.3 to catch. Mirrors
-    # a real defect: the error the user actually saw quoted raw ids like
-    # 'Task_el_8f055fa669de' instead of the step's own label.
+def test_finalize_blocked_when_gap_analysis_never_run(client):
+    # Epic 11: a structurally valid draft (no content-completeness or
+    # integrity issues at all) still can't finalize if gap analysis has
+    # never completed for this process -- "no findings" and "never
+    # checked" are deliberately different states (see
+    # gap_analysis_completed_at's docstring, app/db/models.py).
     process = client.post("/api/processes", json={"name": "P"}).json()
+    r = client.put(f"/api/processes/{process['id']}/bpmn", json={"xml": _xml_v1(process["id"])})
+    assert r.status_code == 200
+
+    r = client.post(f"/api/processes/{process['id']}/finalize")
+    assert r.status_code == 400
+    assert "gap analysis" in r.json()["detail"].lower()
+
+
+def test_finalize_blocked_by_open_gap_finding(client):
+    process = client.post("/api/processes", json={"name": "P"}).json()
+    r = client.put(f"/api/processes/{process['id']}/bpmn", json={"xml": _xml_v1(process["id"])})
+    assert r.status_code == 200
+    _mark_gap_analysis_completed(process["id"])
+
     session = get_session_factory()()
     try:
-        document = repository.add_document(session, process["id"], "doc-seed", "sop.docx", "application/octet-stream", 1)
-        session.commit()
-        schema = ProcessSchema(
-            process_name="P",
-            actors=[Actor(id="a1", name="Warehouse", type="role")],
-            elements=[
-                ProcessElement(
-                    id="e1", type="task", label="Pick and pack the order", actor_id="a1",
-                    source_refs=[SourceRef(document_id=document.id, location="p1", excerpt="x")], confidence="high",
-                ),
-            ],
-            flows=[],
+        repository.add_gap_finding(
+            session,
+            process["id"],
+            kind="structural",
+            question="Is 'Step A' really the first step?",
+            target_element_ids=["Task_a"],
+            options=[],
         )
-        repository.merge_process_schema(session, process["id"], schema)
         session.commit()
     finally:
         session.close()
 
-    generate_response = client.post(f"/api/processes/{process['id']}/bpmn/generate", json={})
-    assert generate_response.status_code == 200
-    assert generate_response.json()["validation_issues"]  # generate surfaces but doesn't block (US3.4)
+    r = client.post(f"/api/processes/{process['id']}/finalize")
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert "Is 'Step A' really the first step?" in detail
+
+
+def test_finalize_error_uses_element_labels_for_integrity_issues(client):
+    # Content-completeness issues ("no incoming flow") moved to Epic 11's
+    # gap analysis and no longer block Finalize directly (see the two
+    # tests above) -- what's left is the deterministic integrity backstop
+    # (app/bpmn/validation.py's validate_bpmn_integrity), which should
+    # never fire through a normal PUT/generate flow if app/bpmn/builder.py
+    # is correct (PUT /bpmn already rejects any issue up front). Simulate
+    # a builder regression directly via the DB, the same "seed via a
+    # direct session" pattern this file already uses for schemas, to prove
+    # the backstop still humanizes raw ids when it does fire.
+    process = client.post("/api/processes", json={"name": "P"}).json()
+    xml = _xml_v1(process["id"])
+    # Corrupt a real generated diagram's DI: drop Task_a's BPMNShape entirely,
+    # leaving its semantic element intact -- "Elements with no DI shape".
+    import re
+
+    corrupted = re.sub(
+        r'<bpmndi:BPMNShape[^>]*bpmnElement="Task_a".*?</bpmndi:BPMNShape>', "", xml, flags=re.DOTALL
+    )
+    assert corrupted != xml
+
+    session = get_session_factory()()
+    try:
+        document = repository.add_document(session, process["id"], "doc-seed", "sop.docx", "application/octet-stream", 1)
+        session.commit()
+        ref = SourceRef(document_id=document.id, location="p1", excerpt="x")
+        schema = ProcessSchema(
+            process_name="P",
+            elements=[
+                ProcessElement(id="start", type="start_event", label="Start", source_refs=[ref], confidence="high"),
+                ProcessElement(id="a", type="task", label="Step A", source_refs=[ref], confidence="high"),
+                ProcessElement(id="b", type="task", label="Step B", source_refs=[ref], confidence="high"),
+                ProcessElement(id="end", type="end_event", label="End", source_refs=[ref], confidence="high"),
+            ],
+            flows=[
+                ProcessFlow(id="f1", **{"from": "start"}, to="a"),
+                ProcessFlow(id="f2", **{"from": "a"}, to="b"),
+                ProcessFlow(id="f3", **{"from": "b"}, to="end"),
+            ],
+        )
+        repository.merge_process_schema(session, process["id"], schema)
+        repository.set_draft_bpmn(session, process["id"], corrupted, [])
+        repository.mark_gap_analysis_completed(session, process["id"])
+        session.commit()
+    finally:
+        session.close()
 
     r = client.post(f"/api/processes/{process['id']}/finalize")
     assert r.status_code == 400
     detail = r.json()["detail"]
-    assert "Pick and pack the order" in detail
-    assert "Task_e1" not in detail
+    assert "Step A" in detail
+    assert "Task_a" not in detail

@@ -17,6 +17,7 @@ from app.schemas.blueprint import BlueprintNodeResult, BlueprintOverlay
 from app.schemas.chat import ChatMessageResult
 from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema, SourceRef
 from app.schemas.documents import IngestionStatus
+from app.schemas.gap_analysis import GapFinding, GapFindingOption
 from app.schemas.versions import VersionDetail
 from app.store import NotFoundError
 
@@ -27,6 +28,7 @@ from .models import (
     ChatMessageModel,
     DocumentEmbeddingModel,
     DocumentModel,
+    GapFindingModel,
     ProcessElementModel,
     ProcessFlowModel,
     ProcessModel,
@@ -450,3 +452,81 @@ def update_blueprint_node(
     overlay.nodes = updated_nodes
     session.flush()
     return _to_pydantic_blueprint_overlay(overlay)
+
+
+# -- gap findings (Epic 11) ----------------------------------------------------
+
+
+def _to_pydantic_gap_finding(finding: GapFindingModel) -> GapFinding:
+    return GapFinding(
+        id=finding.id,
+        process_id=finding.process_id,
+        kind=finding.kind,
+        question=finding.question,
+        target_element_ids=finding.target_element_ids,
+        options=[GapFindingOption.model_validate(option) for option in finding.options],
+        status=finding.status,
+        chosen_option_label=finding.chosen_option_label,
+        created_at=finding.created_at,
+        decided_at=finding.decided_at,
+    )
+
+
+def add_gap_finding(
+    session: Session,
+    process_id: str,
+    *,
+    kind: str,
+    question: str,
+    target_element_ids: list[str],
+    options: list[GapFindingOption],
+) -> GapFinding:
+    get_process(session, process_id)  # 404s if missing
+    finding = GapFindingModel(
+        id=new_id("gap"),
+        process_id=process_id,
+        kind=kind,
+        question=question,
+        target_element_ids=target_element_ids,
+        options=[option.model_dump() for option in options],
+    )
+    session.add(finding)
+    session.flush()
+    return _to_pydantic_gap_finding(finding)
+
+
+def list_gap_findings(session: Session, process_id: str, status: str | None = None) -> list[GapFinding]:
+    get_process(session, process_id)  # 404s if missing
+    stmt = select(GapFindingModel).where(GapFindingModel.process_id == process_id)
+    if status is not None:
+        stmt = stmt.where(GapFindingModel.status == status)
+    stmt = stmt.order_by(GapFindingModel.created_at)
+    return [_to_pydantic_gap_finding(f) for f in session.scalars(stmt)]
+
+
+def get_gap_finding(session: Session, process_id: str, finding_id: str) -> GapFindingModel:
+    finding = session.get(GapFindingModel, finding_id)
+    if finding is None or finding.process_id != process_id:
+        raise NotFoundError("gap finding", finding_id)
+    return finding
+
+
+def mark_gap_finding_resolved(session: Session, finding: GapFindingModel, *, option_label: str) -> GapFinding:
+    finding.status = "resolved"
+    finding.chosen_option_label = option_label
+    finding.decided_at = utcnow()
+    session.flush()
+    return _to_pydantic_gap_finding(finding)
+
+
+def mark_gap_finding_dismissed(session: Session, finding: GapFindingModel) -> GapFinding:
+    finding.status = "dismissed"
+    finding.decided_at = utcnow()
+    session.flush()
+    return _to_pydantic_gap_finding(finding)
+
+
+def mark_gap_analysis_completed(session: Session, process_id: str) -> None:
+    process = get_process(session, process_id)  # 404s if missing
+    process.gap_analysis_completed_at = utcnow()
+    session.flush()

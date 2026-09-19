@@ -15,6 +15,7 @@ import logging
 from app.config import Settings, get_settings
 from app.db import repository
 from app.db.session import get_session_factory
+from app.gap_analysis.service import run_gap_analysis
 from app.llm import LLMClient
 
 from . import storage
@@ -86,6 +87,23 @@ async def process_document(
         repository.merge_process_schema(session, process_id, schema, document_id=document_id)
         if blocks:
             repository.add_document_embeddings(session, document_id, blocks)
+        session.commit()
+
+        # Epic 11: best-effort -- a failed gap-analysis run must not fail
+        # ingestion. gap_analysis_completed_at simply stays unset, which
+        # Finalize (app/api/versions.py) later catches with its own clear
+        # message rather than silently letting a never-checked process
+        # through.
+        try:
+            await run_gap_analysis(session, llm, process_id)
+            session.commit()
+        except Exception as gap_exc:
+            session.rollback()
+            logger.warning(
+                "gap_analysis_failed",
+                extra={"process_id": process_id, "document_id": document_id, "error": str(gap_exc)},
+            )
+
         repository.update_document_status(session, process_id, document_id, "done")
         session.commit()
     except Exception as exc:

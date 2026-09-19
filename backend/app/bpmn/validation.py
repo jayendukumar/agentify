@@ -29,18 +29,27 @@ _FLOW_NODE_TAGS = {
 }
 
 
-def validate_bpmn(xml_str: str) -> list[str]:
-    """Returns a list of human-readable issues; empty list means valid."""
+def _validate(xml_str: str) -> tuple[list[str], list[str]]:
+    """Returns (structural_issues, integrity_issues). Structural = content
+    completeness ("no incoming/outgoing flow") -- Epic 11 owns detecting
+    and resolving these against the ProcessSchema now (app/gap_analysis/),
+    so Finalize (app/api/versions.py) no longer blocks on them directly.
+    Integrity = is the generated XML itself well-formed and renderable
+    (malformed XML, duplicate/dangling ids, missing DI) -- a different,
+    lower-level concern that should never legitimately fail if
+    app/bpmn/builder.py is correct, and stays Finalize's deterministic
+    backstop (validate_bpmn_integrity)."""
     try:
         root = ET.fromstring(xml_str)
     except ET.ParseError as exc:
-        return [f"Not well-formed XML: {exc}"]
+        return [], [f"Not well-formed XML: {exc}"]
 
-    issues: list[str] = []
+    structural_issues: list[str] = []
+    integrity_issues: list[str] = []
 
     process = root.find(_tag("bpmn", "process"))
     if process is None:
-        return ["No <bpmn:process> element found"]
+        return [], ["No <bpmn:process> element found"]
 
     node_ids: list[str] = []
     incoming_count: dict[str, int] = {}
@@ -57,7 +66,7 @@ def validate_bpmn(xml_str: str) -> list[str]:
 
     duplicates = {node_id for node_id in node_ids if node_ids.count(node_id) > 1}
     if duplicates:
-        issues.append(f"Duplicate element ids: {sorted(duplicates)}")
+        integrity_issues.append(f"Duplicate element ids: {sorted(duplicates)}")
 
     node_id_set = set(node_ids)
     flow_ids: list[str] = []
@@ -68,17 +77,17 @@ def validate_bpmn(xml_str: str) -> list[str]:
         source_ref = flow.get("sourceRef")
         target_ref = flow.get("targetRef")
         if source_ref not in node_id_set:
-            issues.append(f"sequenceFlow '{flow_id}' sourceRef '{source_ref}' does not exist")
+            integrity_issues.append(f"sequenceFlow '{flow_id}' sourceRef '{source_ref}' does not exist")
         else:
             outgoing_count[source_ref] = outgoing_count.get(source_ref, 0) + 1
         if target_ref not in node_id_set:
-            issues.append(f"sequenceFlow '{flow_id}' targetRef '{target_ref}' does not exist")
+            integrity_issues.append(f"sequenceFlow '{flow_id}' targetRef '{target_ref}' does not exist")
         else:
             incoming_count[target_ref] = incoming_count.get(target_ref, 0) + 1
 
     duplicate_flow_ids = {fid for fid in flow_ids if flow_ids.count(fid) > 1}
     if duplicate_flow_ids:
-        issues.append(f"Duplicate flow ids: {sorted(duplicate_flow_ids)}")
+        integrity_issues.append(f"Duplicate flow ids: {sorted(duplicate_flow_ids)}")
 
     lane_ids = {
         lane.get("id")
@@ -93,13 +102,13 @@ def validate_bpmn(xml_str: str) -> list[str]:
         if local not in _FLOW_NODE_TAGS or not node_id:
             continue
         if local != "startEvent" and incoming_count.get(node_id, 0) == 0:
-            issues.append(f"'{node_id}' ({local}) has no incoming flow and is not a start event")
+            structural_issues.append(f"'{node_id}' ({local}) has no incoming flow and is not a start event")
         if local != "endEvent" and outgoing_count.get(node_id, 0) == 0:
-            issues.append(f"'{node_id}' ({local}) has no outgoing flow and is not an end event")
+            structural_issues.append(f"'{node_id}' ({local}) has no outgoing flow and is not an end event")
 
     diagram = root.find(_tag("bpmndi", "BPMNDiagram"))
     if diagram is None:
-        issues.append("No <bpmndi:BPMNDiagram> -- diagram will not render (DI is mandatory)")
+        integrity_issues.append("No <bpmndi:BPMNDiagram> -- diagram will not render (DI is mandatory)")
     else:
         shape_refs = {
             shape.get("bpmnElement")
@@ -111,7 +120,7 @@ def validate_bpmn(xml_str: str) -> list[str]:
         }
         missing_shapes = node_id_set - shape_refs
         if missing_shapes:
-            issues.append(f"Elements with no DI shape: {sorted(missing_shapes)}")
+            integrity_issues.append(f"Elements with no DI shape: {sorted(missing_shapes)}")
         # Lanes need their own DI shape to render as a visible swimlane band
         # at all -- bpmn-js silently skips drawing a lane with no matching
         # BPMNShape even though its semantic flowNodeRefs are otherwise
@@ -121,15 +130,35 @@ def validate_bpmn(xml_str: str) -> list[str]:
         # -shapes check below, not just added to it.
         missing_lane_shapes = lane_ids - shape_refs
         if missing_lane_shapes:
-            issues.append(f"Lanes with no DI shape (will not render as a swimlane): {sorted(missing_lane_shapes)}")
+            integrity_issues.append(
+                f"Lanes with no DI shape (will not render as a swimlane): {sorted(missing_lane_shapes)}"
+            )
         dangling_shapes = shape_refs - node_id_set - lane_ids
         if dangling_shapes:
-            issues.append(f"DI shapes referencing elements that don't exist: {sorted(dangling_shapes)}")
+            integrity_issues.append(f"DI shapes referencing elements that don't exist: {sorted(dangling_shapes)}")
         missing_edges = set(flow_ids) - edge_refs
         if missing_edges:
-            issues.append(f"Flows with no DI edge: {sorted(missing_edges)}")
+            integrity_issues.append(f"Flows with no DI edge: {sorted(missing_edges)}")
         dangling_edges = edge_refs - set(flow_ids)
         if dangling_edges:
-            issues.append(f"DI edges referencing flows that don't exist: {sorted(dangling_edges)}")
+            integrity_issues.append(f"DI edges referencing flows that don't exist: {sorted(dangling_edges)}")
 
-    return issues
+    return structural_issues, integrity_issues
+
+
+def validate_bpmn(xml_str: str) -> list[str]:
+    """Returns a list of human-readable issues (structural + integrity
+    combined); empty list means valid. Unchanged behavior/callers from
+    before the Epic 11 split -- app/api/bpmn.py's advisory display and
+    app/api/chat.py's regression-count check both still want the full
+    combined list."""
+    structural_issues, integrity_issues = _validate(xml_str)
+    return structural_issues + integrity_issues
+
+
+def validate_bpmn_integrity(xml_str: str) -> list[str]:
+    """Just the XML/DI-integrity subset (see _validate's docstring) --
+    Finalize's deterministic backstop (app/api/versions.py) now that
+    content-completeness is Epic 11's gap-analysis's job instead."""
+    _structural_issues, integrity_issues = _validate(xml_str)
+    return integrity_issues

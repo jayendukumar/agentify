@@ -188,6 +188,27 @@ export interface BlueprintOverlay {
   generated_at: string
 }
 
+export type GapKind = 'structural' | 'cross_document'
+export type GapFindingStatus = 'open' | 'resolved' | 'dismissed'
+
+export interface GapFindingOption {
+  label: string
+  diff: DiagramDiff | null
+}
+
+export interface GapFinding {
+  id: string
+  process_id: string
+  kind: GapKind
+  question: string
+  target_element_ids: string[]
+  options: GapFindingOption[]
+  status: GapFindingStatus
+  chosen_option_label: string | null
+  created_at: string
+  decided_at: string | null
+}
+
 export interface ApiErrorBody {
   detail: string
 }

@@ -5,6 +5,8 @@ import type {
   BPMNDocument,
   ChatMessageResult,
   DocumentSummary,
+  GapFinding,
+  GapFindingStatus,
   ProcessDetail,
   ProcessSummary,
   VersionDetail,
@@ -172,6 +174,26 @@ export function diffVersions(
 ): Promise<VersionDiffResult> {
   const params = new URLSearchParams({ from_version_id: fromVersionId, to_version_id: toVersionId })
   return request(`/api/processes/${processId}/versions/diff?${params.toString()}`)
+}
+
+export function listGapFindings(processId: string, status?: GapFindingStatus): Promise<GapFinding[]> {
+  const query = status ? `?${new URLSearchParams({ status }).toString()}` : ''
+  return request(`/api/processes/${processId}/gap-findings${query}`)
+}
+
+export function analyzeGaps(processId: string): Promise<GapFinding[]> {
+  return request(`/api/processes/${processId}/gap-findings/analyze`, { method: 'POST' })
+}
+
+export function resolveGapFinding(processId: string, findingId: string, optionIndex: number): Promise<GapFinding> {
+  return request(`/api/processes/${processId}/gap-findings/${findingId}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ option_index: optionIndex }),
+  })
+}
+
+export function dismissGapFinding(processId: string, findingId: string): Promise<GapFinding> {
+  return request(`/api/processes/${processId}/gap-findings/${findingId}/dismiss`, { method: 'POST' })
 }
 
 export async function uploadDocuments(processId: string, files: FileList | File[]): Promise<DocumentSummary[]> {

@@ -603,3 +603,48 @@ button:disabled {
   display: flex;
   gap: 0.5rem;
 }
+
+.gap-finding-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.gap-finding-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+}
+
+.gap-finding-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.gap-finding-question {
+  font-weight: 600;
+}
+
+.gap-finding-actions {
+  margin-top: 0.6rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.gap-finding-dismiss {
+  margin-left: auto;
+}
+
+.gap-finding-decided {
+  margin-top: 0.4rem;
+}
+
+.gap-history-toggle {
+  margin-top: 0.5rem;
+}
