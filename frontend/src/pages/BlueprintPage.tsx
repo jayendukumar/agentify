@@ -10,6 +10,7 @@ import {
   overrideBlueprintNode,
 } from '../api/client'
 import type { BlueprintOverlay, BlueprintVerdict, ProcessDetail } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import BlueprintCanvas from '../components/BlueprintCanvas'
 import BlueprintDetailPanel from '../components/BlueprintDetailPanel'
 import { downloadText } from '../lib/exportPng'
@@ -19,6 +20,8 @@ function markerClass(verdict: BlueprintVerdict): string {
 }
 
 export default function BlueprintPage() {
+  const { user } = useAuth()
+  const isEditor = user?.role === 'editor'
   const { processId } = useParams<{ processId: string }>()
 
   const [process, setProcess] = useState<ProcessDetail | null>(null)
@@ -177,7 +180,12 @@ export default function BlueprintPage() {
         ) : (
           <>
             <p>No blueprint generated yet for this process.</p>
-            <button type="button" onClick={handleGenerate} disabled={generating}>
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={generating || !isEditor}
+              title={!isEditor ? 'Editor access required' : undefined}
+            >
               {generating ? 'Generating...' : 'Generate Blueprint'}
             </button>
           </>
@@ -193,7 +201,12 @@ export default function BlueprintPage() {
         <Link to={`/processes/${processId}/diagram`}>&larr; {process.name}</Link>
         <h2 className="blueprint-title">Agentic Blueprint</h2>
 
-        <button type="button" onClick={handleGenerate} disabled={generating || !versionXml}>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={generating || !versionXml || !isEditor}
+          title={!isEditor ? 'Editor access required' : undefined}
+        >
           {generating ? 'Regenerating...' : 'Regenerate'}
         </button>
         <button type="button" onClick={handleExport}>
@@ -252,6 +265,7 @@ export default function BlueprintPage() {
           labelsById={labelsById}
           onOverride={handleOverride}
           overriding={overriding}
+          canOverride={isEditor}
         />
       </div>
     </div>

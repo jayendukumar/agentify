@@ -9,6 +9,8 @@ import type {
   GapFindingStatus,
   ProcessDetail,
   ProcessSummary,
+  Role,
+  User,
   VersionDetail,
   VersionDiffResult,
   VersionSummary,
@@ -28,6 +30,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    // Epic 9/10, US9.9: the session cookie lives on the API's origin
+    // (:8000), distinct from the frontend's (:3000) -- without this, the
+    // browser never sends/stores it and every request looks logged-out.
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
 
@@ -46,6 +52,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     return undefined as T
   }
   return (await response.json()) as T
+}
+
+export function login(name: string, role: Role = 'viewer'): Promise<User> {
+  return request('/api/auth/login', { method: 'POST', body: JSON.stringify({ name, role }) })
+}
+
+export function logout(): Promise<void> {
+  return request('/api/auth/logout', { method: 'POST' })
+}
+
+export async function getCurrentUser(): Promise<User | null> {
+  try {
+    return await request<User>('/api/auth/me')
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null
+    throw err
+  }
 }
 
 export function listProcesses(): Promise<ProcessSummary[]> {
@@ -102,7 +125,9 @@ export function overrideBlueprintNode(
 
 // Not JSON (returns text/markdown), so this bypasses the request() helper.
 export async function exportBlueprint(processId: string): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/api/processes/${processId}/blueprint/export?format=markdown`)
+  const response = await fetch(`${API_BASE_URL}/api/processes/${processId}/blueprint/export?format=markdown`, {
+    credentials: 'include',
+  })
   if (!response.ok) {
     let detail = response.statusText
     try {
@@ -204,6 +229,7 @@ export async function uploadDocuments(processId: string, files: FileList | File[
 
   const response = await fetch(`${API_BASE_URL}/api/processes/${processId}/documents`, {
     method: 'POST',
+    credentials: 'include',
     body: formData,
   })
 

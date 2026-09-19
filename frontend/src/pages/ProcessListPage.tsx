@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, createProcess, listProcesses } from '../api/client'
 import type { ProcessSummary } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 
 export default function ProcessListPage() {
+  const { user } = useAuth()
   const [processes, setProcesses] = useState<ProcessSummary[]>([])
   const [newName, setNewName] = useState('')
   const [loading, setLoading] = useState(true)
@@ -49,8 +51,11 @@ export default function ProcessListPage() {
           placeholder="New process name"
           value={newName}
           onChange={(event) => setNewName(event.target.value)}
+          disabled={user?.role !== 'editor'}
         />
-        <button type="submit">Create</button>
+        <button type="submit" disabled={user?.role !== 'editor'} title={user?.role !== 'editor' ? 'Editor access required' : undefined}>
+          Create
+        </button>
       </form>
 
       {error && <p className="error">{error}</p>}

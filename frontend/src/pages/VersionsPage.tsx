@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, diffVersions, listVersions, restoreVersion } from '../api/client'
 import type { VersionDiffResult, VersionSummary } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 
 function versionLabel(version: VersionSummary, index: number): string {
   return version.label ?? `Version ${index + 1}`
 }
 
 export default function VersionsPage() {
+  const { user } = useAuth()
   const { processId } = useParams<{ processId: string }>()
   const [versions, setVersions] = useState<VersionSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -103,7 +105,10 @@ export default function VersionsPage() {
         {versions.map((version, index) => (
           <li key={version.id} className="version-row">
             <span>{versionLabel(version, index)}</span>
-            <span className="meta">{new Date(version.created_at).toLocaleString()}</span>
+            <span className="meta">
+              {new Date(version.created_at).toLocaleString()}
+              {version.created_by_name ? ` · finalized by ${version.created_by_name}` : ''}
+            </span>
             <span className="version-row-actions">
               {restoringId === version.id ? (
                 <>
@@ -120,7 +125,12 @@ export default function VersionsPage() {
                   </button>
                 </>
               ) : (
-                <button type="button" onClick={() => setRestoringId(version.id)}>
+                <button
+                  type="button"
+                  onClick={() => setRestoringId(version.id)}
+                  disabled={user?.role !== 'editor'}
+                  title={user?.role !== 'editor' ? 'Editor access required' : undefined}
+                >
                   Restore
                 </button>
               )}

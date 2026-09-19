@@ -8,7 +8,7 @@ from app.bpmn.validation import validate_bpmn_integrity
 from app.db import repository
 from app.schemas.versions import VersionDetail, VersionDiffResult, VersionSummary
 
-from .deps import DbDep
+from .deps import CurrentUserDep, DbDep, EditorDep
 
 router = APIRouter(prefix="/api/processes/{process_id}", tags=["versions"])
 
@@ -37,7 +37,7 @@ def _element_labels(xml_str: str) -> dict[str, str | None]:
 
 
 @router.post("/finalize", response_model=VersionSummary, status_code=status.HTTP_201_CREATED)
-def finalize_process(process_id: str, db: DbDep) -> VersionSummary:
+def finalize_process(process_id: str, db: DbDep, user: EditorDep) -> VersionSummary:
     process = repository.get_process(db, process_id)  # 404s if missing
     draft = repository.get_draft_bpmn(db, process_id)
     if draft is None:
@@ -81,20 +81,26 @@ def finalize_process(process_id: str, db: DbDep) -> VersionSummary:
             status.HTTP_400_BAD_REQUEST, detail="Cannot finalize invalid BPMN: " + "; ".join(readable_issues)
         )
 
-    version = repository.add_version(db, process_id, draft.xml)
+    version = repository.add_version(db, process_id, draft.xml, created_by=user.id)
     return VersionSummary(**version.model_dump(exclude={"xml"}))
 
 
 @router.get("/versions", response_model=list[VersionSummary])
-def list_versions(process_id: str, db: DbDep) -> list[VersionSummary]:
+def list_versions(process_id: str, db: DbDep, user: CurrentUserDep) -> list[VersionSummary]:
+    del user
     repository.get_process(db, process_id)  # 404s if missing
     return [VersionSummary(**v.model_dump(exclude={"xml"})) for v in repository.list_versions(db, process_id)]
 
 
 @router.get("/versions/diff", response_model=VersionDiffResult)
 def diff_versions(
-    process_id: str, db: DbDep, from_version_id: str = Query(...), to_version_id: str = Query(...)
+    process_id: str,
+    db: DbDep,
+    user: CurrentUserDep,
+    from_version_id: str = Query(...),
+    to_version_id: str = Query(...),
 ) -> VersionDiffResult:
+    del user
     # Registered before /versions/{version_id} -- FastAPI matches routes in
     # registration order, and a static path must be declared before a
     # path-param sibling that would otherwise swallow it (e.g. version_id="diff").
@@ -121,13 +127,15 @@ def diff_versions(
 
 
 @router.get("/versions/{version_id}", response_model=VersionDetail)
-def get_version(process_id: str, version_id: str, db: DbDep) -> VersionDetail:
+def get_version(process_id: str, version_id: str, db: DbDep, user: CurrentUserDep) -> VersionDetail:
+    del user
     repository.get_process(db, process_id)  # 404s if missing
     return repository.get_version(db, process_id, version_id)
 
 
 @router.post("/versions/{version_id}/restore", response_model=VersionSummary)
-def restore_version(process_id: str, version_id: str, db: DbDep) -> VersionSummary:
+def restore_version(process_id: str, version_id: str, db: DbDep, user: EditorDep) -> VersionSummary:
+    del user
     repository.get_process(db, process_id)  # 404s if missing
     version = repository.get_version(db, process_id, version_id)
     # A restored version was already validated at finalize time and has no

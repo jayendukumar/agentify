@@ -45,6 +45,8 @@ class BlueprintNodeResult(BaseModel):
     not_automatable_reason: str | None = None
     overridden: bool = False
     override_justification: str | None = None
+    overridden_by: str | None = None
+    overridden_by_name: str | None = None
 
 
 class BlueprintOverlay(BaseModel):

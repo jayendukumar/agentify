@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, generateBpmn, getBlueprint, getProcess, listDocuments, listGapFindings, uploadDocuments } from '../api/client'
 import type { DocumentSummary, ProcessDetail } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import ProcessSchemaView from '../components/ProcessSchemaView'
 import ProcessStepper, { type StepperStep } from '../components/ProcessStepper'
 
@@ -44,6 +45,7 @@ function buildSteps(process: ProcessDetail, hasBlueprint: boolean): StepperStep[
 }
 
 export default function ProcessDetailPage() {
+  const { user } = useAuth()
   const { processId } = useParams<{ processId: string }>()
   const [process, setProcess] = useState<ProcessDetail | null>(null)
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
@@ -162,7 +164,12 @@ export default function ProcessDetailPage() {
 
       {!process.has_draft_bpmn && process.document_count > 0 && (
         <div className="next-step-action">
-          <button type="button" onClick={handleGenerateBpmn} disabled={generatingBpmn}>
+          <button
+            type="button"
+            onClick={handleGenerateBpmn}
+            disabled={generatingBpmn || user?.role !== 'editor'}
+            title={user?.role !== 'editor' ? 'Editor access required' : undefined}
+          >
             {generatingBpmn ? 'Generating...' : 'Generate draft BPMN'}
           </button>
           {bpmnAction && <p className={bpmnAction.kind === 'error' ? 'error' : 'info'}>{bpmnAction.text}</p>}
@@ -170,7 +177,15 @@ export default function ProcessDetailPage() {
       )}
 
       <h3>Documents</h3>
-      <label className="upload-button">
+      {/* US10.5: documents are sent to the configured LLM provider for
+          extraction -- see planning/claude-api-access-notes.md's "Data
+          privacy decision" section before uploading real sensitive
+          business documents against the current default provider. */}
+      <p className="meta privacy-notice">
+        Uploaded documents are sent to the configured LLM provider (currently OpenRouter -&gt; Qwen3.7 Flash) for
+        extraction. Avoid uploading highly sensitive documents with the current default provider.
+      </p>
+      <label className={`upload-button${user?.role !== 'editor' ? ' disabled' : ''}`}>
         {uploading ? 'Uploading...' : 'Upload documents'}
         <input
           ref={fileInputRef}
@@ -178,7 +193,7 @@ export default function ProcessDetailPage() {
           multiple
           accept=".pdf,.docx,.vsdx,.png,.jpg,.jpeg"
           onChange={handleUpload}
-          disabled={uploading}
+          disabled={uploading || user?.role !== 'editor'}
           hidden
         />
       </label>

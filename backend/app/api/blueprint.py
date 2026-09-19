@@ -5,13 +5,16 @@ from app.bpmn.nodes import extract_flow_nodes
 from app.db import repository
 from app.schemas.blueprint import BlueprintGenerateRequest, BlueprintOverlay, BlueprintOverrideRequest
 
-from .deps import DbDep, LLMDep
+from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/blueprint", tags=["blueprint"])
 
 
 @router.post("/generate", response_model=BlueprintOverlay)
-async def generate_blueprint(process_id: str, body: BlueprintGenerateRequest, db: DbDep, llm: LLMDep) -> BlueprintOverlay:
+async def generate_blueprint(
+    process_id: str, body: BlueprintGenerateRequest, db: DbDep, llm: LLMDep, user: EditorDep
+) -> BlueprintOverlay:
+    del user
     repository.get_process(db, process_id)  # 404s if missing
     version = (
         repository.get_version(db, process_id, body.version_id)
@@ -36,7 +39,8 @@ async def generate_blueprint(process_id: str, body: BlueprintGenerateRequest, db
 
 
 @router.get("", response_model=BlueprintOverlay)
-def get_blueprint(process_id: str, db: DbDep) -> BlueprintOverlay:
+def get_blueprint(process_id: str, db: DbDep, user: CurrentUserDep) -> BlueprintOverlay:
+    del user
     repository.get_process(db, process_id)  # 404s if missing
     overlay = repository.get_blueprint_overlay(db, process_id)
     if overlay is None:
@@ -46,20 +50,21 @@ def get_blueprint(process_id: str, db: DbDep) -> BlueprintOverlay:
 
 @router.patch("/nodes/{node_id}", response_model=BlueprintOverlay)
 def override_blueprint_node(
-    process_id: str, node_id: str, body: BlueprintOverrideRequest, db: DbDep
+    process_id: str, node_id: str, body: BlueprintOverrideRequest, db: DbDep, user: EditorDep
 ) -> BlueprintOverlay:
     repository.get_process(db, process_id)  # 404s if missing
     # update_blueprint_node raises NotFoundError (-> 404 via the global
     # handler in app/main.py) for an unknown process or node id.
     return repository.update_blueprint_node(
-        db, process_id, node_id, verdict=body.verdict, justification=body.justification
+        db, process_id, node_id, verdict=body.verdict, justification=body.justification, overridden_by=user.id
     )
 
 
 @router.get("/export")
 def export_blueprint(
-    process_id: str, db: DbDep, format: str = Query("markdown", pattern="^(markdown)$")
+    process_id: str, db: DbDep, user: CurrentUserDep, format: str = Query("markdown", pattern="^(markdown)$")
 ) -> Response:
+    del user
     process = repository.get_process(db, process_id)  # 404s if missing
     overlay = repository.get_blueprint_overlay(db, process_id)
     if overlay is None:

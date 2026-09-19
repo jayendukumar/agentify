@@ -7,7 +7,7 @@ from app.ids import new_id
 from app.ingestion import pipeline, storage
 from app.schemas.documents import DocumentDetail, DocumentSummary
 
-from .deps import DbDep, LLMDep
+from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/documents", tags=["documents"])
 
@@ -35,9 +35,11 @@ async def upload_documents(
     process_id: str,
     db: DbDep,
     llm: LLMDep,
+    user: EditorDep,
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
 ) -> list[DocumentSummary]:
+    del user
     repository.get_process(db, process_id)  # 404s if the process doesn't exist
     settings = get_settings()
 
@@ -81,10 +83,12 @@ async def upload_documents(
 
 
 @router.get("", response_model=list[DocumentSummary])
-def list_documents(process_id: str, db: DbDep) -> list[DocumentSummary]:
+def list_documents(process_id: str, db: DbDep, user: CurrentUserDep) -> list[DocumentSummary]:
+    del user
     return [_to_summary(d) for d in repository.list_documents(db, process_id)]
 
 
 @router.get("/{document_id}", response_model=DocumentDetail)
-def get_document(process_id: str, document_id: str, db: DbDep) -> DocumentDetail:
+def get_document(process_id: str, document_id: str, db: DbDep, user: CurrentUserDep) -> DocumentDetail:
+    del user
     return _to_detail(repository.get_document(db, process_id, document_id))

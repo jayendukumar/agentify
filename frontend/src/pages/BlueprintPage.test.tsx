@@ -84,6 +84,8 @@ const overlay: BlueprintOverlay = {
       not_automatable_reason: null,
       overridden: false,
       override_justification: null,
+      overridden_by: null,
+      overridden_by_name: null,
     },
     {
       node_id: 'Task_b',
@@ -94,6 +96,8 @@ const overlay: BlueprintOverlay = {
       not_automatable_reason: 'Requires legal authority to approve.',
       overridden: false,
       override_justification: null,
+      overridden_by: null,
+      overridden_by_name: null,
     },
   ],
 }
@@ -103,6 +107,8 @@ const versionDetail: VersionDetail = {
   process_id: 'proc-1',
   label: null,
   created_at: '2026-01-01T00:00:00Z',
+  created_by: null,
+  created_by_name: null,
   xml: '<xml/>',
 }
 

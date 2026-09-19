@@ -22,8 +22,22 @@ vi.mock('../api/client', () => ({
   diffVersions: (...args: unknown[]) => diffVersions(...args),
 }))
 
-const v1: VersionSummary = { id: 'ver-1', process_id: 'proc-1', label: null, created_at: '2026-01-01T00:00:00Z' }
-const v2: VersionSummary = { id: 'ver-2', process_id: 'proc-1', label: null, created_at: '2026-01-02T00:00:00Z' }
+const v1: VersionSummary = {
+  id: 'ver-1',
+  process_id: 'proc-1',
+  label: null,
+  created_at: '2026-01-01T00:00:00Z',
+  created_by: null,
+  created_by_name: null,
+}
+const v2: VersionSummary = {
+  id: 'ver-2',
+  process_id: 'proc-1',
+  label: null,
+  created_at: '2026-01-02T00:00:00Z',
+  created_by: null,
+  created_by_name: null,
+}
 
 function renderPage() {
   render(

@@ -5,7 +5,7 @@ from app.db import repository
 from app.db.models import ProcessModel
 from app.schemas.processes import ProcessCreateRequest, ProcessDetail, ProcessSummary
 
-from .deps import DbDep
+from .deps import CurrentUserDep, DbDep, EditorDep
 
 router = APIRouter(prefix="/api/processes", tags=["processes"])
 
@@ -23,23 +23,27 @@ def _to_summary(process: ProcessModel, db: Session) -> ProcessSummary:
 
 
 @router.post("", response_model=ProcessSummary, status_code=status.HTTP_201_CREATED)
-def create_process(body: ProcessCreateRequest, db: DbDep) -> ProcessSummary:
+def create_process(body: ProcessCreateRequest, db: DbDep, user: EditorDep) -> ProcessSummary:
+    del user
     process = repository.create_process(db, name=body.name)
     return _to_summary(process, db)
 
 
 @router.get("", response_model=list[ProcessSummary])
-def list_processes(db: DbDep) -> list[ProcessSummary]:
+def list_processes(db: DbDep, user: CurrentUserDep) -> list[ProcessSummary]:
+    del user
     return [_to_summary(p, db) for p in repository.list_processes(db)]
 
 
 @router.get("/{process_id}", response_model=ProcessDetail)
-def get_process(process_id: str, db: DbDep) -> ProcessDetail:
+def get_process(process_id: str, db: DbDep, user: CurrentUserDep) -> ProcessDetail:
+    del user
     process = repository.get_process(db, process_id)
     schema = repository.get_process_schema(db, process_id)
     return ProcessDetail(**_to_summary(process, db).model_dump(), process_schema=schema)
 
 
 @router.delete("/{process_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_process(process_id: str, db: DbDep) -> None:
+def delete_process(process_id: str, db: DbDep, user: EditorDep) -> None:
+    del user
     repository.delete_process(db, process_id)

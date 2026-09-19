@@ -3,10 +3,11 @@ processes, documents, the extracted process schema (actors/elements/
 source_refs/flows), embeddings, a lightweight change log -- plus Epic 3's
 draft BPMN (BPMNDraftModel), Epic 5's chat messages (ChatMessageModel),
 Epic 6's finalized versions (VersionModel), Epic 7's blueprint overlay
-(BlueprintOverlayModel), and Epic 11's gap findings (GapFindingModel),
-each promoted out of the in-memory store (app/store.py) once its own epic
-made the data real. app/store.py now only defines NotFoundError --
-nothing left to hold in memory.
+(BlueprintOverlayModel), Epic 11's gap findings (GapFindingModel), and
+Epic 9/10's users/sessions (UserModel/SessionModel), each promoted out of
+the in-memory store (app/store.py) once its own epic made the data real.
+app/store.py now only defines NotFoundError -- nothing left to hold in
+memory.
 """
 
 from __future__ import annotations
@@ -243,6 +244,9 @@ class VersionModel(Base):
     label: Mapped[str | None] = mapped_column(String, nullable=True)
     xml: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Epic 9/10, US9.9: who finalized this version -- nullable since older
+    # rows (and any future non-interactive finalize path) may have none.
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     process: Mapped[ProcessModel] = relationship(back_populates="versions")
 
@@ -297,5 +301,43 @@ class GapFindingModel(Base):
     chosen_option_label: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Epic 9/10, US9.9: who resolved/dismissed this finding.
+    decided_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     process: Mapped[ProcessModel] = relationship(back_populates="gap_findings")
+
+
+class UserModel(Base):
+    """Epic 9/10, US9.9/US10.4: a lightweight named-user model -- no
+    password, "log in" just means "tell me your name" (first login for a
+    name creates the user and its role; every later login with that same
+    name reuses the stored role regardless of what's submitted, so a
+    viewer can't just re-login claiming "editor" -- see
+    app/api/auth.py). Deliberately not a dead end: a real SSO login would
+    only replace this table's population + app/api/auth.py's login
+    endpoint, not the SessionModel/CurrentUserDep/EditorDep plumbing every
+    other route already depends on.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class SessionModel(Base):
+    """`id` is itself the opaque session token (a secrets.token_urlsafe(32)
+    value, minted in app/api/auth.py) stored in an httponly cookie -- not
+    a separate id+token pair, since nothing ever needs to look up a
+    session except by presenting that exact token."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+
+    user: Mapped[UserModel] = relationship()

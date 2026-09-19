@@ -126,6 +126,8 @@ export interface VersionSummary {
   process_id: string
   label: string | null
   created_at: string
+  created_by: string | null
+  created_by_name: string | null
 }
 
 export interface VersionDetail extends VersionSummary {
@@ -179,6 +181,8 @@ export interface BlueprintNodeResult {
   not_automatable_reason: string | null
   overridden: boolean
   override_justification: string | null
+  overridden_by: string | null
+  overridden_by_name: string | null
 }
 
 export interface BlueprintOverlay {
@@ -207,6 +211,17 @@ export interface GapFinding {
   chosen_option_label: string | null
   created_at: string
   decided_at: string | null
+  decided_by: string | null
+  decided_by_name: string | null
+}
+
+export type Role = 'viewer' | 'editor'
+
+export interface User {
+  id: string
+  name: string
+  role: Role
+  created_at: string
 }
 
 export interface ApiErrorBody {

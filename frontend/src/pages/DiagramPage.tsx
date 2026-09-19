@@ -2,12 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError, finalizeProcess, generateBpmn, getBpmn, getProcess, listProcesses, updateBpmn } from '../api/client'
 import type { ProcessDetail, ProcessSummary } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import BpmnCanvas, { type BpmnCanvasHandle } from '../components/BpmnCanvas'
 import ChatPanel from '../components/ChatPanel'
 import ElementDetailPanel from '../components/ElementDetailPanel'
 import { downloadBlob, downloadText, svgToPngBlob } from '../lib/exportPng'
 
 export default function DiagramPage() {
+  const { user } = useAuth()
+  const isEditor = user?.role === 'editor'
   const { processId } = useParams<{ processId: string }>()
   const navigate = useNavigate()
   const canvasRef = useRef<BpmnCanvasHandle>(null)
@@ -217,15 +220,15 @@ export default function DiagramPage() {
         </button>
 
         <span className="meta">{dirty ? 'Unsaved changes' : 'Saved'}</span>
-        <button type="button" onClick={handleSave} disabled={saving || !dirty}>
+        <button type="button" onClick={handleSave} disabled={saving || !dirty || !isEditor}>
           {saving ? 'Saving...' : 'Save'}
         </button>
 
         <button
           type="button"
           onClick={handleRefreshLayout}
-          disabled={refreshingLayout || dirty}
-          title="Re-run auto-layout from the current process data -- discards manual node positions"
+          disabled={refreshingLayout || dirty || !isEditor}
+          title={!isEditor ? 'Editor access required' : 'Re-run auto-layout from the current process data -- discards manual node positions'}
         >
           {refreshingLayout ? 'Refreshing...' : 'Refresh Layout'}
         </button>
@@ -233,8 +236,8 @@ export default function DiagramPage() {
         <button
           type="button"
           onClick={handleFinalize}
-          disabled={finalizing || dirty}
-          title="Lock the current draft in as a reviewed as-is baseline"
+          disabled={finalizing || dirty || !isEditor}
+          title={!isEditor ? 'Editor access required' : 'Lock the current draft in as a reviewed as-is baseline'}
         >
           {finalizing ? 'Finalizing...' : 'Finalize'}
         </button>

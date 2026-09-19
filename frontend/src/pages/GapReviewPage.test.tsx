@@ -38,6 +38,8 @@ const openFinding: GapFinding = {
   chosen_option_label: null,
   created_at: '2026-01-01T00:00:00Z',
   decided_at: null,
+  decided_by: null,
+  decided_by_name: null,
 }
 
 function renderPage() {

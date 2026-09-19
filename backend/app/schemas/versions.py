@@ -10,6 +10,11 @@ class VersionSummary(BaseModel):
     process_id: str
     label: str | None = None
     created_at: datetime
+    created_by: str | None = None
+    # Denormalized display name (resolved via a join at read time, not
+    # trusted from anywhere else) -- created_by alone is a users.id, not
+    # something to show a Process Analyst in the version history list.
+    created_by_name: str | None = None
 
 
 class VersionDetail(VersionSummary):

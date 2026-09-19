@@ -31,6 +31,8 @@ class GapFinding(BaseModel):
     chosen_option_label: str | None = None
     created_at: datetime
     decided_at: datetime | None = None
+    decided_by: str | None = None
+    decided_by_name: str | None = None
 
 
 class GapFindingResolveRequest(BaseModel):

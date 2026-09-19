@@ -1016,3 +1016,73 @@ this single-document process, the exact defect this fix targets. Full
 backend suite stayed green (173 tests, prompt-only change, no test needed
 updating -- consistent with `app/blueprint/prompts.py` having no
 dedicated prompt-text test file either, just service/API-level coverage).
+
+## 2026-09-19 -- Epics 9 & 10, remaining platform foundations / cross-cutting stories
+
+Audited both epics against the actual codebase before starting: most of
+Epic 9 (API/frontend scaffold, LLM layer, Postgres, pgvector, local disk
+storage, pytest/vitest, .env config) and part of Epic 10 (LLM usage/cost
+tracking) were already done as a side effect of building Epics 1-8/11.
+Genuinely missing, confirmed by direct inspection (no `Dockerfile`
+anywhere, no auth code anywhere, no request-id in logging, no
+`ErrorBoundary`): US9.7 (Docker Compose full stack), US9.9/US10.4 (auth +
+access control), US10.1 (request-id log correlation), US10.5 (the
+data-privacy decision `claude-api-access-notes.md` already
+forward-references but never states), and one real gap in an otherwise
+largely-met US10.2 (no top-level error boundary). User decisions: a
+lightweight named-user auth model now (no password, explicitly not a dead
+end for a future real SSO login), simple built Docker containers (not
+hot-reload dev containers), all delivered in one pass. Full plan approved
+via plan mode before any code.
+
+### Real defect: naive vs. tz-aware datetime comparison crashed session expiry checks
+
+`app/ids.py`'s `utcnow()` returns a tz-**aware** UTC datetime, but every
+`DateTime` column in this project (including the new `SessionModel.expires_at`)
+is a plain, tz-**naive** column -- Postgres/psycopg round-trips it naive.
+Every *other* `utcnow()` call site in `app/db/repository.py` only ever
+*assigns* it to a column (fine -- the aware value's UTC wall-clock time is
+stored correctly, tzinfo just silently drops), never compares it against a
+value read back from the DB. `create_session`/`get_user_for_session` is
+the first place that does: `record.expires_at < utcnow()` raised `TypeError:
+can't compare offset-naive and offset-aware datetimes` on every single
+request past the first, since `record.expires_at` comes back naive from
+Postgres while `utcnow()` stays aware. Invisible until the full test suite
+actually exercised a real login -> subsequent authenticated request
+round-trip (66 of 179 tests failed the first run). Fixed by stripping
+tzinfo at both write (`create_session`) and compare
+(`get_user_for_session`) time via `.replace(tzinfo=None)`, keeping
+`expires_at` consistent with every other naive timestamp column rather
+than making this one column special (`DateTime(timezone=True)`) and
+risking the same mismatch resurfacing wherever it's compared against
+another table's naive column later.
+
+### Process defect: `npx tsc --noEmit -p .` was never actually type-checking anything, all session
+
+While updating test fixtures for the new `created_by`/`decided_by`/
+`overridden_by` fields, ran the frontend's "clean type-check" verification
+the same way as every prior epic this session (`npx tsc --noEmit -p .`)
+and got zero errors -- looked clean. Deliberately re-verified with a
+throwaway file containing an obvious type error (`const x: number = "not
+a number"`) to sanity-check the checker itself, and it *still* reported
+zero errors. Root cause: `frontend/tsconfig.json` is a solution-style
+config (`"files": []` + `"references"` to `tsconfig.app.json`/
+`tsconfig.node.json`) -- `tsc -p .` on a references-only config does not
+traverse into the referenced projects; only `tsc -b` (build mode, what
+`package.json`'s own `"build"` script actually uses: `tsc -b && vite
+build`) does. `-p . --noEmit` was silently checking nothing all session.
+
+Re-ran with the correct `tsc -b --noEmit` and it immediately found 6 real
+errors -- all pre-existing test fixtures from Epic 8/11 (`BlueprintPage
+.test.tsx`, `GapReviewPage.test.tsx`, `VersionsPage.test.tsx`) missing the
+new attribution fields now required by their types, exactly the kind of
+error the "clean type-check" claims in those epics' summaries should have
+caught already had the check been real. Fixed all 6 (added the missing
+fields to each fixture); `tsc -b --noEmit` now genuinely clean. **Every
+prior "type-check: clean" claim this session (Epics 8, 11, and the
+gap-analysis prompt fix) was made on this broken invocation** -- the
+underlying code was still correct by luck (nothing in those epics'
+`request_bodies`/response shapes actually drifted from their types at the
+time), but the verification itself was never real. `tsc -b` (or `tsc -b
+--noEmit` to skip emitting `.tsbuildinfo`/build artifacts) is the correct
+command for this project going forward, not `tsc -p . --noEmit`.

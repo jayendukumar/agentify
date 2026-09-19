@@ -6,6 +6,9 @@ overlay -- see app/db/models.py's module docstring.
 
 from __future__ import annotations
 
+import secrets
+from datetime import timedelta
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -33,7 +36,9 @@ from .models import (
     ProcessFlowModel,
     ProcessModel,
     ProcessSchemaChangeModel,
+    SessionModel,
     SourceRefModel,
+    UserModel,
     VersionModel,
 )
 
@@ -357,22 +362,39 @@ def mark_chat_message_decided(session: Session, message: ChatMessageModel, *, ap
 # -- versions (Epic 6, US6.1/US6.2) -------------------------------------------
 
 
-def _to_pydantic_version(version: VersionModel) -> VersionDetail:
+def _resolve_user_name(session: Session, user_id: str | None) -> str | None:
+    """Epic 9/10, US9.9: resolves an audit-trail user id (VersionModel/
+    GapFindingModel's created_by/decided_by, or a blueprint node's
+    overridden_by) to a display name for API responses -- a per-lookup
+    query, not an eager join, since this project's data volumes don't
+    warrant the complexity (same "smallest number of moving parts"
+    default as everywhere else in this codebase)."""
+    if user_id is None:
+        return None
+    user = session.get(UserModel, user_id)
+    return user.name if user is not None else None
+
+
+def _to_pydantic_version(session: Session, version: VersionModel) -> VersionDetail:
     return VersionDetail(
         id=version.id,
         process_id=version.process_id,
         label=version.label,
         created_at=version.created_at,
         xml=version.xml,
+        created_by=version.created_by,
+        created_by_name=_resolve_user_name(session, version.created_by),
     )
 
 
-def add_version(session: Session, process_id: str, xml: str, label: str | None = None) -> VersionDetail:
+def add_version(
+    session: Session, process_id: str, xml: str, label: str | None = None, created_by: str | None = None
+) -> VersionDetail:
     get_process(session, process_id)  # 404s if missing
-    version = VersionModel(id=new_id("ver"), process_id=process_id, label=label, xml=xml)
+    version = VersionModel(id=new_id("ver"), process_id=process_id, label=label, xml=xml, created_by=created_by)
     session.add(version)
     session.flush()
-    return _to_pydantic_version(version)
+    return _to_pydantic_version(session, version)
 
 
 def list_versions(session: Session, process_id: str) -> list[VersionDetail]:
@@ -380,14 +402,14 @@ def list_versions(session: Session, process_id: str) -> list[VersionDetail]:
     versions = session.scalars(
         select(VersionModel).where(VersionModel.process_id == process_id).order_by(VersionModel.created_at)
     )
-    return [_to_pydantic_version(v) for v in versions]
+    return [_to_pydantic_version(session, v) for v in versions]
 
 
 def get_version(session: Session, process_id: str, version_id: str) -> VersionDetail:
     version = session.get(VersionModel, version_id)
     if version is None or version.process_id != process_id:
         raise NotFoundError("version", version_id)
-    return _to_pydantic_version(version)
+    return _to_pydantic_version(session, version)
 
 
 def get_latest_version(session: Session, process_id: str) -> VersionDetail | None:
@@ -398,11 +420,16 @@ def get_latest_version(session: Session, process_id: str) -> VersionDetail | Non
 # -- blueprint overlay (Epic 7, US7.6/US7.7) ----------------------------------
 
 
-def _to_pydantic_blueprint_overlay(overlay: BlueprintOverlayModel) -> BlueprintOverlay:
+def _to_pydantic_blueprint_overlay(session: Session, overlay: BlueprintOverlayModel) -> BlueprintOverlay:
+    nodes = []
+    for node in overlay.nodes:
+        result = BlueprintNodeResult.model_validate(node)
+        result.overridden_by_name = _resolve_user_name(session, result.overridden_by)
+        nodes.append(result)
     return BlueprintOverlay(
         process_id=overlay.process_id,
         baseline_version_id=overlay.baseline_version_id,
-        nodes=[BlueprintNodeResult.model_validate(node) for node in overlay.nodes],
+        nodes=nodes,
         generated_at=overlay.generated_at,
     )
 
@@ -421,17 +448,23 @@ def set_blueprint_overlay(
         overlay.nodes = node_dicts
         overlay.generated_at = utcnow()
     session.flush()
-    return _to_pydantic_blueprint_overlay(overlay)
+    return _to_pydantic_blueprint_overlay(session, overlay)
 
 
 def get_blueprint_overlay(session: Session, process_id: str) -> BlueprintOverlay | None:
     get_process(session, process_id)  # 404s if missing
     overlay = session.get(BlueprintOverlayModel, process_id)
-    return _to_pydantic_blueprint_overlay(overlay) if overlay is not None else None
+    return _to_pydantic_blueprint_overlay(session, overlay) if overlay is not None else None
 
 
 def update_blueprint_node(
-    session: Session, process_id: str, node_id: str, *, verdict: str, justification: str
+    session: Session,
+    process_id: str,
+    node_id: str,
+    *,
+    verdict: str,
+    justification: str,
+    overridden_by: str | None = None,
 ) -> BlueprintOverlay:
     get_process(session, process_id)  # 404s if missing
     overlay = session.get(BlueprintOverlayModel, process_id)
@@ -449,15 +482,16 @@ def update_blueprint_node(
     match["verdict"] = verdict
     match["overridden"] = True
     match["override_justification"] = justification
+    match["overridden_by"] = overridden_by
     overlay.nodes = updated_nodes
     session.flush()
-    return _to_pydantic_blueprint_overlay(overlay)
+    return _to_pydantic_blueprint_overlay(session, overlay)
 
 
 # -- gap findings (Epic 11) ----------------------------------------------------
 
 
-def _to_pydantic_gap_finding(finding: GapFindingModel) -> GapFinding:
+def _to_pydantic_gap_finding(session: Session, finding: GapFindingModel) -> GapFinding:
     return GapFinding(
         id=finding.id,
         process_id=finding.process_id,
@@ -469,6 +503,8 @@ def _to_pydantic_gap_finding(finding: GapFindingModel) -> GapFinding:
         chosen_option_label=finding.chosen_option_label,
         created_at=finding.created_at,
         decided_at=finding.decided_at,
+        decided_by=finding.decided_by,
+        decided_by_name=_resolve_user_name(session, finding.decided_by),
     )
 
 
@@ -492,7 +528,7 @@ def add_gap_finding(
     )
     session.add(finding)
     session.flush()
-    return _to_pydantic_gap_finding(finding)
+    return _to_pydantic_gap_finding(session, finding)
 
 
 def list_gap_findings(session: Session, process_id: str, status: str | None = None) -> list[GapFinding]:
@@ -501,7 +537,7 @@ def list_gap_findings(session: Session, process_id: str, status: str | None = No
     if status is not None:
         stmt = stmt.where(GapFindingModel.status == status)
     stmt = stmt.order_by(GapFindingModel.created_at)
-    return [_to_pydantic_gap_finding(f) for f in session.scalars(stmt)]
+    return [_to_pydantic_gap_finding(session, f) for f in session.scalars(stmt)]
 
 
 def get_gap_finding(session: Session, process_id: str, finding_id: str) -> GapFindingModel:
@@ -511,22 +547,73 @@ def get_gap_finding(session: Session, process_id: str, finding_id: str) -> GapFi
     return finding
 
 
-def mark_gap_finding_resolved(session: Session, finding: GapFindingModel, *, option_label: str) -> GapFinding:
+def mark_gap_finding_resolved(
+    session: Session, finding: GapFindingModel, *, option_label: str, decided_by: str | None = None
+) -> GapFinding:
     finding.status = "resolved"
     finding.chosen_option_label = option_label
     finding.decided_at = utcnow()
+    finding.decided_by = decided_by
     session.flush()
-    return _to_pydantic_gap_finding(finding)
+    return _to_pydantic_gap_finding(session, finding)
 
 
-def mark_gap_finding_dismissed(session: Session, finding: GapFindingModel) -> GapFinding:
+def mark_gap_finding_dismissed(
+    session: Session, finding: GapFindingModel, *, decided_by: str | None = None
+) -> GapFinding:
     finding.status = "dismissed"
     finding.decided_at = utcnow()
+    finding.decided_by = decided_by
     session.flush()
-    return _to_pydantic_gap_finding(finding)
+    return _to_pydantic_gap_finding(session, finding)
 
 
 def mark_gap_analysis_completed(session: Session, process_id: str) -> None:
     process = get_process(session, process_id)  # 404s if missing
     process.gap_analysis_completed_at = utcnow()
     session.flush()
+
+
+# -- auth (Epic 9/10, US9.9/US10.4) --------------------------------------------
+
+
+def get_or_create_user(session: Session, *, name: str, role: str) -> UserModel:
+    """First login for a name creates it with the submitted role; every
+    later login with that same name reuses the stored role and ignores
+    whatever role is submitted this time -- see UserModel's docstring for
+    why (a viewer must not be able to just re-login claiming "editor")."""
+    existing = session.scalar(select(UserModel).where(UserModel.name == name))
+    if existing is not None:
+        return existing
+    user = UserModel(id=new_id("user"), name=name, role=role)
+    session.add(user)
+    session.flush()
+    return user
+
+
+def create_session(session: Session, user_id: str, *, ttl_days: int = 30) -> SessionModel:
+    # SessionModel.expires_at is a plain (naive) DateTime column, same as
+    # every other timestamp column in this project (Postgres/psycopg
+    # returns them naive on read) -- utcnow() is tz-aware, so its tzinfo
+    # is stripped here rather than mixing naive/aware datetimes, which
+    # raises a TypeError the moment expires_at is compared after a
+    # round-trip through the DB (get_user_for_session below).
+    expires_at = (utcnow() + timedelta(days=ttl_days)).replace(tzinfo=None)
+    record = SessionModel(id=secrets.token_urlsafe(32), user_id=user_id, expires_at=expires_at)
+    session.add(record)
+    session.flush()
+    return record
+
+
+def get_user_for_session(session: Session, session_id: str) -> UserModel | None:
+    record = session.get(SessionModel, session_id)
+    if record is None or record.expires_at < utcnow().replace(tzinfo=None):
+        return None
+    return session.get(UserModel, record.user_id)
+
+
+def delete_session(session: Session, session_id: str) -> None:
+    record = session.get(SessionModel, session_id)
+    if record is not None:
+        session.delete(record)
+        session.flush()

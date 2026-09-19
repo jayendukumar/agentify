@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { analyzeGaps, ApiError, dismissGapFinding, listGapFindings, resolveGapFinding } from '../api/client'
 import type { GapFinding } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 
 const KIND_LABELS: Record<string, string> = {
   structural: 'Structural',
@@ -13,11 +14,13 @@ function GapFindingCard({
   onResolve,
   onDismiss,
   busy,
+  canDecide,
 }: {
   finding: GapFinding
   onResolve: (findingId: string, optionIndex: number) => void
   onDismiss: (findingId: string) => void
   busy: boolean
+  canDecide: boolean
 }) {
   return (
     <li className="gap-finding-card">
@@ -28,17 +31,30 @@ function GapFindingCard({
       {finding.status === 'open' ? (
         <div className="gap-finding-actions">
           {finding.options.map((option, index) => (
-            <button key={index} type="button" onClick={() => onResolve(finding.id, index)} disabled={busy}>
+            <button
+              key={index}
+              type="button"
+              onClick={() => onResolve(finding.id, index)}
+              disabled={busy || !canDecide}
+              title={!canDecide ? 'Editor access required' : undefined}
+            >
               {option.label}
             </button>
           ))}
-          <button type="button" onClick={() => onDismiss(finding.id)} disabled={busy} className="gap-finding-dismiss">
+          <button
+            type="button"
+            onClick={() => onDismiss(finding.id)}
+            disabled={busy || !canDecide}
+            title={!canDecide ? 'Editor access required' : undefined}
+            className="gap-finding-dismiss"
+          >
             Dismiss
           </button>
         </div>
       ) : (
         <div className="gap-finding-decided meta">
           {finding.status === 'resolved' ? `Resolved -- ${finding.chosen_option_label}` : 'Dismissed'}
+          {finding.decided_by_name ? ` (${finding.decided_by_name})` : ''}
         </div>
       )}
     </li>
@@ -46,6 +62,8 @@ function GapFindingCard({
 }
 
 export default function GapReviewPage() {
+  const { user } = useAuth()
+  const isEditor = user?.role === 'editor'
   const { processId } = useParams<{ processId: string }>()
   const [findings, setFindings] = useState<GapFinding[]>([])
   const [loading, setLoading] = useState(true)
@@ -120,7 +138,12 @@ export default function GapReviewPage() {
       </p>
       <h2>Gap Review</h2>
 
-      <button type="button" onClick={handleAnalyze} disabled={analyzing}>
+      <button
+        type="button"
+        onClick={handleAnalyze}
+        disabled={analyzing || !isEditor}
+        title={!isEditor ? 'Editor access required' : undefined}
+      >
         {analyzing ? 'Analyzing...' : 'Re-run analysis'}
       </button>
 
@@ -144,6 +167,7 @@ export default function GapReviewPage() {
             onResolve={handleResolve}
             onDismiss={handleDismiss}
             busy={busyFindingId === finding.id}
+            canDecide={isEditor}
           />
         ))}
       </ul>
@@ -162,6 +186,7 @@ export default function GapReviewPage() {
                   onResolve={handleResolve}
                   onDismiss={handleDismiss}
                   busy={false}
+                  canDecide={isEditor}
                 />
               ))}
             </ul>

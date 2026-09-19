@@ -62,5 +62,24 @@ def fake_llm():
 def client(fake_llm):
     app.dependency_overrides[get_llm_client] = lambda: fake_llm
     with TestClient(app) as test_client:
+        # Epic 9/10, US9.9: every route now requires a logged-in user, most
+        # require "editor". Logging in here once, as an editor, keeps the
+        # ~170 pre-existing tests unchanged -- TestClient persists cookies
+        # across requests on the same instance, same as a browser. Tests
+        # that specifically exercise auth/access-control use a fresh
+        # TestClient (see test_api_auth.py) instead of this fixture.
+        test_client.post("/api/auth/login", json={"name": "test-editor", "role": "editor"})
+        yield test_client
+    app.dependency_overrides.pop(get_llm_client, None)
+
+
+@pytest.fixture
+def viewer_client(fake_llm):
+    """A second logged-in client, as a viewer -- for tests asserting
+    access-control (403 on write endpoints), reusing the client fixture's
+    login-once pattern rather than each test wiring this up itself."""
+    app.dependency_overrides[get_llm_client] = lambda: fake_llm
+    with TestClient(app) as test_client:
+        test_client.post("/api/auth/login", json={"name": "test-viewer", "role": "viewer"})
         yield test_client
     app.dependency_overrides.pop(get_llm_client, None)

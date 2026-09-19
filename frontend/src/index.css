@@ -21,8 +21,21 @@ body {
   padding: 1rem 1.5rem 3rem;
 }
 
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .app-header h1 {
   font-size: 1.3rem;
+}
+
+.app-header-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .app-title-link {
@@ -121,6 +134,44 @@ button:disabled {
   cursor: pointer;
   color: var(--accent);
   margin-bottom: 1rem;
+}
+
+.upload-button.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.privacy-notice {
+  display: block;
+  margin: 0.5rem 0 1rem;
+}
+
+.login-page {
+  max-width: 420px;
+  margin: 3rem auto;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.login-form input,
+.login-form select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
 }
 
 .status {

@@ -24,12 +24,14 @@ export default function BlueprintDetailPanel({
   labelsById,
   onOverride,
   overriding,
+  canOverride,
 }: {
   node: BlueprintNodeResult | null
   label: string | null
   labelsById: Record<string, string>
   onOverride: (verdict: BlueprintVerdict, justification: string) => Promise<void>
   overriding: boolean
+  canOverride: boolean
 }) {
   const [overrideOpen, setOverrideOpen] = useState(false)
   const [verdict, setVerdict] = useState<BlueprintVerdict>('automatable')
@@ -76,6 +78,7 @@ export default function BlueprintDetailPanel({
         {node.overridden && node.override_justification && (
           <div className="element-meta">
             <strong>Override justification:</strong> {node.override_justification}
+            {node.overridden_by_name ? ` (by ${node.overridden_by_name})` : ''}
           </div>
         )}
 
@@ -170,6 +173,8 @@ export default function BlueprintDetailPanel({
               setVerdict(node.verdict)
               setOverrideOpen(true)
             }}
+            disabled={!canOverride}
+            title={!canOverride ? 'Editor access required' : undefined}
           >
             Override assessment
           </button>

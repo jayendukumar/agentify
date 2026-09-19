@@ -8,7 +8,7 @@ from app.db import repository
 from app.gap_analysis.service import run_gap_analysis
 from app.schemas.chat import ChatApplyRequest, ChatMessageRequest, ChatMessageResult, DiagramDiff
 
-from .deps import DbDep, LLMDep
+from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
 
 logger = logging.getLogger("app.api.chat")
 
@@ -16,7 +16,10 @@ router = APIRouter(prefix="/api/processes/{process_id}/chat", tags=["chat"])
 
 
 @router.post("/messages", response_model=ChatMessageResult)
-async def send_chat_message(process_id: str, body: ChatMessageRequest, db: DbDep, llm: LLMDep) -> ChatMessageResult:
+async def send_chat_message(
+    process_id: str, body: ChatMessageRequest, db: DbDep, llm: LLMDep, user: EditorDep
+) -> ChatMessageResult:
+    del user
     repository.get_process(db, process_id)  # 404s if missing
 
     schema = repository.get_process_schema(db, process_id)
@@ -53,14 +56,16 @@ async def send_chat_message(process_id: str, body: ChatMessageRequest, db: DbDep
 
 
 @router.get("/messages", response_model=list[ChatMessageResult])
-def list_chat_messages(process_id: str, db: DbDep) -> list[ChatMessageResult]:
+def list_chat_messages(process_id: str, db: DbDep, user: CurrentUserDep) -> list[ChatMessageResult]:
+    del user
     return repository.list_chat_messages(db, process_id)
 
 
 @router.post("/messages/{message_id}/apply", response_model=ChatMessageResult)
 async def apply_chat_message(
-    process_id: str, message_id: str, body: ChatApplyRequest, db: DbDep, llm: LLMDep
+    process_id: str, message_id: str, body: ChatApplyRequest, db: DbDep, llm: LLMDep, user: EditorDep
 ) -> ChatMessageResult:
+    del user
     message = repository.get_chat_message(db, process_id, message_id)
 
     if not message.needs_confirmation:

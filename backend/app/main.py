@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import blueprint, bpmn, chat, documents, gap_analysis, processes, versions
+from app.api import auth, blueprint, bpmn, chat, documents, gap_analysis, processes, versions
 from app.config import get_settings
 from app.llm.exceptions import (
     LLMAuthenticationError,
@@ -53,10 +53,12 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,  # Epic 9/10, US9.9: the session cookie needs this to cross the :3000/:8000 origin gap
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(processes.router)
 app.include_router(documents.router)
 app.include_router(bpmn.router)

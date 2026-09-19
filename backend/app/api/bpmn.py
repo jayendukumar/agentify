@@ -5,7 +5,7 @@ from app.bpmn.validation import validate_bpmn
 from app.db import repository
 from app.schemas.bpmn import BPMNDocument, BPMNGenerateRequest, BPMNUpdateRequest
 
-from .deps import DbDep, LLMDep
+from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/bpmn", tags=["bpmn"])
 
@@ -23,7 +23,10 @@ def _to_schema(draft) -> BPMNDocument:
 
 
 @router.post("/generate", response_model=BPMNDocument)
-async def generate_bpmn(process_id: str, body: BPMNGenerateRequest, db: DbDep, llm: LLMDep) -> BPMNDocument:
+async def generate_bpmn(
+    process_id: str, body: BPMNGenerateRequest, db: DbDep, llm: LLMDep, user: EditorDep
+) -> BPMNDocument:
+    del user
     repository.get_process(db, process_id)  # 404s if missing
 
     # US3.7: this always regenerates from the process's *current*, fully
@@ -59,7 +62,8 @@ async def generate_bpmn(process_id: str, body: BPMNGenerateRequest, db: DbDep, l
 
 
 @router.get("", response_model=BPMNDocument)
-def get_draft_bpmn(process_id: str, db: DbDep) -> BPMNDocument:
+def get_draft_bpmn(process_id: str, db: DbDep, user: CurrentUserDep) -> BPMNDocument:
+    del user
     draft = repository.get_draft_bpmn(db, process_id)
     if draft is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No draft BPMN yet -- call /generate first")
@@ -67,7 +71,8 @@ def get_draft_bpmn(process_id: str, db: DbDep) -> BPMNDocument:
 
 
 @router.put("", response_model=BPMNDocument)
-def update_draft_bpmn(process_id: str, body: BPMNUpdateRequest, db: DbDep) -> BPMNDocument:
+def update_draft_bpmn(process_id: str, body: BPMNUpdateRequest, db: DbDep, user: EditorDep) -> BPMNDocument:
+    del user
     repository.get_process(db, process_id)  # 404s if missing
 
     if not body.xml.strip():
