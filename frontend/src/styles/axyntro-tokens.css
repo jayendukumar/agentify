@@ -1,0 +1,53 @@
+:root {
+  /* Brand */
+  --axyntro-royal-navy: #18285f;
+  --axyntro-wordmark: #011141;
+  --axyntro-footer-indigo: #0a1560;
+  --axyntro-blue: #006ffb;
+  --axyntro-blue-hover: #0059d6;
+  --axyntro-cyan: #00a4f7;
+  --axyntro-violet: #8a2cfc;
+  --axyntro-violet-bright: #a438fa;
+  --axyntro-gradient: linear-gradient(135deg, #00a4f7 0%, #006ffb 38%, #8a2cfc 100%);
+  --axyntro-hero-gradient: linear-gradient(135deg, #f7f9ff 0%, #edf4ff 55%, #f4ecff 100%);
+
+  /* Neutrals */
+  --axyntro-slate: #344054;
+  --axyntro-muted: #667085;
+  --axyntro-border: #d0d5dd;
+  --axyntro-mist: #eaecf0;
+  --axyntro-page: #f7f9ff;
+  --axyntro-blue-mist: #edf4ff;
+  --axyntro-violet-mist: #f4ecff;
+  --axyntro-white: #ffffff;
+
+  /* Semantics */
+  --axyntro-success: #067647;
+  --axyntro-success-bg: #ecfdf3;
+  --axyntro-warning: #b54708;
+  --axyntro-warning-bg: #fffaeb;
+  --axyntro-error: #b42318;
+  --axyntro-error-bg: #fef3f2;
+  --axyntro-info: #026aa2;
+  --axyntro-info-bg: #f0f9ff;
+
+  /* Typography */
+  --axyntro-font-display: "Manrope", Arial, sans-serif;
+  --axyntro-font-body: "Inter", Arial, sans-serif;
+
+  /* Spacing */
+  --axyntro-space-1: 4px;
+  --axyntro-space-2: 8px;
+  --axyntro-space-3: 16px;
+  --axyntro-space-4: 24px;
+  --axyntro-space-5: 32px;
+  --axyntro-space-6: 48px;
+  --axyntro-space-7: 64px;
+
+  /* Shape and elevation */
+  --axyntro-radius-control: 8px;
+  --axyntro-radius-card: 12px;
+  --axyntro-radius-feature: 16px;
+  --axyntro-shadow-card: 0 8px 24px rgba(24, 40, 95, 0.10);
+  --axyntro-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #00a4f7;
+}

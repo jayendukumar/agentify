@@ -1,6 +1,7 @@
 import { Link, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import LoginPage from './auth/LoginPage'
+import BrandLogo from './components/BrandLogo'
 import ErrorBoundary from './components/ErrorBoundary'
 import BlueprintPage from './pages/BlueprintPage'
 import DiagramPage from './pages/DiagramPage'
@@ -25,14 +26,15 @@ function AppHeader() {
   return (
     <header className="app-header">
       <Link to="/" className="app-title-link">
-        <h1>Agentic Solution Generator</h1>
+        <BrandLogo variant="full" tone="white" className="app-header-logo" />
+        <span className="app-header-tagline">Agentic Solution Generator</span>
       </Link>
       {user && (
         <span className="app-header-user">
-          <span className="meta">
-            {user.name} ({user.role})
+          <span className="app-header-user-name">
+            {user.name} <span className="badge role-badge">{user.role}</span>
           </span>
-          <button type="button" onClick={() => void logout()}>
+          <button type="button" className="button-secondary" onClick={() => void logout()}>
             Log out
           </button>
         </span>
@@ -63,13 +65,15 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <div className="app">
+      <div className="app-shell">
         <AppHeader />
-        <main>
-          <ErrorBoundary>
-            <AppRoutes />
-          </ErrorBoundary>
-        </main>
+        <div className="app">
+          <main>
+            <ErrorBoundary>
+              <AppRoutes />
+            </ErrorBoundary>
+          </main>
+        </div>
       </div>
     </AuthProvider>
   )

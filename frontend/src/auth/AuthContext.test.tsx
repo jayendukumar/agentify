@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { User } from '../api/types'
@@ -7,11 +7,15 @@ import { AuthProvider, useAuth } from './AuthContext'
 const getCurrentUser = vi.fn()
 const login = vi.fn()
 const logout = vi.fn()
+let unauthorizedListener: (() => void) | null = null
 
 vi.mock('../api/client', () => ({
   getCurrentUser: (...args: unknown[]) => getCurrentUser(...args),
   login: (...args: unknown[]) => login(...args),
   logout: (...args: unknown[]) => logout(...args),
+  onUnauthorized: (listener: () => void) => {
+    unauthorizedListener = listener
+  },
 }))
 
 const editor: User = { id: 'user-1', name: 'Alice', role: 'editor', created_at: '2026-01-01T00:00:00Z' }
@@ -100,6 +104,23 @@ describe('AuthContext', () => {
 
     await screen.findByText('logged in as Alice (editor)')
     await user.click(screen.getByRole('button', { name: /log out/i }))
+
+    await waitFor(() => expect(screen.getByText('logged out')).toBeInTheDocument())
+  })
+
+  it('drops back to logged-out when any API call reports the session expired', async () => {
+    getCurrentUser.mockResolvedValue(editor)
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    )
+
+    await screen.findByText('logged in as Alice (editor)')
+
+    // Simulates client.ts's request() calling this after any 401 response,
+    // e.g. a diagram/blueprint/chat call made after the session's expiry.
+    act(() => unauthorizedListener?.())
 
     await waitFor(() => expect(screen.getByText('logged out')).toBeInTheDocument())
   })

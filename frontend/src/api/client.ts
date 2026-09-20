@@ -1,4 +1,5 @@
 import type {
+  AgentArtifact,
   ApiErrorBody,
   BlueprintOverlay,
   BlueprintVerdict,
@@ -27,6 +28,29 @@ export class ApiError extends Error {
   }
 }
 
+// Any request can come back 401 mid-session once the server-side session
+// expires (backend/app/api/deps.py) -- not just the initial /api/auth/me
+// check. AuthContext registers itself here so a 401 from *any* endpoint
+// drops the user back to the login screen, instead of every call site
+// having to notice and redirect itself.
+type UnauthorizedListener = () => void
+let unauthorizedListener: UnauthorizedListener | null = null
+
+export function onUnauthorized(listener: UnauthorizedListener): void {
+  unauthorizedListener = listener
+}
+
+async function readErrorDetail(response: Response): Promise<string> {
+  let detail = response.statusText
+  try {
+    const body = (await response.json()) as ApiErrorBody
+    detail = body.detail ?? detail
+  } catch {
+    // response body wasn't JSON -- fall back to statusText
+  }
+  return detail
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -38,13 +62,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    let detail = response.statusText
-    try {
-      const body = (await response.json()) as ApiErrorBody
-      detail = body.detail ?? detail
-    } catch {
-      // response body wasn't JSON -- fall back to statusText
-    }
+    const detail = await readErrorDetail(response)
+    if (response.status === 401) unauthorizedListener?.()
     throw new ApiError(response.status, detail)
   }
 
@@ -123,19 +142,23 @@ export function overrideBlueprintNode(
   })
 }
 
+// Epic 12
+export function generateAgentArtifact(processId: string, nodeId: string): Promise<AgentArtifact> {
+  return request(`/api/processes/${processId}/blueprint/nodes/${nodeId}/agent-artifact`, { method: 'POST' })
+}
+
+export function listAgentArtifacts(processId: string): Promise<AgentArtifact[]> {
+  return request(`/api/processes/${processId}/blueprint/agent-artifacts`)
+}
+
 // Not JSON (returns text/markdown), so this bypasses the request() helper.
 export async function exportBlueprint(processId: string): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/api/processes/${processId}/blueprint/export?format=markdown`, {
     credentials: 'include',
   })
   if (!response.ok) {
-    let detail = response.statusText
-    try {
-      const body = (await response.json()) as ApiErrorBody
-      detail = body.detail ?? detail
-    } catch {
-      // response body wasn't JSON -- fall back to statusText
-    }
+    const detail = await readErrorDetail(response)
+    if (response.status === 401) unauthorizedListener?.()
     throw new ApiError(response.status, detail)
   }
   return response.text()
@@ -234,13 +257,8 @@ export async function uploadDocuments(processId: string, files: FileList | File[
   })
 
   if (!response.ok) {
-    let detail = response.statusText
-    try {
-      const body = (await response.json()) as ApiErrorBody
-      detail = body.detail ?? detail
-    } catch {
-      // response body wasn't JSON -- fall back to statusText
-    }
+    const detail = await readErrorDetail(response)
+    if (response.status === 401) unauthorizedListener?.()
     throw new ApiError(response.status, detail)
   }
 

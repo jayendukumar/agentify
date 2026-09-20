@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { getCurrentUser, login as apiLogin, logout as apiLogout } from '../api/client'
+import { getCurrentUser, login as apiLogin, logout as apiLogout, onUnauthorized } from '../api/client'
 import type { Role, User } from '../api/types'
 
 interface AuthContextValue {
@@ -33,6 +33,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Any API call can 401 once the session expires server-side, not just
+    // this initial check -- client.ts calls this to drop the user straight
+    // back to the login screen (App.tsx renders <LoginPage /> whenever
+    // `user` is null) instead of leaving a stale, silently-failing page up.
+    onUnauthorized(() => setUser(null))
     getCurrentUser()
       .then(setUser)
       .finally(() => setLoading(false))

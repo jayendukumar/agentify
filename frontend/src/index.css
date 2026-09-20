@@ -1,10 +1,49 @@
+@import './styles/axyntro-tokens.css';
+
 :root {
   color-scheme: light dark;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --border: #d0d0d8;
-  --muted: #6b7280;
-  --accent: #4338ca;
-  --danger: #b91c1c;
+  font-family: var(--axyntro-font-body);
+
+  /* App-level names aliased onto the Axyntro token set (see
+     frontend/brandassets/axyntro_brand_system/AXYNTRO_BRAND_STANDARDS.md
+     v2.0, s.11 governance: retheme by editing axyntro-tokens.css, never by
+     hardcoding hex here). --accent (Agent Blue) is both the primary button
+     colour and the link/focus/highlight colour per s.8; --heading (Royal
+     Navy) is headings/navigation only, never a general text or bg colour. */
+  --border: var(--axyntro-border);
+  --muted: var(--axyntro-muted);
+  --accent: var(--axyntro-blue);
+  --accent-hover: var(--axyntro-blue-hover);
+  --accent-soft: var(--axyntro-page);
+  --danger: var(--axyntro-error);
+  --ink: var(--axyntro-slate);
+  --heading: var(--axyntro-royal-navy);
+  --surface: var(--axyntro-white);
+  --surface-muted: var(--axyntro-page);
+  --radius: var(--axyntro-radius-card);
+}
+
+h1,
+h2,
+h3,
+.brand-wordmark,
+.stat-value {
+  font-family: var(--axyntro-font-display);
+  color: var(--heading);
+}
+
+a {
+  color: var(--accent);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: var(--axyntro-focus-ring);
 }
 
 * {
@@ -13,12 +52,22 @@
 
 body {
   margin: 0;
+  background: var(--surface-muted);
+  color: var(--ink);
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .app {
-  max-width: 800px;
+  width: 100%;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 1rem 1.5rem 3rem;
+  padding: 1.5rem 1.5rem 3rem;
+  flex: 1;
 }
 
 .app-header {
@@ -26,21 +75,78 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-}
-
-.app-header h1 {
-  font-size: 1.3rem;
-}
-
-.app-header-user {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  padding: 0.85rem 1.5rem;
+  /* Brand standards s.3/s.5: Royal Navy carries headings, navigation and
+     structure (the 20% band) -- product chrome, not the 7%/3% blue/violet
+     interaction band. */
+  background: var(--heading);
+  color: var(--axyntro-white);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .app-title-link {
   color: inherit;
   text-decoration: none;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.brand-logo {
+  height: 1.6rem;
+  width: auto;
+  display: block;
+}
+
+.brand-logo.brand-wordmark {
+  height: auto;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--axyntro-white);
+  letter-spacing: -0.01em;
+}
+
+.app-header-tagline {
+  font-size: 0.8rem;
+  color: var(--axyntro-blue-mist);
+  opacity: 0.85;
+}
+
+.app-header-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.app-header-user-name {
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.role-badge {
+  text-transform: capitalize;
+  /* .badge's background is a light neutral -- pin its own text color
+     rather than inheriting the header's white, or it disappears against
+     the Royal Navy nav bar. */
+  color: var(--ink);
+}
+
+/* Brand standards s.8: secondary button is white surface, Agent Blue
+   border and text -- reads correctly sitting on the navy header too. */
+.button-secondary {
+  background: var(--axyntro-white);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.button-secondary:not(:disabled):hover {
+  background: var(--axyntro-blue-mist);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .page h2 {
@@ -60,13 +166,20 @@ body {
   border-radius: 6px;
 }
 
+/* Brand standards v2.0 s.8: primary button is Agent Blue with a white
+   label, Button Blue on hover. */
 button {
   padding: 0.5rem 1rem;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: white;
-  border-radius: 6px;
+  color: var(--axyntro-white);
+  border-radius: var(--axyntro-radius-control);
   cursor: pointer;
+}
+
+button:not(:disabled):hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 button:disabled {
@@ -84,7 +197,6 @@ button:disabled {
   margin-left: 0.5rem;
 }
 
-.process-list,
 .document-list {
   list-style: none;
   padding: 0;
@@ -93,13 +205,94 @@ button:disabled {
   gap: 0.5rem;
 }
 
-.process-list li {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
+.home-page {
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* Brand standards v2.0 s.2: the approved light hero gradient is the
+   default hero background -- applied here since this literally is one. */
+.home-hero {
+  background: var(--axyntro-hero-gradient);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.75rem;
+}
+
+.home-hero h2 {
+  margin: 0 0 0.25rem;
+}
+
+.home-hero .meta {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.home-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.process-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.process-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.process-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.06);
+}
+
+.process-card-name {
+  font-weight: 600;
+}
+
+.process-card-badges {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.15rem;
 }
 
 .document-list li {
@@ -148,15 +341,68 @@ button:disabled {
   margin: 0.5rem 0 1rem;
 }
 
+/* Brand standards v2.0 s.2/s.10: the approved light hero gradient is the
+   default website/hero background specifically "without creating a heavy
+   dark first impression" -- the saturated brand gradient stays reserved
+   for the logo and small transformation-moment accents, not full-bleed. */
 .login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--axyntro-hero-gradient);
+}
+
+.login-card {
+  width: 100%;
   max-width: 420px;
-  margin: 3rem auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  box-shadow: var(--axyntro-shadow-card);
+  text-align: center;
+}
+
+.login-logo {
+  height: 2.25rem;
+  margin: 0 auto 0.5rem;
+}
+
+.login-logo.brand-wordmark {
+  height: auto;
+  font-size: 1.6rem;
+  /* Brand standards s.6: #011141 is the approved wordmark colour, reserved
+     for the literal wordmark -- this text-fallback IS that wordmark. */
+  color: var(--axyntro-wordmark);
+}
+
+.login-tagline {
+  margin: 0 0 0.15rem;
+  color: var(--heading);
+  font-family: var(--axyntro-font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.login-card .meta {
+  margin: 0 0 1.25rem;
+  display: block;
+  text-align: left;
+}
+
+/* Overrides the block-left default above for this one centered subtitle
+   line -- needs to out-specificity `.login-card .meta`. */
+.login-card .login-subtagline.meta {
+  text-align: center;
 }
 
 .login-form {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  text-align: left;
 }
 
 .login-form label {
@@ -178,15 +424,17 @@ button:disabled {
   font-size: 0.75rem;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  background: #e5e7eb;
+  background: var(--axyntro-mist);
 }
 
 .status-done {
-  background: #d1fae5;
+  background: var(--axyntro-success-bg);
+  color: var(--axyntro-success);
 }
 
 .status-failed {
-  background: #fee2e2;
+  background: var(--axyntro-error-bg);
+  color: var(--axyntro-error);
 }
 
 .stepper {
@@ -219,9 +467,9 @@ button:disabled {
 }
 
 .stepper-step-done .stepper-marker {
-  border-color: #10b981;
-  background: #10b981;
-  color: white;
+  border-color: var(--axyntro-success);
+  background: var(--axyntro-success);
+  color: var(--axyntro-white);
 }
 
 .stepper-step-current .stepper-marker {
@@ -285,20 +533,23 @@ button:disabled {
   font-size: 0.75rem;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  background: #e5e7eb;
+  background: var(--axyntro-mist);
   white-space: nowrap;
 }
 
 .badge.confidence-high {
-  background: #d1fae5;
+  background: var(--axyntro-success-bg);
+  color: var(--axyntro-success);
 }
 
 .badge.confidence-medium {
-  background: #fef3c7;
+  background: var(--axyntro-warning-bg);
+  color: var(--axyntro-warning);
 }
 
 .badge.confidence-low {
-  background: #fee2e2;
+  background: var(--axyntro-error-bg);
+  color: var(--axyntro-error);
 }
 
 .actor-list {
@@ -465,7 +716,7 @@ button:disabled {
 }
 
 .chat-message-assistant {
-  background: #f3f4f6;
+  background: var(--axyntro-page);
 }
 
 .chat-diff-preview {
@@ -546,18 +797,18 @@ button:disabled {
    -- targets the shape's own SVG node (:first-child of .djs-visual), the
    same convention bpmn-js's own highlighting examples use. */
 .blueprint-node-automatable .djs-visual > :first-child {
-  fill: #d1fae5 !important;
-  stroke: #059669 !important;
+  fill: var(--axyntro-success-bg) !important;
+  stroke: var(--axyntro-success) !important;
 }
 
 .blueprint-node-partial .djs-visual > :first-child {
-  fill: #fef3c7 !important;
-  stroke: #d97706 !important;
+  fill: var(--axyntro-warning-bg) !important;
+  stroke: var(--axyntro-warning) !important;
 }
 
 .blueprint-node-not-automatable .djs-visual > :first-child {
-  fill: #fee2e2 !important;
-  stroke: #dc2626 !important;
+  fill: var(--axyntro-error-bg) !important;
+  stroke: var(--axyntro-error) !important;
 }
 
 .blueprint-title {
@@ -565,15 +816,18 @@ button:disabled {
 }
 
 .badge.verdict-automatable {
-  background: #d1fae5;
+  background: var(--axyntro-success-bg);
+  color: var(--axyntro-success);
 }
 
 .badge.verdict-partial {
-  background: #fef3c7;
+  background: var(--axyntro-warning-bg);
+  color: var(--axyntro-warning);
 }
 
 .badge.verdict-not_automatable {
-  background: #fee2e2;
+  background: var(--axyntro-error-bg);
+  color: var(--axyntro-error);
 }
 
 .blueprint-summary {
@@ -626,6 +880,18 @@ button:disabled {
 .agent-spec ul {
   margin: 0.2rem 0 0;
   padding-left: 1.1rem;
+}
+
+.agent-artifact {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.agent-artifact-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
 }
 
 .blueprint-override-form {
