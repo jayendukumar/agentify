@@ -1,7 +1,8 @@
 """DB-backed persistence for what Epic 2 owns (processes, documents, the
 extracted process schema, embeddings) plus Epic 3's draft BPMN, Epic 5's
-chat messages, Epic 6's finalized versions, and Epic 7's blueprint
-overlay -- see app/db/models.py's module docstring.
+chat messages, Epic 6's finalized versions, Epic 7's blueprint overlay,
+and Epic 12's generated agent artifacts -- see app/db/models.py's module
+docstring.
 """
 
 from __future__ import annotations
@@ -12,10 +13,12 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agents.generation import build_agent_definition, group_key_for, resolve_group
 from app.ids import new_id, utcnow
 from app.ingestion.embeddings import embed_texts
 from app.ingestion.extractors import ExtractedBlock
 from app.ingestion.merge import merge_process_schemas
+from app.schemas.agents import AgentArtifact, AgentDefinition
 from app.schemas.blueprint import BlueprintNodeResult, BlueprintOverlay
 from app.schemas.chat import ChatMessageResult
 from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema, SourceRef
@@ -26,6 +29,7 @@ from app.store import NotFoundError
 
 from .models import (
     ActorModel,
+    AgentArtifactModel,
     BlueprintOverlayModel,
     BPMNDraftModel,
     ChatMessageModel,
@@ -486,6 +490,104 @@ def update_blueprint_node(
     overlay.nodes = updated_nodes
     session.flush()
     return _to_pydantic_blueprint_overlay(session, overlay)
+
+
+# -- agent artifacts (Epic 12) ------------------------------------------------
+
+
+def _is_agent_artifact_stale(overlay: BlueprintOverlayModel | None, artifact: AgentArtifactModel) -> bool:
+    """US12.4: computed on every read rather than a stored flag -- see
+    AgentArtifactModel's docstring for why. Stale if the blueprint was
+    regenerated against a different baseline, or if any node in this
+    artifact's group no longer matches the exact blueprint entry it was
+    generated from (an override, or a fresh per-node result from a
+    same-baseline regenerate)."""
+    if overlay is None or overlay.baseline_version_id != artifact.source_baseline_version_id:
+        return True
+    current_by_id = {node.get("node_id"): node for node in overlay.nodes}
+    for snapshot_node in artifact.source_node_snapshot:
+        if current_by_id.get(snapshot_node.get("node_id")) != snapshot_node:
+            return True
+    return False
+
+
+def _to_pydantic_agent_artifact(session: Session, artifact: AgentArtifactModel, *, is_stale: bool) -> AgentArtifact:
+    return AgentArtifact(
+        id=artifact.id,
+        process_id=artifact.process_id,
+        group_key=artifact.group_key,
+        node_ids=artifact.node_ids,
+        primary_node_id=artifact.primary_node_id,
+        status="stale" if is_stale else "generated",
+        definition=AgentDefinition.model_validate(artifact.definition),
+        baseline_version_id=artifact.source_baseline_version_id,
+        generated_at=artifact.generated_at,
+        generated_by=artifact.generated_by,
+        generated_by_name=_resolve_user_name(session, artifact.generated_by),
+    )
+
+
+def generate_agent_artifact(
+    session: Session, process_id: str, node_id: str, *, generated_by: str | None = None
+) -> AgentArtifact:
+    get_process(session, process_id)  # 404s if missing
+    overlay_model = session.get(BlueprintOverlayModel, process_id)
+    if overlay_model is None:
+        raise NotFoundError("blueprint", process_id)
+
+    overlay = _to_pydantic_blueprint_overlay(session, overlay_model)
+    group = resolve_group(overlay.nodes, node_id)
+    node_ids = sorted(node.node_id for node in group)
+    group_key = group_key_for(node_ids)
+    definition = build_agent_definition(group, primary_node_id=node_id)
+    snapshot = [dict(node) for node in overlay_model.nodes if node.get("node_id") in node_ids]
+
+    artifact = session.scalar(
+        select(AgentArtifactModel).where(
+            AgentArtifactModel.process_id == process_id, AgentArtifactModel.group_key == group_key
+        )
+    )
+    if artifact is None:
+        artifact = AgentArtifactModel(
+            id=new_id("agent"),
+            process_id=process_id,
+            group_key=group_key,
+            node_ids=node_ids,
+            primary_node_id=node_id,
+            definition=definition.model_dump(),
+            source_baseline_version_id=overlay.baseline_version_id,
+            source_node_snapshot=snapshot,
+            generated_by=generated_by,
+        )
+        session.add(artifact)
+    else:
+        # US12.4: regenerating updates the same row in place (matches
+        # BlueprintOverlayModel's own "replace wholesale" convention) --
+        # node_ids/group_key never change for an existing row since the
+        # group_key IS derived from node_ids.
+        artifact.primary_node_id = node_id
+        artifact.definition = definition.model_dump()
+        artifact.source_baseline_version_id = overlay.baseline_version_id
+        artifact.source_node_snapshot = snapshot
+        artifact.generated_by = generated_by
+        artifact.generated_at = utcnow()
+
+    session.flush()
+    return _to_pydantic_agent_artifact(session, artifact, is_stale=False)
+
+
+def list_agent_artifacts(session: Session, process_id: str) -> list[AgentArtifact]:
+    get_process(session, process_id)  # 404s if missing
+    overlay_model = session.get(BlueprintOverlayModel, process_id)
+    artifacts = session.scalars(
+        select(AgentArtifactModel)
+        .where(AgentArtifactModel.process_id == process_id)
+        .order_by(AgentArtifactModel.generated_at)
+    )
+    return [
+        _to_pydantic_agent_artifact(session, artifact, is_stale=_is_agent_artifact_stale(overlay_model, artifact))
+        for artifact in artifacts
+    ]
 
 
 # -- gap findings (Epic 11) ----------------------------------------------------

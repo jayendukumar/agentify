@@ -2,8 +2,8 @@ import { forwardRef, useEffect } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BlueprintOverlay, ProcessDetail, VersionDetail } from '../api/types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentArtifact, BlueprintOverlay, ProcessDetail, VersionDetail } from '../api/types'
 import BlueprintPage from './BlueprintPage'
 
 const getProcess = vi.fn()
@@ -12,6 +12,8 @@ const getVersion = vi.fn()
 const generateBlueprint = vi.fn()
 const overrideBlueprintNode = vi.fn()
 const exportBlueprint = vi.fn()
+const generateAgentArtifact = vi.fn()
+const listAgentArtifacts = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -27,6 +29,8 @@ vi.mock('../api/client', () => ({
   generateBlueprint: (...args: unknown[]) => generateBlueprint(...args),
   overrideBlueprintNode: (...args: unknown[]) => overrideBlueprintNode(...args),
   exportBlueprint: (...args: unknown[]) => exportBlueprint(...args),
+  generateAgentArtifact: (...args: unknown[]) => generateAgentArtifact(...args),
+  listAgentArtifacts: (...args: unknown[]) => listAgentArtifacts(...args),
 }))
 
 // BlueprintCanvas depends on real bpmn-js/SVG layout -- stubbed here so
@@ -123,6 +127,10 @@ function renderPage() {
 }
 
 describe('BlueprintPage', () => {
+  beforeEach(() => {
+    listAgentArtifacts.mockResolvedValue([])
+  })
+
   afterEach(() => {
     vi.clearAllMocks()
     stubSelectedId = null
@@ -184,6 +192,82 @@ describe('BlueprintPage', () => {
 
     expect(await screen.findByText('Request Reviewer Agent')).toBeInTheDocument()
     expect(screen.getByText(/reviews incoming requests against policy/i)).toBeInTheDocument()
+  })
+
+  it('generates an agent artifact for the selected node', async () => {
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(overlay)
+    getVersion.mockResolvedValue(versionDetail)
+    const artifact: AgentArtifact = {
+      id: 'agent-1',
+      process_id: 'proc-1',
+      group_key: 'Task_a',
+      node_ids: ['Task_a'],
+      primary_node_id: 'Task_a',
+      status: 'generated',
+      definition: {
+        name: 'Request Reviewer Agent',
+        purpose: 'Reviews incoming requests against policy.',
+        trigger: 'New request submitted',
+        system_prompt: 'You are Request Reviewer Agent...',
+        input_schema: [],
+        output_schema: [],
+        tools_systems_needed: [],
+        human_checkpoint: 'none',
+        model: 'test-model',
+      },
+      baseline_version_id: 'ver-1',
+      generated_at: '2026-01-03T00:00:00Z',
+      generated_by: 'user-1',
+      generated_by_name: 'Alice',
+    }
+    generateAgentArtifact.mockResolvedValue(artifact)
+    listAgentArtifacts.mockResolvedValueOnce([]).mockResolvedValueOnce([artifact])
+    stubSelectedId = 'Task_a'
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('Request Reviewer Agent')
+    await user.click(screen.getByRole('button', { name: /^generate agent$/i }))
+
+    await waitFor(() => expect(generateAgentArtifact).toHaveBeenCalledWith('proc-1', 'Task_a'))
+    expect(await screen.findByText('generated')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /regenerate agent/i })).toBeInTheDocument()
+  })
+
+  it('shows a stale badge for an artifact whose blueprint node changed', async () => {
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(overlay)
+    getVersion.mockResolvedValue(versionDetail)
+    listAgentArtifacts.mockResolvedValue([
+      {
+        id: 'agent-1',
+        process_id: 'proc-1',
+        group_key: 'Task_a',
+        node_ids: ['Task_a'],
+        primary_node_id: 'Task_a',
+        status: 'stale',
+        definition: {
+          name: 'Request Reviewer Agent',
+          purpose: 'Reviews incoming requests against policy.',
+          trigger: 'New request submitted',
+          system_prompt: 'You are Request Reviewer Agent...',
+          input_schema: [],
+          output_schema: [],
+          tools_systems_needed: [],
+          human_checkpoint: 'none',
+          model: 'test-model',
+        },
+        baseline_version_id: 'ver-1',
+        generated_at: '2026-01-03T00:00:00Z',
+        generated_by: null,
+        generated_by_name: null,
+      } satisfies AgentArtifact,
+    ])
+    stubSelectedId = 'Task_a'
+    renderPage()
+
+    expect(await screen.findByText(/stale -- regenerate/i)).toBeInTheDocument()
   })
 
   it('submits an override with a justification', async () => {

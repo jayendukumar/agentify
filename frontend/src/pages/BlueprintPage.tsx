@@ -3,13 +3,15 @@ import { Link, useParams } from 'react-router-dom'
 import {
   ApiError,
   exportBlueprint,
+  generateAgentArtifact,
   generateBlueprint,
   getBlueprint,
   getProcess,
   getVersion,
+  listAgentArtifacts,
   overrideBlueprintNode,
 } from '../api/client'
-import type { BlueprintOverlay, BlueprintVerdict, ProcessDetail } from '../api/types'
+import type { AgentArtifact, BlueprintOverlay, BlueprintVerdict, ProcessDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import BlueprintCanvas from '../components/BlueprintCanvas'
 import BlueprintDetailPanel from '../components/BlueprintDetailPanel'
@@ -29,6 +31,7 @@ export default function BlueprintPage() {
   const [versionXml, setVersionXml] = useState<string | null>(null)
   const [labelsById, setLabelsById] = useState<Record<string, string>>({})
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [artifacts, setArtifacts] = useState<AgentArtifact[]>([])
 
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -36,6 +39,7 @@ export default function BlueprintPage() {
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [overriding, setOverriding] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [generatingAgent, setGeneratingAgent] = useState(false)
 
   const loadVersionXml = useCallback(
     async (versionId: string) => {
@@ -61,6 +65,8 @@ export default function BlueprintPage() {
         setOverlay(blueprintOverlay)
         if (blueprintOverlay) {
           await loadVersionXml(blueprintOverlay.baseline_version_id)
+          const artifactList = await listAgentArtifacts(processId)
+          if (!cancelled) setArtifacts(artifactList)
         }
       })
       .catch((err) => {
@@ -84,6 +90,10 @@ export default function BlueprintPage() {
       setOverlay(result)
       setSelectedNodeId(null)
       await loadVersionXml(result.baseline_version_id)
+      // Existing agent artifacts aren't deleted by a blueprint regenerate,
+      // but their staleness (computed server-side, US12.4) may have
+      // changed -- refetch rather than assume.
+      setArtifacts(await listAgentArtifacts(processId))
     } catch (err) {
       setGenerateError(err instanceof ApiError ? err.message : 'Failed to generate blueprint')
     } finally {
@@ -97,8 +107,20 @@ export default function BlueprintPage() {
     try {
       const result = await overrideBlueprintNode(processId, selectedNodeId, verdict, justification)
       setOverlay(result)
+      setArtifacts(await listAgentArtifacts(processId))
     } finally {
       setOverriding(false)
+    }
+  }
+
+  async function handleGenerateAgent() {
+    if (!processId || !selectedNodeId) return
+    setGeneratingAgent(true)
+    try {
+      await generateAgentArtifact(processId, selectedNodeId)
+      setArtifacts(await listAgentArtifacts(processId))
+    } finally {
+      setGeneratingAgent(false)
     }
   }
 
@@ -152,6 +174,7 @@ export default function BlueprintPage() {
   }, [overlay])
 
   const selectedNode = overlay?.nodes.find((n) => n.node_id === selectedNodeId) ?? null
+  const selectedArtifact = artifacts.find((a) => selectedNodeId && a.node_ids.includes(selectedNodeId)) ?? null
 
   if (!processId) return <p>Missing process id.</p>
 
@@ -266,6 +289,10 @@ export default function BlueprintPage() {
           onOverride={handleOverride}
           overriding={overriding}
           canOverride={isEditor}
+          artifact={selectedArtifact}
+          onGenerateAgent={handleGenerateAgent}
+          generatingAgent={generatingAgent}
+          canGenerateAgent={isEditor}
         />
       </div>
     </div>

@@ -1114,3 +1114,154 @@ containers and restarted the native dev servers afterward -- Docker isn't
 meant to replace the day-to-day dev loop (per the "simple built
 containers, not hot-reload" choice), so leaving them running would have
 left active development pointed at non-reloading containers instead.
+
+## 2026-09-20 -- Axyntro brand pack integration
+
+### Nav bar recolored to Midnight Navy, not left white with blue accents
+
+The frontend was rebranded from the generic "Agentic Solution Generator"
+placeholder to Axyntro using the brand pack dropped at
+`frontend/brandassets/` (`axyntro_brand_system/AXYNTRO_BRAND_STANDARDS.md`,
+`axyntro-tokens.css`/`.json`, `axyntro_logo_package/`). The one real design
+call: `AppHeader` (`frontend/src/App.tsx`) went from a plain white bar to a
+solid Midnight Navy (`#05072E`) surface with the white-tone logo, rather
+than keeping white with blue accents. Reason: the brand doc's s.5 "Colour
+proportions" explicitly assigns Midnight Navy/Deep Indigo to "structure,
+navigation and hierarchy" (the 30% band) and reserves Agent Blue/Cyan/
+Violet for the 10% "interaction and brand energy" band -- a white nav with
+blue highlights would have inverted that ratio the brand doc calls out by
+name. Primary buttons (Midnight Navy, Agent Blue on hover) and the login
+page (Midnight Navy backdrop with two soft cyan/violet glows behind a
+white card) follow the same read of s.5/s.8/s.10.
+
+### Consumed the vendor token file directly instead of hand-copying hex values
+
+`axyntro-tokens.css` was copied verbatim into `frontend/src/styles/` and
+pulled into `index.css` via `@import`, with the app's existing semantic
+names (`--accent`, `--ink`, `--border`, `--surface`, etc.) aliased onto the
+`--axyntro-*` tokens rather than redefining their hex values locally. This
+follows the brand doc's own s.11 governance rule ("consume the supplied
+token names in code; prohibit raw hex values through linting except
+inside the token file") -- a retheme now only ever touches the token file
+or the one alias block, never the ~40 call sites across the stylesheet.
+All hardcoded status colors (badges, the blueprint canvas overlay fills,
+stepper/version pills) were swept to the brand's semantic
+success/warning/error tokens in the same pass, since they were the only
+remaining raw hex values in `index.css`.
+
+### Not live-browser-verified
+
+`tsc -b --noEmit` and the full vitest suite (48 tests) pass after the
+change, but the Claude-in-Chrome extension was not connected in this
+environment, so the visual result (contrast on the navy header, logo
+rendering, login page glow) has not actually been seen rendered -- only
+reasoned about from the brand doc and the source PNGs. Should be checked
+against the running dev server before treating this as done.
+
+### Follow-up same day: brand system replaced with v2.0, several tokens renamed/removed
+
+The user swapped `frontend/brandassets/axyntro_brand_system/` for a new
+"lighter digital system" version a few hours later (same session) -- logo
+package files unchanged, only the standards doc and token files. Notable
+renames that required a code sweep, not just a token-file refresh:
+`--axyntro-midnight` -> `--axyntro-royal-navy` (a visibly lighter navy,
+`#05072E` -> `#18285F`), `--axyntro-cloud` split into `--axyntro-page`
+plus new `--axyntro-blue-mist`/`--axyntro-violet-mist`, and
+`--axyntro-ink` removed entirely (v2's neutral table only defines Royal
+Navy for headings and Slate for body/secondary text, no single catch-all
+"ink"). Reflected that split in `index.css`'s alias block: `--ink` now
+points at `--axyntro-slate` (body text) and a new `--heading` alias points
+at `--axyntro-royal-navy`, applied to h1/h2/h3 and the nav bar background.
+
+Two decisions reversed from the v1 pass, both because v2's own spec
+changed, not a change of mind: primary buttons went from Midnight-Navy-
+with-blue-hover back to **Agent Blue with Button-Blue-hover** (v1 s.8 said
+navy primary buttons; v2 s.8 explicitly says Agent Blue primary, Button
+Blue #0059D6 hover -- a new token added just for this). And the login
+page's dark Midnight-Navy-plus-glow backdrop was replaced with v2's new
+"approved light hero gradient" token, which v2 s.2 describes by name as
+the default hero/campaign background chosen specifically "without
+creating a heavy dark first impression" -- directly superseding the v1
+choice to open on a dark screen. Applied the same hero-gradient token to
+the home page's `.home-hero` section for the same reason (it was already
+named that). The Royal-Navy header itself was kept as-is, just recolored
+-- v2 still assigns navy to "headings, navigation and hierarchy" (s.3),
+just at a lighter shade and a smaller proportion of the page (30% -> 20%
+per s.5, with white/Page-Canvas now 70%). Re-verified with `tsc -b
+--noEmit` and the full vitest suite after the sweep -- still 48 passing,
+still not live-browser-verified.
+
+## 2026-09-20 -- Epic 12, Agent Artifact Generation
+
+Implemented backend (`AgentArtifactModel` + migration, `app/agents/
+generation.py`'s deterministic definition builder, `repository.
+generate_agent_artifact`/`list_agent_artifacts`, `app/api/agents.py`) and
+frontend (`BlueprintDetailPanel`'s "Generate/Regenerate agent" action,
+status badge, download; `BlueprintPage` wiring). See
+`planning/epics/12-agent-artifact-generation.md` for scope.
+
+### Generation is deterministic -- no second LLM call
+
+`app/agents/generation.py` maps a blueprint node's already-produced
+`AgentSpec` (Epic 7's judgment work) into a system prompt + I/O schema via
+plain templating, not a fresh LLM call. The judgment (what the agent
+should do) was already made by blueprint evaluation; this epic only
+renders that into a runnable format -- the same shape of decision as
+`app/bpmn/builder.py` deterministically rendering a `ProcessSchema` into
+BPMN XML rather than asking an LLM to write XML. Keeps generation free,
+instant, and trivially unit-testable without mocking an LLM.
+
+### Consolidated groups keyed by a deterministic group_key, not the clicked node
+
+US7.5's `consolidated_from_nodes` can appear independently on more than
+one node's `agent_spec` in the same group. Without a canonical key,
+clicking "Generate" from different member nodes of the same group would
+create duplicate artifacts instead of updating one. Fixed by keying
+`AgentArtifactModel` on `group_key` (sorted, pipe-joined `node_ids`)
+rather than whichever node triggered generation -- verified with
+`test_consolidated_group_generates_one_shared_artifact`, which generates
+from each of two grouped nodes in turn and asserts the same artifact id
+comes back both times.
+
+### Staleness computed on read, not stored as a synced flag
+
+US12.4's staleness check (`repository._is_agent_artifact_stale`) compares
+the artifact's stored `source_baseline_version_id`/`source_node_snapshot`
+against the process's *current* `BlueprintOverlayModel` on every read,
+rather than maintaining a separate mutable status column that could drift
+out of sync with reality. Same "derive, don't duplicate and hope it stays
+correct" instinct as `BlueprintPage`'s summary stats being computed
+client-side rather than persisted. Verified live (see below) against both
+a real node override and a real full blueprint regenerate -- both
+correctly flip status from `generated` to `stale`.
+
+### Real defect: the running dev server didn't pick up the new route
+
+Live-verifying against the actual dev server (not just pytest against the
+test DB) found the new `/blueprint/nodes/{id}/agent-artifact` route
+404ing, even though a fresh `python -c "import app.main"` in a new process
+showed it correctly registered in `app.openapi()`'s paths. The long-running
+native `uvicorn --reload` process (up since the previous day) never
+reloaded for the new files (`app/agents/__init__.py`, `app/agents/
+generation.py`, `app/api/agents.py`, `app/schemas/agents.py`) or the
+`app/main.py` router registration -- root cause not fully pinned down
+(WatchFiles is supposed to pick up new files under the watched directory
+by default), but a plain restart (kill the process bound to port 8000,
+start a fresh `uvicorn --reload`) fixed it immediately. Also found an
+unrelated orphaned uvicorn process from a previous session, not bound to
+any port -- left alone since it wasn't blocking anything and cleaning up
+unrelated stray processes was out of scope here. Lesson: a passing test
+suite doesn't guarantee the long-running dev server actually has the code
+it's supposed to have; worth an explicit route-registration check (or a
+restart) before trusting a live smoke test's result.
+
+### Live end-to-end smoke test, real DB and real LLM calls
+
+After the restart: created a scratch process, PUT a valid BPMN draft, ran
+real gap analysis, finalized, ran a real `/blueprint/generate` (produced a
+genuine `InvoiceFetcherAgent` spec for a "Fetch invoice" task), generated
+its agent artifact (a coherent real system prompt), confirmed
+`status: generated`, overrode the node's verdict and confirmed the
+artifact flipped to `stale`, regenerated and confirmed it flipped back to
+`generated`, then deleted the scratch process. Full backend suite (200
+tests) and frontend suite (50 tests) both green throughout.

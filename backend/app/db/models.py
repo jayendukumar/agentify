@@ -3,8 +3,9 @@ processes, documents, the extracted process schema (actors/elements/
 source_refs/flows), embeddings, a lightweight change log -- plus Epic 3's
 draft BPMN (BPMNDraftModel), Epic 5's chat messages (ChatMessageModel),
 Epic 6's finalized versions (VersionModel), Epic 7's blueprint overlay
-(BlueprintOverlayModel), Epic 11's gap findings (GapFindingModel), and
-Epic 9/10's users/sessions (UserModel/SessionModel), each promoted out of
+(BlueprintOverlayModel), Epic 11's gap findings (GapFindingModel), Epic
+12's generated agent artifacts (AgentArtifactModel), and Epic 9/10's
+users/sessions (UserModel/SessionModel), each promoted out of
 the in-memory store (app/store.py) once its own epic made the data real.
 app/store.py now only defines NotFoundError -- nothing left to hold in
 memory.
@@ -15,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Index, JSON, String, Text
+from sqlalchemy import ForeignKey, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -64,6 +65,9 @@ class ProcessModel(Base):
         back_populates="process", cascade="all, delete-orphan", uselist=False
     )
     gap_findings: Mapped[list["GapFindingModel"]] = relationship(
+        back_populates="process", cascade="all, delete-orphan"
+    )
+    agent_artifacts: Mapped[list["AgentArtifactModel"]] = relationship(
         back_populates="process", cascade="all, delete-orphan"
     )
 
@@ -341,3 +345,42 @@ class SessionModel(Base):
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
 
     user: Mapped[UserModel] = relationship()
+
+
+class AgentArtifactModel(Base):
+    """Epic 12: a generated, portable agent definition for one blueprint
+    node or a consolidated group of nodes (US7.5's grouping). One row per
+    distinct *group* per process, keyed by `group_key` (the group's
+    node_ids, sorted and pipe-joined) rather than by whichever node the
+    user happened to click "Generate" on -- clicking from any node already
+    in a consolidated group updates the same artifact instead of creating
+    a duplicate. `primary_node_id` is just the node the definition's
+    content (system prompt, I/O schema) was actually built from, kept for
+    display/linking back to a specific canvas element.
+
+    `source_baseline_version_id`/`source_node_snapshot` capture the exact
+    blueprint state this was generated from. Staleness (US12.4) is
+    deliberately *not* a stored, separately-mutable column -- it's computed
+    on read (see repository.py) by comparing this snapshot against the
+    process's current BlueprintOverlayModel, the same "derive, don't
+    duplicate and hope it stays in sync" choice made elsewhere in this
+    codebase (e.g. blueprint stats computed client-side in BlueprintPage
+    rather than stored).
+    """
+
+    __tablename__ = "agent_artifacts"
+    __table_args__ = (UniqueConstraint("process_id", "group_key", name="uq_agent_artifacts_process_group"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    group_key: Mapped[str] = mapped_column(String, nullable=False)
+    node_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    primary_node_id: Mapped[str] = mapped_column(String, nullable=False)
+    definition: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source_baseline_version_id: Mapped[str] = mapped_column(String, nullable=False)
+    source_node_snapshot: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    # Epic 9/10, US9.9: who triggered (re)generation.
+    generated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    process: Mapped[ProcessModel] = relationship(back_populates="agent_artifacts")

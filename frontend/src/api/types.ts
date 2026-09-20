@@ -192,6 +192,35 @@ export interface BlueprintOverlay {
   generated_at: string
 }
 
+// Epic 12
+export type AgentArtifactStatus = 'generated' | 'stale'
+
+export interface AgentDefinition {
+  name: string
+  purpose: string
+  trigger: string
+  system_prompt: string
+  input_schema: AgentIOField[]
+  output_schema: AgentIOField[]
+  tools_systems_needed: string[]
+  human_checkpoint: HumanCheckpoint
+  model: string
+}
+
+export interface AgentArtifact {
+  id: string
+  process_id: string
+  group_key: string
+  node_ids: string[]
+  primary_node_id: string
+  status: AgentArtifactStatus
+  definition: AgentDefinition
+  baseline_version_id: string
+  generated_at: string
+  generated_by: string | null
+  generated_by_name: string | null
+}
+
 export type GapKind = 'structural' | 'cross_document'
 export type GapFindingStatus = 'open' | 'resolved' | 'dismissed'
 
