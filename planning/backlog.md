@@ -1,5 +1,13 @@
 # Backlog (Deferred — Phase 2)
 
+**Groomed 2026-09-20** into four full epics -- see
+[00-index.md](00-index.md)'s "Phase 2 epics" section and
+[epics/12-agent-artifact-generation.md](epics/12-agent-artifact-generation.md)
+through
+[epics/15-agent-publishing-lifecycle.md](epics/15-agent-publishing-lifecycle.md).
+The items below are kept as the original, ungroomed ask for historical
+context; the epics are the current source of truth for scope.
+
 These are explicitly out of scope for the initial epics (1–10) but captured
 now per product direction. Not yet broken into user stories at the same
 level of detail — high-level intent only, to be groomed when this phase is

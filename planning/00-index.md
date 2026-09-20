@@ -56,10 +56,31 @@ publish them to a registry, connect to external agent registries, and build a
 | 8 | [Agentic Blueprint Visualization](epics/08-blueprint-visualization.md) | Interactive, explainable presentation of the blueprint overlay |
 | 9 | [Platform Foundations](epics/09-platform-foundations.md) | Backend/API/frontend scaffolding, DBs, local dev stack |
 | 10 | [Cross-Cutting / Non-Functional](epics/10-nonfunctional.md) | Logging, cost tracking, access control, data privacy |
+| 11 | [Process Gap Analysis & Clarification](epics/11-gap-analysis-and-clarification.md) | Detect extraction gaps/ambiguities and resolve them via user clarification before diagram generation |
 
-## Backlog (explicitly deferred, next phase)
+## Phase 2 epics (groomed from the backlog, not yet built)
 
-See [backlog.md](backlog.md):
+Groomed 2026-09-20 from `backlog.md`'s B1/B2/B3 into four epics -- see each
+epic's own Notes section for the reasoning behind splitting/resequencing
+them relative to the original backlog items:
+
+| # | Epic | Summary |
+|---|---|---|
+| 12 | [Agent Artifact Generation](epics/12-agent-artifact-generation.md) | Turn a blueprint node's agent spec into a concrete, portable, deployable artifact |
+| 13 | [Agent Registry Connectivity](epics/13-agent-registry-connectivity.md) | Pluggable registry connector, local reference registry, browse/search |
+| 14 | [Digital Twin Simulation & Validation](epics/14-digital-twin-simulation.md) | Test a generated agent against synthetic scenarios in an isolated sandbox before it's trusted |
+| 15 | [Agent Publishing & Lifecycle Management](epics/15-agent-publishing-lifecycle.md) | Publish a generated artifact to a registry and track its status over time |
+
+Suggested order: Epic 12 and Epic 13 can be built in parallel (neither
+depends on the other). Epic 14 depends only on Epic 12 and is recommended
+*before* Epic 15, so agents are twin-tested before they reach a shared
+registry, even though the original backlog listed digital-twin testing
+(B3) last. Epic 15 depends on both 12 and 13.
+
+## Backlog (superseded by the Phase 2 epics above)
+
+See [backlog.md](backlog.md) -- kept as the historical record of the
+original, ungroomed ask:
 
 - **B1 — Agent Generation & Registry Publishing**
 - **B2 — Agent Registry Connectivity**
