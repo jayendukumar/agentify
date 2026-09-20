@@ -13,13 +13,18 @@ import {
 } from '../api/client'
 import type { AgentArtifact, BlueprintOverlay, BlueprintVerdict, ProcessDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import AgentCardsPanel from '../components/AgentCardsPanel'
 import BlueprintCanvas from '../components/BlueprintCanvas'
 import BlueprintDetailPanel from '../components/BlueprintDetailPanel'
+import DigitalTwinPreview from '../components/DigitalTwinPreview'
+import { computeAgentGroups } from '../lib/blueprintLabels'
 import { downloadText } from '../lib/exportPng'
 
 function markerClass(verdict: BlueprintVerdict): string {
   return `blueprint-node-${verdict.replace(/_/g, '-')}`
 }
+
+type Tab = 'blueprint' | 'agents' | 'twin'
 
 export default function BlueprintPage() {
   const { user } = useAuth()
@@ -32,6 +37,7 @@ export default function BlueprintPage() {
   const [labelsById, setLabelsById] = useState<Record<string, string>>({})
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [artifacts, setArtifacts] = useState<AgentArtifact[]>([])
+  const [activeTab, setActiveTab] = useState<Tab>('blueprint')
 
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -39,7 +45,7 @@ export default function BlueprintPage() {
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [overriding, setOverriding] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
-  const [generatingAgent, setGeneratingAgent] = useState(false)
+  const [generatingAgentNodeId, setGeneratingAgentNodeId] = useState<string | null>(null)
 
   const loadVersionXml = useCallback(
     async (versionId: string) => {
@@ -113,14 +119,14 @@ export default function BlueprintPage() {
     }
   }
 
-  async function handleGenerateAgent() {
-    if (!processId || !selectedNodeId) return
-    setGeneratingAgent(true)
+  async function handleGenerateAgent(nodeId: string) {
+    if (!processId || !nodeId) return
+    setGeneratingAgentNodeId(nodeId)
     try {
-      await generateAgentArtifact(processId, selectedNodeId)
+      await generateAgentArtifact(processId, nodeId)
       setArtifacts(await listAgentArtifacts(processId))
     } finally {
-      setGeneratingAgent(false)
+      setGeneratingAgentNodeId(null)
     }
   }
 
@@ -144,6 +150,8 @@ export default function BlueprintPage() {
     return map
   }, [overlay])
 
+  const agentGroups = useMemo(() => (overlay ? computeAgentGroups(overlay, artifacts) : []), [overlay, artifacts])
+
   const stats = useMemo(() => {
     if (!overlay) return null
     const total = overlay.nodes.length
@@ -151,27 +159,15 @@ export default function BlueprintPage() {
     const partial = overlay.nodes.filter((n) => n.verdict === 'partial').length
     const notAutomatable = overlay.nodes.filter((n) => n.verdict === 'not_automatable')
 
-    // Consolidated nodes share the same consolidated_from_nodes group -- dedupe
-    // on that (sorted) group rather than counting one agent per node.
-    const agentKeys = new Set(
-      overlay.nodes
-        .filter((n) => n.agent_spec)
-        .map((n) =>
-          n.agent_spec!.consolidated_from_nodes.length > 0
-            ? [...n.agent_spec!.consolidated_from_nodes].sort().join('|')
-            : n.node_id,
-        ),
-    )
-
     return {
       total,
       automatable,
       partial,
       notAutomatable,
-      agentCount: agentKeys.size,
+      agentCount: agentGroups.length,
       automatablePercent: total === 0 ? 0 : Math.round(((automatable + partial) / total) * 100),
     }
-  }, [overlay])
+  }, [overlay, agentGroups])
 
   const selectedNode = overlay?.nodes.find((n) => n.node_id === selectedNodeId) ?? null
   const selectedArtifact = artifacts.find((a) => selectedNodeId && a.node_ids.includes(selectedNodeId)) ?? null
@@ -273,7 +269,42 @@ export default function BlueprintPage() {
         </div>
       )}
 
-      <div className="diagram-body">
+      <div className="tab-bar" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'blueprint'}
+          className={`tab-button${activeTab === 'blueprint' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('blueprint')}
+        >
+          Blueprint
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'agents'}
+          className={`tab-button${activeTab === 'agents' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('agents')}
+        >
+          Agents ({agentGroups.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'twin'}
+          className={`tab-button${activeTab === 'twin' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('twin')}
+        >
+          Digital Twin Preview
+        </button>
+      </div>
+
+      {/* The canvas stays mounted across tabs (just hidden) rather than being
+          unmounted/remounted per tab -- re-initializing bpmn-js is expensive,
+          and onDiagramReady's labelsById is needed by the other two tabs too. */}
+      {/* Inline style (not a CSS class) so it hides reliably even where a
+          stylesheet isn't loaded, e.g. component tests. */}
+      <div className="diagram-body" style={activeTab === 'blueprint' ? undefined : { display: 'none' }}>
         {versionXml && (
           <BlueprintCanvas
             xml={versionXml}
@@ -290,11 +321,27 @@ export default function BlueprintPage() {
           overriding={overriding}
           canOverride={isEditor}
           artifact={selectedArtifact}
-          onGenerateAgent={handleGenerateAgent}
-          generatingAgent={generatingAgent}
+          onGenerateAgent={() => handleGenerateAgent(selectedNodeId ?? '')}
+          generatingAgent={generatingAgentNodeId !== null && generatingAgentNodeId === selectedNodeId}
           canGenerateAgent={isEditor}
         />
       </div>
+
+      {activeTab === 'agents' && (
+        <AgentCardsPanel
+          groups={agentGroups}
+          labelsById={labelsById}
+          selectedNodeId={selectedNodeId}
+          onSelect={setSelectedNodeId}
+          onGenerateAgent={handleGenerateAgent}
+          generatingNodeId={generatingAgentNodeId}
+          canGenerateAgent={isEditor}
+        />
+      )}
+
+      {activeTab === 'twin' && overlay && (
+        <DigitalTwinPreview overlay={overlay} groups={agentGroups} labelsById={labelsById} />
+      )}
     </div>
   )
 }

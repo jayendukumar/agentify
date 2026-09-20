@@ -965,3 +965,192 @@ button:disabled {
 .gap-history-toggle {
   margin-top: 0.5rem;
 }
+
+/* Blueprint page tabs (Blueprint / Agents / Digital Twin Preview) */
+.tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.tab-button {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.6rem 0.9rem;
+  font-weight: 600;
+}
+
+.tab-button:hover {
+  background: var(--axyntro-blue-mist);
+  color: var(--accent);
+}
+
+.tab-button-active,
+.tab-button-active:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: transparent;
+}
+
+/* Agents tab -- card grid + detail panel */
+.agent-card-grid-wrap {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.agent-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.agent-card {
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.agent-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--axyntro-shadow-card);
+}
+
+.agent-card-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.agent-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.agent-card-name {
+  font-weight: 600;
+}
+
+.agent-card-purpose {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.agent-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.agent-detail-section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.agent-detail-section h4 {
+  margin: 0 0 0.3rem;
+}
+
+.agent-detail-section ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.agent-system-prompt {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  background: var(--axyntro-page);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Digital Twin Preview tab */
+.twin-disclaimer {
+  background: var(--axyntro-warning-bg);
+  color: var(--axyntro-warning);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.twin-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1.5rem;
+}
+
+.twin-chain-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.twin-chain-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.8rem;
+  background: var(--surface);
+}
+
+.twin-chain-item-agent {
+  border-color: var(--accent);
+}
+
+.twin-chain-item-human {
+  background: var(--axyntro-mist);
+}
+
+.twin-chain-item-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.twin-chain-arrow {
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+.twin-suggestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.twin-suggestion-card {
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: var(--axyntro-blue-mist);
+}
+
+.twin-suggestion-name {
+  font-weight: 600;
+}

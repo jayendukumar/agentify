@@ -1,5 +1,5 @@
 import { forwardRef, useEffect } from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -309,5 +309,44 @@ describe('BlueprintPage', () => {
     await user.click(screen.getByRole('button', { name: /export markdown/i }))
 
     await waitFor(() => expect(exportBlueprint).toHaveBeenCalledWith('proc-1'))
+  })
+
+  it('shows an agent card on the Agents tab and its detail on click', async () => {
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(overlay)
+    getVersion.mockResolvedValue(versionDetail)
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByTestId('blueprint-canvas-stub')
+    await user.click(screen.getByRole('tab', { name: /agents/i }))
+
+    const agentsPanel = within(screen.getByTestId('agent-cards-panel'))
+    await user.click(agentsPanel.getByRole('button', { name: /request reviewer agent/i }))
+
+    expect(agentsPanel.getByText('What is this agent?')).toBeInTheDocument()
+    expect(agentsPanel.getByText('How will it work?')).toBeInTheDocument()
+    expect(agentsPanel.getByText('What tools might it require?')).toBeInTheDocument()
+    expect(agentsPanel.getByText('Why was this agent selected?')).toBeInTheDocument()
+    expect(agentsPanel.getByText('What governance would it need?')).toBeInTheDocument()
+    expect(agentsPanel.getByText('Intake system')).toBeInTheDocument()
+    expect(agentsPanel.getByText(/looks up known data\./i)).toBeInTheDocument()
+  })
+
+  it('shows the connected-agent chain on the Digital Twin Preview tab', async () => {
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(overlay)
+    getVersion.mockResolvedValue(versionDetail)
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByTestId('blueprint-canvas-stub')
+    await user.click(screen.getByRole('tab', { name: /digital twin preview/i }))
+
+    const twinPanel = within(screen.getByTestId('digital-twin-preview'))
+    expect(twinPanel.getByText(/hypothetical preview, not a verified simulation/i)).toBeInTheDocument()
+    expect(twinPanel.getByText('Request Reviewer Agent')).toBeInTheDocument()
+    expect(twinPanel.getByText('Send confirmation')).toBeInTheDocument()
+    expect(twinPanel.getByText(/no gaps identified/i)).toBeInTheDocument()
   })
 })

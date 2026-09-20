@@ -1,23 +1,7 @@
 import { useState } from 'react'
 import type { AgentArtifact, BlueprintNodeResult, BlueprintVerdict } from '../api/types'
-import { downloadText } from '../lib/exportPng'
-
-const VERDICT_LABELS: Record<BlueprintVerdict, string> = {
-  automatable: 'Automatable',
-  partial: 'Partially automatable',
-  not_automatable: 'Not automatable',
-}
-
-const STEP_TYPE_LABELS: Record<string, string> = {
-  data_retrieval_transformation: 'Data retrieval / transformation',
-  rule_based_decision: 'Rule-based decision',
-  document_generation: 'Document generation',
-  communication_notification: 'Communication / notification',
-  judgment_based_decision: 'Judgment-based decision',
-  exception_handling: 'Exception handling',
-  approval_compliance_signoff: 'Approval / compliance sign-off',
-  physical_manual_action: 'Physical / manual action',
-}
+import { STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
+import AgentArtifactActions from './AgentArtifactActions'
 
 export default function BlueprintDetailPanel({
   node,
@@ -46,7 +30,6 @@ export default function BlueprintDetailPanel({
   const [verdict, setVerdict] = useState<BlueprintVerdict>('automatable')
   const [justification, setJustification] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [generateError, setGenerateError] = useState<string | null>(null)
 
   if (!node) {
     return (
@@ -70,24 +53,6 @@ export default function BlueprintDetailPanel({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save override')
     }
-  }
-
-  async function handleGenerateAgent() {
-    setGenerateError(null)
-    try {
-      await onGenerateAgent()
-    } catch (err) {
-      setGenerateError(err instanceof Error ? err.message : 'Failed to generate agent artifact')
-    }
-  }
-
-  function handleDownloadArtifact() {
-    if (!artifact) return
-    downloadText(
-      JSON.stringify(artifact.definition, null, 2),
-      `${artifact.definition.name.replace(/\s+/g, '_').toLowerCase()}.json`,
-      'application/json',
-    )
   }
 
   const agent = node.agent_spec
@@ -162,32 +127,12 @@ export default function BlueprintDetailPanel({
               </div>
             )}
 
-            <div className="agent-artifact">
-              {artifact && (
-                <div className="element-meta">
-                  <strong>Agent artifact:</strong>{' '}
-                  <span className={`badge ${artifact.status === 'stale' ? 'confidence-medium' : 'status-done'}`}>
-                    {artifact.status === 'stale' ? 'stale -- regenerate' : 'generated'}
-                  </span>
-                </div>
-              )}
-              {generateError && <p className="error">{generateError}</p>}
-              <div className="agent-artifact-actions">
-                <button
-                  type="button"
-                  onClick={handleGenerateAgent}
-                  disabled={generatingAgent || !canGenerateAgent}
-                  title={!canGenerateAgent ? 'Editor access required' : undefined}
-                >
-                  {generatingAgent ? 'Generating...' : artifact ? 'Regenerate agent' : 'Generate agent'}
-                </button>
-                {artifact && (
-                  <button type="button" className="button-secondary" onClick={handleDownloadArtifact}>
-                    Download definition
-                  </button>
-                )}
-              </div>
-            </div>
+            <AgentArtifactActions
+              artifact={artifact}
+              onGenerate={onGenerateAgent}
+              generating={generatingAgent}
+              canGenerate={canGenerateAgent}
+            />
           </div>
         )}
 

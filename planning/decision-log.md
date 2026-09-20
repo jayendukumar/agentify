@@ -1265,3 +1265,46 @@ its agent artifact (a coherent real system prompt), confirmed
 artifact flipped to `stale`, regenerated and confirmed it flipped back to
 `generated`, then deleted the scratch process. Full backend suite (200
 tests) and frontend suite (50 tests) both green throughout.
+
+## 2026-09-20 -- Blueprint page split into three tabs (Blueprint / Agents / Digital Twin Preview)
+
+Frontend-only change, no backend/API changes -- all data (blueprint
+overlay, Epic 12's agent artifacts) was already being fetched by
+`BlueprintPage`. New shared helper `computeAgentGroups`
+(`frontend/src/lib/blueprintLabels.ts`) dedupes automatable/partial nodes
+into one entry per consolidated group (US7.5), reused by the existing
+summary stat, the new Agents tab's card grid, and the Digital Twin
+Preview's chain -- previously that dedup logic was copy-pasted inline in
+`BlueprintPage`'s stats `useMemo`.
+
+### Digital Twin Preview's suggestions are a deterministic heuristic, explicitly labeled as such
+
+The third tab suggests additional agents (a process orchestrator once 2+
+agents exist; a handoff agent between two *adjacent* agents with no
+shared `tools_systems_needed`; a shared exception-handling agent when any
+agent's `human_checkpoint` is `escalation_on_exception`) computed
+client-side from the current blueprint, not a real simulation. A visible
+disclaimer banner states this explicitly and points at Epic 14 (Digital
+Twin Simulation & Validation, not yet built) for real scenario-based
+validation -- avoids the same fabricated-precision risk flagged in Epic
+14's own planning notes (no real baseline timing/error-rate data exists
+in this system yet, so nothing here claims to be one).
+
+### Real defect found while writing this feature's tests: `display: none` via a CSS class doesn't hide anything in jsdom
+
+The Blueprint tab's diagram/detail-panel content stays mounted (not
+unmounted) when switching tabs, specifically so bpmn-js doesn't have to
+re-initialize and `labelsById` stays populated for the other two tabs.
+First attempt hid it via a `diagram-body-hidden { display: none }` CSS
+class -- worked visually, but a test that selected a node via the new
+Agents tab then found the *same* node's rationale/tool text duplicated in
+the still-present (just class-hidden) Blueprint-tab panel, since
+component tests never load `index.css` at all (it's only imported by
+`main.tsx`), so the class-based rule was simply never applied in jsdom and
+that content was never actually hidden from `getByText` (which doesn't
+filter by visibility regardless). Fixed by hiding it with an inline
+`style={{ display: 'none' }}` instead of a class, which jsdom respects
+immediately with no stylesheet needed, and scoped the new tabs' own tests
+with `within(getByTestId(...))` rather than relying on visibility
+filtering at all -- the more robust fix, since `getByText` never checks
+visibility even for inline styles.
