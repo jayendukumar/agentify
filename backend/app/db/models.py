@@ -4,8 +4,9 @@ source_refs/flows), embeddings, a lightweight change log -- plus Epic 3's
 draft BPMN (BPMNDraftModel), Epic 5's chat messages (ChatMessageModel),
 Epic 6's finalized versions (VersionModel), Epic 7's blueprint overlay
 (BlueprintOverlayModel), Epic 11's gap findings (GapFindingModel), Epic
-12's generated agent artifacts (AgentArtifactModel), and Epic 9/10's
-users/sessions (UserModel/SessionModel), each promoted out of
+12's generated agent artifacts (AgentArtifactModel), Epic 13's local
+registry entries (RegistryEntryModel), and Epic 9/10's users/sessions
+(UserModel/SessionModel), each promoted out of
 the in-memory store (app/store.py) once its own epic made the data real.
 app/store.py now only defines NotFoundError -- nothing left to hold in
 memory.
@@ -384,3 +385,32 @@ class AgentArtifactModel(Base):
     generated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     process: Mapped[ProcessModel] = relationship(back_populates="agent_artifacts")
+
+
+class RegistryEntryModel(Base):
+    """Epic 13: one row per agent definition pushed into the *local*
+    reference registry connector (app/registry/local.py) -- other
+    connector types (a real vendor registry, once one is chosen) would
+    store entries on their own side entirely, never in this table.
+
+    Deliberately has no relationship/cascade back to ProcessModel:
+    RegistryConnector.push (app/registry/base.py) is a generic interface
+    a real external registry would implement too, where "the source
+    process was deleted locally" has no meaning -- source_process_id/
+    source_node_ids here are informational provenance only (SET NULL on
+    delete, not CASCADE), not an ownership relationship.
+    """
+
+    __tablename__ = "registry_entries"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    registry_name: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    agent_name: Mapped[str] = mapped_column(String, nullable=False)
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    definition: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source_process_id: Mapped[str | None] = mapped_column(
+        ForeignKey("processes.id", ondelete="SET NULL"), nullable=True
+    )
+    source_node_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    pushed_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    pushed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

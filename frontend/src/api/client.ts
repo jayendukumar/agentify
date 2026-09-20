@@ -10,6 +10,9 @@ import type {
   GapFindingStatus,
   ProcessDetail,
   ProcessSummary,
+  RegistryEntry,
+  RegistrySearchResult,
+  RegistryStatus,
   Role,
   User,
   VersionDetail,
@@ -263,4 +266,27 @@ export async function uploadDocuments(processId: string, files: FileList | File[
   }
 
   return (await response.json()) as DocumentSummary[]
+}
+
+// Epic 13
+export function listRegistries(): Promise<RegistryStatus[]> {
+  return request('/api/registries')
+}
+
+export function searchRegistries(query: string): Promise<RegistrySearchResult> {
+  const params = query ? `?${new URLSearchParams({ q: query }).toString()}` : ''
+  return request(`/api/registries/search${params}`)
+}
+
+export function pushToRegistry(
+  registryName: string,
+  body: {
+    agent_name: string
+    definition: Record<string, unknown>
+    tags?: string[]
+    source_process_id?: string | null
+    source_node_ids?: string[]
+  },
+): Promise<RegistryEntry> {
+  return request(`/api/registries/${registryName}/push`, { method: 'POST', body: JSON.stringify(body) })
 }

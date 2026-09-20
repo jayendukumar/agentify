@@ -336,6 +336,7 @@ export default function BlueprintPage() {
           onGenerateAgent={handleGenerateAgent}
           generatingNodeId={generatingAgentNodeId}
           canGenerateAgent={isEditor}
+          processId={processId}
         />
       )}
 

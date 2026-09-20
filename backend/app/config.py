@@ -1,12 +1,25 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolved relative to this file (not the process CWD) so `.env` loads
 # correctly whether the app/scripts/tests are run from backend/ or elsewhere.
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+
+class RegistryConfig(BaseModel):
+    """Epic 13, US13.3/US13.4: one configured registry *instance* -- name
+    is the connector's identity (what push/search target by), type picks
+    the connector implementation (app/registry/manager.py). Naming them
+    separately (rather than using type as the identity) is what lets two
+    registries of the same type coexist under different names, e.g. two
+    "local" registries for two teams, without a second real connector
+    type having to exist first."""
+
+    name: str
+    type: str
 
 
 class Settings(BaseSettings):
@@ -44,6 +57,13 @@ class Settings(BaseSettings):
     # lives on this same Postgres instance, see local-stack-bootstrap skill).
     database_url: str = "postgresql+psycopg://agentic:agentic@127.0.0.1:5432/agentic_solution_generator"
     embedding_model_name: str = "all-MiniLM-L6-v2"
+
+    # Epic 13: which registries are connected. A JSON list, e.g.
+    # '[{"name": "internal", "type": "local"}, {"name": "vendor-x", "type": "local"}]'
+    # -- only "local" (app/registry/local.py) is implemented today; the
+    # target external registry product/standard is deliberately undecided
+    # (see planning/backlog.md), so this defaults to a single local one.
+    registries: list[RegistryConfig] = Field(default_factory=lambda: [RegistryConfig(name="local", type="local")])
 
     @property
     def usage_log_path(self) -> Path:

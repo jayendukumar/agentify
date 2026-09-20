@@ -244,6 +244,33 @@ export interface GapFinding {
   decided_by_name: string | null
 }
 
+// Epic 13
+export interface RegistryStatus {
+  name: string
+  type: string
+  reachable: boolean
+  authenticated: boolean
+  message: string | null
+}
+
+export interface RegistryEntry {
+  id: string
+  registry_name: string
+  agent_name: string
+  tags: string[]
+  definition: Record<string, unknown>
+  pushed_at: string
+  source_process_id: string | null
+  source_node_ids: string[]
+  pushed_by: string | null
+  pushed_by_name: string | null
+}
+
+export interface RegistrySearchResult {
+  entries: RegistryEntry[]
+  registry_errors: Record<string, string>
+}
+
 export type Role = 'viewer' | 'editor'
 
 export interface User {

@@ -1,5 +1,15 @@
 # Epic 13 -- Agent Registry Connectivity
 
+**Status: all 6 stories implemented** (`backend/app/registry/`, `backend/app/api/registries.py`,
+`RegistryEntryModel`; `frontend/src/pages/RegistriesPage.tsx`,
+`RegistryPushAction.tsx`). Live-verified against the real dev Postgres DB:
+listed the local registry's health, pushed a real entry, found it via
+search, confirmed a viewer is blocked from pushing (403) -- see
+`planning/decision-log.md`'s 2026-09-20 Epic 13 entry. US15.1's full
+"Publish" action (status lifecycle, republish-as-new-version) is still
+Epic 15's job -- this epic's push is deliberately the minimal, unstatused
+connectivity demonstration US13.2 asked for.
+
 Goal: Connect the product to one or more agent registries so generated
 artifacts have somewhere real to be published to and looked up from, without
 assuming a specific vendor or standard up front.

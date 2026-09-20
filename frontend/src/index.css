@@ -1154,3 +1154,103 @@ button:disabled {
 .twin-suggestion-name {
   font-weight: 600;
 }
+
+/* App header nav (Registries link) */
+.app-header-nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.app-header-nav-link {
+  color: var(--axyntro-blue-mist);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.app-header-nav-link:hover {
+  color: var(--axyntro-white);
+  text-decoration: underline;
+}
+
+/* Registries page (Epic 13) */
+.registry-status-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.registry-status-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.9rem;
+  background: var(--surface);
+}
+
+.registry-status-name {
+  font-weight: 600;
+}
+
+.registry-entry-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.registry-entry-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.registry-entry-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.registry-entry-tags {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.registry-entry-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+
+.registry-push-action {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.registry-push-action label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+
+.registry-push-action select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+}

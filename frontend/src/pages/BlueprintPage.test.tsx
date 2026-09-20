@@ -14,6 +14,8 @@ const overrideBlueprintNode = vi.fn()
 const exportBlueprint = vi.fn()
 const generateAgentArtifact = vi.fn()
 const listAgentArtifacts = vi.fn()
+const listRegistries = vi.fn()
+const pushToRegistry = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -31,6 +33,8 @@ vi.mock('../api/client', () => ({
   exportBlueprint: (...args: unknown[]) => exportBlueprint(...args),
   generateAgentArtifact: (...args: unknown[]) => generateAgentArtifact(...args),
   listAgentArtifacts: (...args: unknown[]) => listAgentArtifacts(...args),
+  listRegistries: (...args: unknown[]) => listRegistries(...args),
+  pushToRegistry: (...args: unknown[]) => pushToRegistry(...args),
 }))
 
 // BlueprintCanvas depends on real bpmn-js/SVG layout -- stubbed here so
@@ -129,6 +133,7 @@ function renderPage() {
 describe('BlueprintPage', () => {
   beforeEach(() => {
     listAgentArtifacts.mockResolvedValue([])
+    listRegistries.mockResolvedValue([])
   })
 
   afterEach(() => {

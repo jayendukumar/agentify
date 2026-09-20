@@ -1308,3 +1308,70 @@ immediately with no stylesheet needed, and scoped the new tabs' own tests
 with `within(getByTestId(...))` rather than relying on visibility
 filtering at all -- the more robust fix, since `getByText` never checks
 visibility even for inline styles.
+
+## 2026-09-20 -- Epic 13, Agent Registry Connectivity
+
+Implemented backend (`app/registry/base.py`'s connector interface,
+`app/registry/local.py`'s DB-backed default connector,
+`app/registry/manager.py`'s settings-driven connector registry,
+`RegistryEntryModel` + migration, `app/api/registries.py`) and frontend
+(`RegistriesPage.tsx` for browse/search + health, `RegistryPushAction.tsx`
+wired into the Agents tab's detail panel). See
+`planning/epics/13-agent-registry-connectivity.md` for scope.
+
+### Connector interface takes no DB session -- the local connector opens its own
+
+`RegistryConnector`'s abstract methods (push/pull/search/check_health)
+deliberately don't accept a `Session` parameter, even though the only
+implementation today (`LocalRegistryConnector`) is DB-backed. A real
+vendor connector would be an HTTP client with no DB session at all --
+threading one through the interface just for the local connector's
+convenience would leak an implementation detail into every future
+connector. `LocalRegistryConnector` opens and closes its own short-lived
+session per call instead, the same pattern `app/ingestion/pipeline.py`'s
+background tasks already use for the same reason (decoupled lifecycle
+from the request that triggered it).
+
+### `get_registries()` is a FastAPI dependency, not a bare cached function
+
+Settings-driven and `@lru_cache`'d like `get_engine()`/`get_llm_client()`,
+but exposed as `RegistriesDep` in `app/api/deps.py` specifically so tests
+can override it via `app.dependency_overrides` -- the real
+`LocalRegistryConnector` has no way to simulate "registry unreachable" or
+"credentials rejected" (US13.6), since it's backed by the same trusted
+Postgres instance as everything else. Tests inject a `FakeConnector`
+(same role as conftest.py's `FakeLLMClient`) to exercise those paths for
+real, rather than skipping that coverage.
+
+### Search failures are per-registry, not all-or-nothing
+
+`GET /api/registries/search` returns `{entries, registry_errors}` rather
+than either a flat list or a single failure -- one unreachable registry
+must not hide results from every other connected registry, and "zero
+matches" must never be confused with "the registry search actually
+failed." Verified with `test_search_reports_per_registry_errors_without_dropping_other_results`.
+
+### Epic 13's push is deliberately unstatused, not Epic 15's Publish
+
+`RegistryPushAction.tsx` (wired into the Agents tab) calls the same
+`/api/registries/{name}/push` endpoint directly, with no draft/generated/
+published/deployed status tracking on `AgentArtifactModel` and no
+republish-as-new-version semantics -- that richer lifecycle is explicitly
+Epic 15's scope (US15.1-15.6). This exists so US13.2's "publish/browse/
+search flows can be built and demonstrated end-to-end today" is literally
+true rather than aspirational, and so Epic 15 has a real, working
+`push()` call to build its lifecycle tracking on top of rather than
+building the connector and the lifecycle UI in the same pass.
+
+### Live-verified against the real dev Postgres DB
+
+`GET /api/registries` (local registry reachable/authenticated), a real
+push (`Smoke Test Agent`), found it via `GET /api/registries/search?q=
+smoke`, confirmed a viewer gets 403 on push, then deleted the smoke-test
+row directly (no delete endpoint exists for registry entries -- not
+asked for in this epic). Full backend suite (214 tests) and frontend
+suite (61 tests) green throughout. Same dev-server-reload gotcha as
+Epic 12 recurred (the running `uvicorn --reload` didn't pick up the new
+`app/registry/` package or `app/api/registries.py` until restarted) --
+now a known, expected step after adding new backend modules, not a
+fresh investigation each time.

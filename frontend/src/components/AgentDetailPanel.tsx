@@ -1,6 +1,7 @@
 import type { AgentGroup } from '../lib/blueprintLabels'
 import { GOVERNANCE_DESCRIPTIONS, STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
 import AgentArtifactActions from './AgentArtifactActions'
+import RegistryPushAction from './RegistryPushAction'
 
 // Epic 8 follow-up: the "Agents" tab's card-click detail view. Answers the
 // five questions the user asked for explicitly -- what is this agent, how
@@ -14,12 +15,14 @@ export default function AgentDetailPanel({
   onGenerateAgent,
   generatingAgent,
   canGenerateAgent,
+  processId,
 }: {
   group: AgentGroup | null
   labelsById: Record<string, string>
   onGenerateAgent: () => Promise<void>
   generatingAgent: boolean
   canGenerateAgent: boolean
+  processId: string
 }) {
   if (!group) {
     return (
@@ -106,6 +109,17 @@ export default function AgentDetailPanel({
           generating={generatingAgent}
           canGenerate={canGenerateAgent}
         />
+
+        {artifact && (
+          <RegistryPushAction
+            agentName={artifact.definition.name}
+            definition={artifact.definition as unknown as Record<string, unknown>}
+            tags={[primary.step_type]}
+            processId={processId}
+            nodeIds={group.nodeIds}
+            canPush={canGenerateAgent}
+          />
+        )}
       </div>
     </aside>
   )

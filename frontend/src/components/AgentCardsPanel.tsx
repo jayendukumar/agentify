@@ -10,6 +10,7 @@ export default function AgentCardsPanel({
   onGenerateAgent,
   generatingNodeId,
   canGenerateAgent,
+  processId,
 }: {
   groups: AgentGroup[]
   labelsById: Record<string, string>
@@ -18,6 +19,7 @@ export default function AgentCardsPanel({
   onGenerateAgent: (nodeId: string) => Promise<void>
   generatingNodeId: string | null
   canGenerateAgent: boolean
+  processId: string
 }) {
   const selectedGroup = groups.find((g) => selectedNodeId && g.nodeIds.includes(selectedNodeId)) ?? null
 
@@ -72,6 +74,7 @@ export default function AgentCardsPanel({
         onGenerateAgent={() => onGenerateAgent(selectedGroup?.primary.node_id ?? '')}
         generatingAgent={generatingNodeId !== null && selectedGroup?.primary.node_id === generatingNodeId}
         canGenerateAgent={canGenerateAgent}
+        processId={processId}
       />
     </div>
   )
