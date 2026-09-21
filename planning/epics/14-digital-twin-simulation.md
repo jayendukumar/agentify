@@ -76,3 +76,94 @@ teams, a draft artifact is not. Epic 15 can still ship before Epic 14 is
 fully built if the team wants a "publish now, twin-test later" path, but
 that ordering is a deliberate risk trade-off to call out explicitly, not the
 recommended default.
+
+## Discovery: human/system/agent simulation model (2026-09-21)
+
+Working assumptions from a design discussion held before any task breakdown
+or code. Not yet fully validated -- captured here so the next pass can react
+to concrete assumptions instead of a blank page.
+
+**Grounding fact that reframes "sandboxing":** the Epic 12 artifact
+(`AgentDefinition`) is not runnable code -- it's a system prompt, an I/O
+schema, and a plain list of tool/system *names*
+(`tools_systems_needed: list[str]`, e.g. `"CRM system"`). Nothing in the
+codebase executes an agent today; `LLMClient.complete()` supports one-shot
+tool-calling but there's no multi-turn loop. Since there's no code-execution
+tool type anywhere in this system, "isolated sandbox" (US14.2) does not mean
+container/VM isolation of untrusted code -- it means an in-process
+tool-calling loop where every `tools_systems_needed` entry is wired to a
+simulated counterpart below, never to a live integration.
+
+A twin run is really about simulating the *counterparties* an agent talks
+to -- humans and systems -- well enough that the agent's own prompt/tool-call
+logic can execute for real against synthetic responses. Three participants:
+
+**1. The agent.** The generated `AgentDefinition`, run as an in-process loop
+against `LLMClient.complete()`, with every tool call and every
+`human_checkpoint` interaction resolved by one of the simulations below
+instead of a live system or a live person.
+
+**2. Humans (`human_checkpoint` hops).** Every checkpoint
+(`review_before_action`, `review_after_action`, `escalation_on_exception`)
+needs a resolvable answer during a run:
+- *Auto + probabilistic* -- for a yes/no decision, configure an
+  approve/reject probability; sample it automatically each time the
+  checkpoint is hit. Keeps runs unattended, but note: not repeatable across
+  runs unless the sample is seeded per scenario.
+- *Auto + rule-based* -- an optional JSON rule schema expresses a
+  conditional over the agent's proposed action/input (e.g. "reject if
+  amount > 5000") and deterministically resolves the checkpoint. Takes
+  precedence over probability when configured, since it's deterministic and
+  scenario-specific. **No structured conditional format exists in the
+  codebase to reuse for this** -- checked `ProcessFlow.condition` in
+  `backend/app/schemas/common.py`; gateway conditions are a free-text string
+  today, not a structured rule. This would be new.
+- *Manual* -- don't auto-resolve; pause the run and wait for an actual
+  person to supply the decision. This turns a "run" from a fire-and-forget
+  batch call into something that blocks mid-execution on user input --
+  today's LLM/backend calls are all synchronous request/response, so a
+  pause/resume execution state is new territory and is probably the single
+  biggest new architectural piece here, more so than "sandboxing" itself.
+
+**3. Systems (`tools_systems_needed` entries).** Each entry needs a
+configured simulation mode before a scenario can execute against it -- this
+is the resolution to the "unstructured tool name" gap found while reading
+Epic 12's output (`tools_systems_needed` has no callable schema, so nothing
+can be invoked or stubbed against it as-is). Three modes:
+- *Proxy* -- no dev-provided schema. An LLM call infers a plausible
+  request/response schema for the named system, then fabricates a plausible
+  response per call so execution continues with zero setup. Lowest fidelity
+  (schema and responses are guesses), but the convenient default.
+- *API* -- a developer supplies both a schema and a real (sandbox/test, not
+  production) API endpoint; the twin calls it for real with generated
+  parameters. An optional rule file governs how the agent's inputs map onto
+  that API's parameters. Highest fidelity, highest setup cost.
+- *Static* -- a developer supplies a fixed input -> output table, no LLM and
+  no live call involved. Deterministic and cheap; best when a scenario needs
+  a guaranteed specific response to force a specific branch.
+
+**How this feeds US14.3 (pass/fail):** decided in the same discussion --
+grading compares the tool-call trace (which simulated systems/checkpoints
+were hit, with what arguments, in what order) plus the final output against
+`expected_outputs`, not an LLM-judge reading free-text reasoning. This
+depends on systems having real callable schemas, which is exactly what
+Proxy/API/Static all produce -- so a scenario's "expected path through
+gateways" becomes an expected sequence of tool/checkpoint calls and their
+expected resolutions, not something inferred after the fact.
+
+**Still open, deliberately not decided yet:**
+- Where simulation-mode config lives -- per scenario, per artifact (reused
+  across that artifact's scenarios), or per `tools_systems_needed` entry
+  globally. Leaning toward artifact-level default with per-scenario
+  override, but not settled.
+- Proxy mode's LLM-inferred schema: generated once and cached on first use,
+  or regenerated per call? Caching risks drifting from what the real system
+  would actually look like; regenerating risks an inconsistent schema
+  within one run.
+- The rule-schema format for both human-approval conditions and Static-mode
+  input/output tables needs actual design -- there is nothing today to
+  extend.
+- US14.5's baseline-comparison and US14.6's blueprint-confidence feedback
+  haven't been reconsidered against this model yet; they were written
+  before this discussion and may need adjusting once execution mechanics
+  are settled.
