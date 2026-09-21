@@ -159,6 +159,15 @@ class LLMClient:
             entry["tool_call_id"] = message.tool_call_id
         if message.name:
             entry["name"] = message.name
+        if message.tool_calls:
+            entry["tool_calls"] = [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": json.dumps(call.arguments)},
+                }
+                for call in message.tool_calls
+            ]
         return entry
 
     @staticmethod

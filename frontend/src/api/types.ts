@@ -266,9 +266,152 @@ export interface RegistryEntry {
   pushed_by_name: string | null
 }
 
+// Epic 14 (core slice)
+export type TwinSystemStubMode = 'proxy' | 'static'
+export type TwinHumanCheckpointMode = 'probability' | 'rule'
+export type TwinRuleOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte'
+export type TwinTraceStepKind = 'tool_call' | 'human_checkpoint'
+export type TwinRunStatus = 'passed' | 'failed' | 'error'
+
+export interface TwinStaticResponseRule {
+  match: Record<string, unknown>
+  response: Record<string, unknown>
+}
+
+export interface TwinSystemStub {
+  mode: TwinSystemStubMode
+  static_responses: TwinStaticResponseRule[]
+}
+
+export interface TwinHumanDecisionRule {
+  field: string
+  operator: TwinRuleOperator
+  value: unknown
+  on_true: 'approve' | 'reject'
+  on_false: 'approve' | 'reject'
+}
+
+export interface TwinHumanCheckpointConfig {
+  mode: TwinHumanCheckpointMode
+  approve_probability: number
+  seed: number | null
+  rule: TwinHumanDecisionRule | null
+}
+
+export interface TwinExpectedStep {
+  kind: TwinTraceStepKind
+  target: string | null
+  expected_decision: 'approve' | 'reject' | null
+}
+
+export interface TwinScenario {
+  id: string
+  agent_artifact_id: string
+  name: string
+  inputs: Record<string, unknown>
+  system_stubs: Record<string, TwinSystemStub>
+  human_checkpoint_config: TwinHumanCheckpointConfig
+  expected_steps: TwinExpectedStep[]
+  expected_outputs: Record<string, unknown>
+  created_at: string
+  created_by: string | null
+  created_by_name: string | null
+}
+
+export interface TwinTraceStep {
+  kind: TwinTraceStepKind
+  target: string
+  arguments: Record<string, unknown>
+  result: Record<string, unknown> | null
+  decision: 'approve' | 'reject' | null
+  static_fallback: boolean
+}
+
+export interface TwinDeviation {
+  reason: string
+  step_index: number | null
+}
+
+export interface TwinRun {
+  id: string
+  scenario_id: string
+  agent_artifact_id: string
+  status: TwinRunStatus
+  trace: TwinTraceStep[]
+  final_output: Record<string, unknown> | null
+  deviations: TwinDeviation[]
+  total_cost_usd: number | null
+  total_tokens: number
+  turns_used: number
+  started_at: string
+  completed_at: string
+  run_by: string | null
+  run_by_name: string | null
+}
+
+// Epic 14, US14.5: explicitly user-supplied -- nothing in this system
+// extracts timing/error-rate data automatically (see the epic's planning
+// doc), so both fields are independent and optional.
+export interface TwinBaseline {
+  agent_artifact_id: string
+  typical_time_seconds: number | null
+  error_rate: number | null
+  notes: string | null
+  recorded_at: string
+  recorded_by: string | null
+  recorded_by_name: string | null
+}
+
+export interface TwinBaselineComparison {
+  average_run_duration_seconds: number | null
+  time_delta_seconds: number | null
+  error_rate_delta: number | null
+}
+
+export interface TwinSummary {
+  agent_artifact_id: string
+  run_count: number
+  pass_rate: number | null
+  total_cost_usd: number | null
+  average_cost_usd: number | null
+  common_failure_reasons: string[]
+  baseline: TwinBaseline | null
+  baseline_comparison: TwinBaselineComparison | null
+}
+
 export interface RegistrySearchResult {
   entries: RegistryEntry[]
   registry_errors: Record<string, string>
+}
+
+// Epic 15
+export type PublicationStatus = 'published' | 'deployed'
+// "draft" (no artifact generated yet) has no AgentPublishStatus to speak
+// of -- the frontend renders that state itself whenever `artifact` is null,
+// same as AgentArtifactActions already does for generate vs. regenerate.
+export type AgentLifecycleStatus = 'generated' | 'published' | 'deployed'
+
+export interface AgentPublication {
+  id: string
+  agent_artifact_id: string
+  registry_name: string
+  registry_entry_id: string
+  version: number
+  status: PublicationStatus
+  published_at: string
+  published_by: string | null
+  published_by_name: string | null
+  deployed_at: string | null
+  deployed_by: string | null
+  deployed_by_name: string | null
+}
+
+export interface AgentPublishStatus {
+  agent_artifact_id: string
+  lifecycle_status: AgentLifecycleStatus
+  needs_republish: boolean
+  latest_publication: AgentPublication | null
+  publications: AgentPublication[]
 }
 
 export type Role = 'viewer' | 'editor'

@@ -1375,3 +1375,149 @@ Epic 12 recurred (the running `uvicorn --reload` didn't pick up the new
 `app/registry/` package or `app/api/registries.py` until restarted) --
 now a known, expected step after adding new backend modules, not a
 fresh investigation each time.
+
+## 2026-09-21 -- Epic 14 (core slice), Digital Twin Simulation & Validation
+
+Implemented US14.1-14.4 (scenario definition, Proxy/Static system
+simulation, auto-only human-checkpoint resolution, tool-call-trace
+grading, aggregate results/cost). Manual checkpoints, API system mode, and
+US14.5/US14.6 deliberately deferred -- see the "Discovery" and "core
+slice" sections of `planning/epics/14-digital-twin-simulation.md` for the
+scoping reasoning; not restated here.
+
+### Defect found only by actually running a multi-turn tool-calling loop: `ChatMessage` couldn't represent an assistant's own tool call
+
+`app/llm/types.py`'s `ChatMessage` had `tool_call_id`/`name` for a *reply*
+to a tool call, but nothing to attach `tool_calls` to the *assistant*
+message that requested them. Invisible until now because every existing
+caller (`blueprint/service.py`, `gap_analysis/service.py`) is single-shot:
+one completion, read `result.tool_calls`, done -- nothing ever needed to
+hand a tool call back to the provider inside a follow-up message. Epic
+14's twin loop (`app/twin/engine.py`) is the first caller that actually
+continues a tool-calling conversation past one turn, and OpenAI-compatible
+APIs reject a `role="tool"` message that isn't preceded by an assistant
+message carrying the matching `tool_calls` -- confirmed by triggering the
+real error against OpenRouter before fixing it. Fixed by adding
+`ChatMessage.tool_calls: list[ToolCall] | None` and serializing it in
+`LLMClient._message_to_openai` -- a small, generic addition to the shared
+LLM layer (not twin-specific), since any future multi-turn tool-calling
+caller would hit the identical gap.
+
+### Human checkpoints modeled as one more callable tool, not special-cased control flow
+
+`app/twin/engine.py` adds a synthetic `request_human_decision` tool to the
+same `tools` list passed to `LLMClient.complete()` whenever
+`human_checkpoint != "none"`, rather than branching the loop on "is this a
+system call or a checkpoint." One code path resolves both a real
+(simulated) system call and a simulated human decision, and the trace/
+grading logic (US14.3) never needs to know the difference beyond the
+`kind` field it already records. The stored `AgentDefinition.system_prompt`
+itself is never rewritten for this -- the tool-calling contract is a
+twin-only system message appended at run time, so the artifact stays the
+portable, deployment-target-agnostic thing Epic 12 produced.
+
+### Live-verified against the real LLM (OpenRouter -> Qwen3.7 Flash), not just the fake client
+
+Ran `schema_inference.infer_tool_schemas` and `engine.run_scenario` for
+real against a hand-built `AgentDefinition` (one system, one
+`review_before_action` checkpoint) with no mocking. Schema inference
+produced a sensible, specific tool schema for a system named only "Order
+Management System" (parameters including an inferred `reason_code` enum
+it was never told about). The run loop correctly drove a real
+`request_human_decision` call, resolved it via the probability config,
+then a real system tool call via the inferred schema, then a valid final
+JSON output matching the declared output schema -- confirming the
+`ChatMessage.tool_calls` fix above actually works against the real
+provider, not just the test double.
+
+One real-model behavior worth remembering for later scenario design: the
+model bundled the human-checkpoint call *and* the system tool call into
+tool_calls of a single turn rather than waiting to see the checkpoint's
+result before deciding to act -- i.e. it didn't genuinely wait for
+approval before acting, despite the system prompt saying to. The engine
+recorded this faithfully in the trace (both steps present, in call order)
+and grading correctly flagged it as unexpected when no `expected_steps`
+were declared to require the wait. This is a real fidelity limit of
+LLM-simulated checkpoints worth surfacing to scenario authors, not a bug
+in the twin engine -- `expected_steps` is exactly the mechanism to catch
+it when a scenario cares about that ordering.
+
+Full backend suite (234 tests) and frontend suite (62 tests) green
+throughout; the new migration (`83365370d5d2_add_digital_twin_tables`)
+applied and reversed cleanly against the dev DB.
+
+### US14.5/US14.6: closed out the epic with pure derive/CRUD, no new LLM surface
+
+`TwinBaselineModel` (one row per artifact, replaced wholesale like
+`TwinToolSchemaModel`) stores only what an Automation Architect types in
+by hand -- typical time and error rate are independent, optional columns,
+never inferred. `get_twin_summary`'s comparison math
+(`average_run_duration_seconds`, `time_delta_seconds`, `error_rate_delta`)
+is computed on read from `TwinRunModel.started_at`/`completed_at` and the
+existing pass-rate calculation, not stored -- same "derive, don't
+duplicate" choice as `_is_agent_artifact_stale`. A side missing its half
+of a comparison (e.g. a baseline with only `error_rate` set) yields `None`
+for that one field rather than a fabricated zero.
+
+US14.6 needed no new backend endpoint at all -- `GET .../twin-summary`
+already existed from US14.4, so "feed twin results back into the
+blueprint view" was purely a frontend wiring task
+(`TwinConfidenceBadge.tsx` inside `BlueprintDetailPanel`), read-only and
+non-gating per the epic's own notes. Because neither addition touches an
+LLM call site, this pass relied on the automated test suite (17 new
+backend tests, 2 new frontend tests) rather than a fresh live-LLM pass --
+the core slice's live verification already covered the only code paths
+that talk to a real model.
+
+## 2026-09-21 -- Epic 15, Agent Publishing & Lifecycle Management
+
+### Version number and "needs republish" computed on read, not stored
+
+`AgentPublicationModel` (new table) is an append-only log of pushes to a
+registry, same "kept forever" shape as `VersionModel`/`TwinRunModel` --
+US15.4 wants republish to insert a new row, never mutate a prior one.
+`version` is deliberately not a stored column: it's the row's 1-based rank
+among an artifact's publications ordered by `published_at`, computed in
+`repository._list_agent_publication_models`/`_to_pydantic_agent_publication`.
+Likewise `needs_republish` isn't a flag -- each publication snapshots
+`source_artifact_generated_at` at push time, and it's compared against the
+artifact's current `generated_at` on every read. Same "derive, don't
+duplicate and hope it stays in sync" choice as `_is_agent_artifact_stale`
+(Epic 12) and the twin baseline comparison math (Epic 14).
+
+### Lifecycle status is monotonic across an artifact's whole publish history, not per-version
+
+US15.2 asks for one draft/generated/published/deployed status per agent.
+"Deployed" is derived as "any publication for this artifact has ever been
+marked deployed", not "the latest publication's own status" -- so marking
+v1 deployed and later publishing a not-yet-deployed v2 keeps the
+artifact's `lifecycle_status` at "deployed" rather than regressing it to
+"published". Verified live against the real dev Postgres DB (not just the
+11 new pytest cases): published v1, marked it deployed, regenerated the
+artifact (which flips `needs_republish` to `true`), published v2, and
+confirmed `lifecycle_status` stayed `"deployed"` with `needs_republish`
+correctly back to `false` and both versions present, newest-first, in
+`publications`. "Draft" (no artifact generated yet) was deliberately left
+out of the backend enum entirely -- there's no `AgentArtifact` row to
+compute a publish status for in that state, so it's purely how the
+frontend renders `artifact === null`, matching how `AgentArtifactActions`
+already handles that case.
+
+### `PublishPanel` absorbed `RegistryPushAction` and `TwinConfidenceBadge` into one component
+
+Epic 13's `RegistryPushAction.tsx` had a docstring pointing at this epic
+("the polished, status-tracked, access-controlled Publish action belongs
+to Epic 15, built on top of the same endpoint this uses directly") -- it's
+now deleted, replaced by `PublishPanel.tsx`. Rather than passing
+`agent_name`/`definition`/`tags` from the frontend on every push (the old
+component's shape), the new `POST .../agent-artifacts/{id}/publish`
+endpoint takes only `{registry_name}` and derives everything else
+server-side from the stored artifact and its blueprint node's `step_type`
+-- less to keep in sync, and it's what let `repository.publish_agent_artifact`
+be the single source of truth `test_publish_tags_the_registry_entry_with_the_node_step_type`
+checks. `PublishPanel` also renders `TwinConfidenceBadge` internally
+instead of each caller placing it next to the publish button separately
+(US15.3: twin evidence "right on the publish action") -- `BlueprintDetailPanel`
+and `AgentDetailPanel` (which previously lacked twin evidence entirely)
+both now just render one `<PublishPanel>` and get lifecycle status, twin
+confidence, and version history together.

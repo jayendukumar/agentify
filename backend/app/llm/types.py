@@ -30,23 +30,31 @@ class ImageContent(BaseModel):
 ContentBlock = TextContent | ImageContent
 
 
+class ToolCall(BaseModel):
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
     content: str | list[ContentBlock]
     tool_call_id: str | None = None
     name: str | None = None
+    # Set on an assistant message that requested tool call(s), so a
+    # multi-turn tool-calling conversation can be replayed back to the
+    # provider -- every OpenAI-compatible API requires the assistant
+    # message that triggered tool_calls to carry them, or the following
+    # role="tool" messages are rejected as orphaned. Nothing needed this
+    # until Epic 14's twin execution loop (app/twin/engine.py), the first
+    # caller to actually continue a tool-calling conversation past one turn.
+    tool_calls: list[ToolCall] | None = None
 
 
 class ToolDefinition(BaseModel):
     name: str
     description: str
     parameters: dict[str, Any]
-
-
-class ToolCall(BaseModel):
-    id: str
-    name: str
-    arguments: dict[str, Any]
 
 
 class Usage(BaseModel):

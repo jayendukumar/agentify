@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     llm_usage_log_enabled: bool = True
     llm_usage_log_path: str = ".data/llm_usage.jsonl"
 
+    # Epic 14 (core slice): bounds a twin run's tool-calling loop so a
+    # scenario that never produces a final answer fails fast (status
+    # "error") instead of looping indefinitely against a live LLM.
+    twin_max_loop_turns: int = Field(default=8, ge=1)
+
     # Epic 10 (cross-cutting logging): a persistent app log file alongside
     # the console output logging.basicConfig already gave us -- distinct
     # from llm_usage_log_path above, which is a structured cost/usage

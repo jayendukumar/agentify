@@ -1,5 +1,7 @@
 import type {
   AgentArtifact,
+  AgentPublication,
+  AgentPublishStatus,
   ApiErrorBody,
   BlueprintOverlay,
   BlueprintVerdict,
@@ -14,6 +16,13 @@ import type {
   RegistrySearchResult,
   RegistryStatus,
   Role,
+  TwinBaseline,
+  TwinExpectedStep,
+  TwinHumanCheckpointConfig,
+  TwinRun,
+  TwinScenario,
+  TwinSummary,
+  TwinSystemStub,
   User,
   VersionDetail,
   VersionDiffResult,
@@ -289,4 +298,85 @@ export function pushToRegistry(
   },
 ): Promise<RegistryEntry> {
   return request(`/api/registries/${registryName}/push`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+// Epic 14 (core slice)
+export function listScenarios(processId: string, artifactId: string): Promise<TwinScenario[]> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/scenarios`)
+}
+
+export function createScenario(
+  processId: string,
+  artifactId: string,
+  body: {
+    name: string
+    inputs?: Record<string, unknown>
+    system_stubs?: Record<string, TwinSystemStub>
+    human_checkpoint_config?: TwinHumanCheckpointConfig
+    expected_steps?: TwinExpectedStep[]
+    expected_outputs?: Record<string, unknown>
+  },
+): Promise<TwinScenario> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/scenarios`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteScenario(processId: string, scenarioId: string): Promise<void> {
+  return request(`/api/processes/${processId}/scenarios/${scenarioId}`, { method: 'DELETE' })
+}
+
+export function runScenario(processId: string, scenarioId: string): Promise<TwinRun> {
+  return request(`/api/processes/${processId}/scenarios/${scenarioId}/run`, { method: 'POST' })
+}
+
+export function listTwinRuns(processId: string, artifactId: string): Promise<TwinRun[]> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/runs`)
+}
+
+export function getTwinSummary(processId: string, artifactId: string): Promise<TwinSummary> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/twin-summary`)
+}
+
+export function setTwinBaseline(
+  processId: string,
+  artifactId: string,
+  body: { typical_time_seconds?: number | null; error_rate?: number | null; notes?: string | null },
+): Promise<TwinBaseline> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/baseline`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteTwinBaseline(processId: string, artifactId: string): Promise<void> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/baseline`, { method: 'DELETE' })
+}
+
+// Epic 15
+export function getPublishStatus(processId: string, artifactId: string): Promise<AgentPublishStatus> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/publish-status`)
+}
+
+export function publishAgentArtifact(
+  processId: string,
+  artifactId: string,
+  registryName: string,
+): Promise<AgentPublication> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/publish`, {
+    method: 'POST',
+    body: JSON.stringify({ registry_name: registryName }),
+  })
+}
+
+export function markPublicationDeployed(
+  processId: string,
+  artifactId: string,
+  publicationId: string,
+): Promise<AgentPublication> {
+  return request(
+    `/api/processes/${processId}/agent-artifacts/${artifactId}/publications/${publicationId}/mark-deployed`,
+    { method: 'POST' },
+  )
 }

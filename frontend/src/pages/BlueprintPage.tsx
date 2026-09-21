@@ -16,6 +16,7 @@ import { useAuth } from '../auth/AuthContext'
 import AgentCardsPanel from '../components/AgentCardsPanel'
 import BlueprintCanvas from '../components/BlueprintCanvas'
 import BlueprintDetailPanel from '../components/BlueprintDetailPanel'
+import DigitalTwinPanel from '../components/DigitalTwinPanel'
 import DigitalTwinPreview from '../components/DigitalTwinPreview'
 import { computeAgentGroups } from '../lib/blueprintLabels'
 import { downloadText } from '../lib/exportPng'
@@ -24,7 +25,7 @@ function markerClass(verdict: BlueprintVerdict): string {
   return `blueprint-node-${verdict.replace(/_/g, '-')}`
 }
 
-type Tab = 'blueprint' | 'agents' | 'twin'
+type Tab = 'blueprint' | 'agents' | 'twin' | 'twin-runs'
 
 export default function BlueprintPage() {
   const { user } = useAuth()
@@ -297,6 +298,15 @@ export default function BlueprintPage() {
         >
           Digital Twin Preview
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'twin-runs'}
+          className={`tab-button${activeTab === 'twin-runs' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('twin-runs')}
+        >
+          Digital Twin Simulation
+        </button>
       </div>
 
       {/* The canvas stays mounted across tabs (just hidden) rather than being
@@ -321,6 +331,7 @@ export default function BlueprintPage() {
           overriding={overriding}
           canOverride={isEditor}
           artifact={selectedArtifact}
+          processId={processId}
           onGenerateAgent={() => handleGenerateAgent(selectedNodeId ?? '')}
           generatingAgent={generatingAgentNodeId !== null && generatingAgentNodeId === selectedNodeId}
           canGenerateAgent={isEditor}
@@ -343,6 +354,8 @@ export default function BlueprintPage() {
       {activeTab === 'twin' && overlay && (
         <DigitalTwinPreview overlay={overlay} groups={agentGroups} labelsById={labelsById} />
       )}
+
+      {activeTab === 'twin-runs' && processId && <DigitalTwinPanel processId={processId} groups={agentGroups} />}
     </div>
   )
 }

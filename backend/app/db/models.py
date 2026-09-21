@@ -5,8 +5,10 @@ draft BPMN (BPMNDraftModel), Epic 5's chat messages (ChatMessageModel),
 Epic 6's finalized versions (VersionModel), Epic 7's blueprint overlay
 (BlueprintOverlayModel), Epic 11's gap findings (GapFindingModel), Epic
 12's generated agent artifacts (AgentArtifactModel), Epic 13's local
-registry entries (RegistryEntryModel), and Epic 9/10's users/sessions
-(UserModel/SessionModel), each promoted out of
+registry entries (RegistryEntryModel), Epic 14's digital twin scenarios/
+runs/baselines (TwinToolSchemaModel/TwinScenarioModel/TwinRunModel/
+TwinBaselineModel), Epic 15's publish history (AgentPublicationModel), and
+Epic 9/10's users/sessions (UserModel/SessionModel), each promoted out of
 the in-memory store (app/store.py) once its own epic made the data real.
 app/store.py now only defines NotFoundError -- nothing left to hold in
 memory.
@@ -414,3 +416,140 @@ class RegistryEntryModel(Base):
     source_node_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     pushed_at: Mapped[datetime] = mapped_column(server_default=func.now())
     pushed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class TwinToolSchemaModel(Base):
+    """Epic 14 (core slice): the synthesized, callable schema for every
+    `tools_systems_needed` entry of one agent artifact -- one row per
+    artifact, replaced wholesale on regenerate (same "replace, don't
+    version" convention as BlueprintOverlayModel/BPMNDraftModel). This
+    resolves the gap left by Epic 12, where `tools_systems_needed` is
+    plain strings with nothing callable behind them. `schemas` is
+    `{system_name: {tool_name, description, parameters, response_shape_description}}`
+    (see app/schemas/twin.py's InferredToolSchema) -- both twin system
+    simulation modes (Proxy, Static) use this same inferred schema, only
+    how a call's *response* is produced differs by mode.
+    """
+
+    __tablename__ = "twin_tool_schemas"
+
+    agent_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="CASCADE"), primary_key=True
+    )
+    schemas: Mapped[dict] = mapped_column(JSON, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class TwinBaselineModel(Base):
+    """Epic 14, US14.5: an optional, explicitly-manual as-is baseline for
+    one agent artifact -- one row per artifact, replaced wholesale on
+    update (same convention as TwinToolSchemaModel). Both value columns
+    are nullable and independent; there is no automatic extraction of
+    this data anywhere in the system, so its presence always means a
+    human recorded it, never something the system inferred or fabricated.
+    """
+
+    __tablename__ = "twin_baselines"
+
+    agent_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="CASCADE"), primary_key=True
+    )
+    typical_time_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    error_rate: Mapped[float | None] = mapped_column(nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    recorded_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class TwinScenarioModel(Base):
+    """Epic 14 (core slice), US14.1: one defined test scenario for an
+    agent artifact -- start-event `inputs`, per-system simulation
+    overrides (`system_stubs`), how to resolve the agent's human
+    checkpoint if it has one (`human_checkpoint_config`), and the expected
+    tool-call/checkpoint path plus expected final output used to grade a
+    run (US14.3)."""
+
+    __tablename__ = "twin_scenarios"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    agent_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    system_stubs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    human_checkpoint_config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    expected_steps: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    expected_outputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class AgentPublicationModel(Base):
+    """Epic 15, US15.1/US15.4: one push of an agent artifact's definition to
+    a registry -- kept forever, like VersionModel/TwinRunModel, so
+    "republish as a new version" (US15.4) means *inserting* a new row, never
+    mutating a prior one. `version` is deliberately not a stored column --
+    it's the row's 1-based rank among this artifact's publications ordered
+    by `published_at`, computed on read the same way AgentArtifactModel's
+    staleness is (see repository._to_pydantic_agent_publication).
+
+    `source_artifact_generated_at` snapshots AgentArtifactModel.generated_at
+    at push time -- comparing it against the artifact's *current*
+    generated_at on read is how "needs republish" (the artifact was
+    regenerated since this was published) is derived, without a second
+    mutable staleness flag to keep in sync.
+
+    `status` starts "published" and can move to "deployed" -- see this
+    epic's Notes on why "deployed" is a manual/synced status field only,
+    not real deployment. Deliberately monotonic across an artifact's whole
+    publication history (repository.get_agent_publish_status): once any
+    publication is marked deployed, the artifact's lifecycle_status reads
+    "deployed" even if a newer, not-yet-deployed version was since
+    published -- a fact about how far this agent has ever gotten, not a
+    per-version flag that can regress.
+    """
+
+    __tablename__ = "agent_publications"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    agent_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="CASCADE"), index=True
+    )
+    registry_name: Mapped[str] = mapped_column(String, nullable=False)
+    registry_entry_id: Mapped[str] = mapped_column(String, nullable=False)
+    source_artifact_generated_at: Mapped[datetime] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="published")
+    published_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    published_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    deployed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    deployed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class TwinRunModel(Base):
+    """Epic 14 (core slice), US14.2/US14.3/US14.4: one execution of a
+    scenario against the real LLM (every tool/system call stubbed per the
+    scenario's config, never live) -- kept forever, like VersionModel,
+    since a run is evidence of what actually happened, not a value that's
+    ever mutated in place. `agent_artifact_id` is denormalized from
+    `scenario.agent_artifact_id` so artifact-level aggregate queries
+    (US14.4's pass rate / cost) don't need a join through twin_scenarios.
+    """
+
+    __tablename__ = "twin_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(ForeignKey("twin_scenarios.id", ondelete="CASCADE"), index=True)
+    agent_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    trace: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    total_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    total_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    turns_used: Mapped[int] = mapped_column(nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    completed_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

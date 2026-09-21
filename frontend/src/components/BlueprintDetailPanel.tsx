@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AgentArtifact, BlueprintNodeResult, BlueprintVerdict } from '../api/types'
 import { STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
 import AgentArtifactActions from './AgentArtifactActions'
+import PublishPanel from './PublishPanel'
 
 export default function BlueprintDetailPanel({
   node,
@@ -14,6 +15,7 @@ export default function BlueprintDetailPanel({
   onGenerateAgent,
   generatingAgent,
   canGenerateAgent,
+  processId,
 }: {
   node: BlueprintNodeResult | null
   label: string | null
@@ -25,6 +27,7 @@ export default function BlueprintDetailPanel({
   onGenerateAgent: () => Promise<void>
   generatingAgent: boolean
   canGenerateAgent: boolean
+  processId: string
 }) {
   const [overrideOpen, setOverrideOpen] = useState(false)
   const [verdict, setVerdict] = useState<BlueprintVerdict>('automatable')
@@ -133,6 +136,11 @@ export default function BlueprintDetailPanel({
               generating={generatingAgent}
               canGenerate={canGenerateAgent}
             />
+
+            {/* Epic 15: publish action, lifecycle status, and (via
+                PublishPanel's own TwinConfidenceBadge) twin evidence --
+                informational only (US14.6/US15.3), never a gate. */}
+            {artifact && <PublishPanel processId={processId} artifactId={artifact.id} canPublish={canGenerateAgent} />}
           </div>
         )}
 

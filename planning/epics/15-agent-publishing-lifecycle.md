@@ -1,5 +1,20 @@
 # Epic 15 -- Agent Publishing & Lifecycle Management
 
+**Status: all 6 stories implemented** -- `AgentPublicationModel`
+(`backend/app/db/models.py`), `backend/app/api/publish.py`
+(`POST .../agent-artifacts/{id}/publish`, `GET .../publish-status`,
+`POST .../publications/{id}/mark-deployed`, all under
+`/api/processes/{process_id}`), and `repository.publish_agent_artifact`/
+`get_agent_publish_status`/`mark_agent_publication_deployed`.
+`frontend/src/components/PublishPanel.tsx` replaces Epic 13's
+`RegistryPushAction.tsx` (now deleted) in both `BlueprintDetailPanel` and
+`AgentDetailPanel`, bundling the publish action, US15.2's lifecycle
+status, US15.3's twin evidence (`TwinConfidenceBadge`), and US15.4's
+version history into one panel. Live-verified end-to-end against the real
+dev Postgres DB via a running `uvicorn` instance (publish -> mark deployed
+-> regenerate -> republish), not just the 11 new pytest cases -- see
+`planning/decision-log.md`'s 2026-09-21 entry.
+
 Goal: Publish a generated -- and ideally twin-validated -- agent artifact to
 a connected registry, and track its status over its lifecycle.
 

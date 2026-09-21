@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentArtifact, BlueprintOverlay, ProcessDetail, VersionDetail } from '../api/types'
+import type { AgentArtifact, BlueprintOverlay, ProcessDetail, TwinRun, TwinScenario, VersionDetail } from '../api/types'
 import BlueprintPage from './BlueprintPage'
 
 const getProcess = vi.fn()
@@ -16,6 +16,17 @@ const generateAgentArtifact = vi.fn()
 const listAgentArtifacts = vi.fn()
 const listRegistries = vi.fn()
 const pushToRegistry = vi.fn()
+const getPublishStatus = vi.fn()
+const publishAgentArtifact = vi.fn()
+const markPublicationDeployed = vi.fn()
+const listScenarios = vi.fn()
+const createScenario = vi.fn()
+const deleteScenario = vi.fn()
+const runScenario = vi.fn()
+const listTwinRuns = vi.fn()
+const getTwinSummary = vi.fn()
+const setTwinBaseline = vi.fn()
+const deleteTwinBaseline = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -35,6 +46,17 @@ vi.mock('../api/client', () => ({
   listAgentArtifacts: (...args: unknown[]) => listAgentArtifacts(...args),
   listRegistries: (...args: unknown[]) => listRegistries(...args),
   pushToRegistry: (...args: unknown[]) => pushToRegistry(...args),
+  getPublishStatus: (...args: unknown[]) => getPublishStatus(...args),
+  publishAgentArtifact: (...args: unknown[]) => publishAgentArtifact(...args),
+  markPublicationDeployed: (...args: unknown[]) => markPublicationDeployed(...args),
+  listScenarios: (...args: unknown[]) => listScenarios(...args),
+  createScenario: (...args: unknown[]) => createScenario(...args),
+  deleteScenario: (...args: unknown[]) => deleteScenario(...args),
+  runScenario: (...args: unknown[]) => runScenario(...args),
+  listTwinRuns: (...args: unknown[]) => listTwinRuns(...args),
+  getTwinSummary: (...args: unknown[]) => getTwinSummary(...args),
+  setTwinBaseline: (...args: unknown[]) => setTwinBaseline(...args),
+  deleteTwinBaseline: (...args: unknown[]) => deleteTwinBaseline(...args),
 }))
 
 // BlueprintCanvas depends on real bpmn-js/SVG layout -- stubbed here so
@@ -134,6 +156,23 @@ describe('BlueprintPage', () => {
   beforeEach(() => {
     listAgentArtifacts.mockResolvedValue([])
     listRegistries.mockResolvedValue([])
+    getPublishStatus.mockResolvedValue({
+      agent_artifact_id: 'agent-1',
+      lifecycle_status: 'generated',
+      needs_republish: false,
+      latest_publication: null,
+      publications: [],
+    })
+    getTwinSummary.mockResolvedValue({
+      agent_artifact_id: 'agent-1',
+      run_count: 0,
+      pass_rate: null,
+      total_cost_usd: null,
+      average_cost_usd: null,
+      common_failure_reasons: [],
+      baseline: null,
+      baseline_comparison: null,
+    })
   })
 
   afterEach(() => {
@@ -275,6 +314,125 @@ describe('BlueprintPage', () => {
     expect(await screen.findByText(/stale -- regenerate/i)).toBeInTheDocument()
   })
 
+  it('shows twin confidence on the Blueprint detail panel (US14.6)', async () => {
+    const artifact: AgentArtifact = {
+      id: 'agent-1',
+      process_id: 'proc-1',
+      group_key: 'Task_a',
+      node_ids: ['Task_a'],
+      primary_node_id: 'Task_a',
+      status: 'generated',
+      definition: {
+        name: 'Request Reviewer Agent',
+        purpose: 'Reviews incoming requests against policy.',
+        trigger: 'New request submitted',
+        system_prompt: 'You are Request Reviewer Agent...',
+        input_schema: [],
+        output_schema: [],
+        tools_systems_needed: [],
+        human_checkpoint: 'none',
+        model: 'test-model',
+      },
+      baseline_version_id: 'ver-1',
+      generated_at: '2026-01-03T00:00:00Z',
+      generated_by: null,
+      generated_by_name: null,
+    }
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(overlay)
+    getVersion.mockResolvedValue(versionDetail)
+    listAgentArtifacts.mockResolvedValue([artifact])
+    getTwinSummary.mockResolvedValue({
+      agent_artifact_id: 'agent-1',
+      run_count: 4,
+      pass_rate: 0.75,
+      total_cost_usd: 0.01,
+      average_cost_usd: 0.0025,
+      common_failure_reasons: ['Step 0: expected tool_call...'],
+      baseline: null,
+      baseline_comparison: null,
+    })
+    stubSelectedId = 'Task_a'
+    renderPage()
+
+    await screen.findByText('Request Reviewer Agent')
+    const badge = await screen.findByTestId('twin-confidence-badge')
+    expect(within(badge).getByText('75% pass')).toBeInTheDocument()
+    expect(within(badge).getByText('(4 runs)')).toBeInTheDocument()
+  })
+
+  it('publishes an agent artifact to a registry from the Blueprint detail panel (Epic 15)', async () => {
+    const artifact: AgentArtifact = {
+      id: 'agent-1',
+      process_id: 'proc-1',
+      group_key: 'Task_a',
+      node_ids: ['Task_a'],
+      primary_node_id: 'Task_a',
+      status: 'generated',
+      definition: {
+        name: 'Request Reviewer Agent',
+        purpose: 'Reviews incoming requests against policy.',
+        trigger: 'New request submitted',
+        system_prompt: 'You are Request Reviewer Agent...',
+        input_schema: [],
+        output_schema: [],
+        tools_systems_needed: [],
+        human_checkpoint: 'none',
+        model: 'test-model',
+      },
+      baseline_version_id: 'ver-1',
+      generated_at: '2026-01-03T00:00:00Z',
+      generated_by: null,
+      generated_by_name: null,
+    }
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(overlay)
+    getVersion.mockResolvedValue(versionDetail)
+    listAgentArtifacts.mockResolvedValue([artifact])
+    listRegistries.mockResolvedValue([{ name: 'local', type: 'local', reachable: true, authenticated: true, message: null }])
+    const publication = {
+      id: 'pub-1',
+      agent_artifact_id: 'agent-1',
+      registry_name: 'local',
+      registry_entry_id: 'regentry-1',
+      version: 1,
+      status: 'published',
+      published_at: '2026-01-05T00:00:00Z',
+      published_by: 'user-1',
+      published_by_name: 'Alice',
+      deployed_at: null,
+      deployed_by: null,
+      deployed_by_name: null,
+    }
+    publishAgentArtifact.mockResolvedValue(publication)
+    getPublishStatus
+      .mockResolvedValueOnce({
+        agent_artifact_id: 'agent-1',
+        lifecycle_status: 'generated',
+        needs_republish: false,
+        latest_publication: null,
+        publications: [],
+      })
+      .mockResolvedValue({
+        agent_artifact_id: 'agent-1',
+        lifecycle_status: 'published',
+        needs_republish: false,
+        latest_publication: publication,
+        publications: [publication],
+      })
+    stubSelectedId = 'Task_a'
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('Request Reviewer Agent')
+    expect(await screen.findByText(/not published/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^publish$/i }))
+
+    await waitFor(() => expect(publishAgentArtifact).toHaveBeenCalledWith('proc-1', 'agent-1', 'local'))
+    expect(await screen.findByText(/pushed to .local./i)).toBeInTheDocument()
+  })
+
   it('submits an override with a justification', async () => {
     getProcess.mockResolvedValue(process1)
     getBlueprint.mockResolvedValue(overlay)
@@ -336,6 +494,161 @@ describe('BlueprintPage', () => {
     expect(agentsPanel.getByText('What governance would it need?')).toBeInTheDocument()
     expect(agentsPanel.getByText('Intake system')).toBeInTheDocument()
     expect(agentsPanel.getByText(/looks up known data\./i)).toBeInTheDocument()
+  })
+
+  it('lists and runs a scenario on the Digital Twin Simulation tab', async () => {
+    const artifact: AgentArtifact = {
+      id: 'agent-1',
+      process_id: 'proc-1',
+      group_key: 'Task_a',
+      node_ids: ['Task_a'],
+      primary_node_id: 'Task_a',
+      status: 'generated',
+      definition: {
+        name: 'Request Reviewer Agent',
+        purpose: 'Reviews incoming requests against policy.',
+        trigger: 'New request submitted',
+        system_prompt: 'You are Request Reviewer Agent...',
+        input_schema: [],
+        output_schema: [],
+        tools_systems_needed: ['Intake system'],
+        human_checkpoint: 'none',
+        model: 'test-model',
+      },
+      baseline_version_id: 'ver-1',
+      generated_at: '2026-01-03T00:00:00Z',
+      generated_by: null,
+      generated_by_name: null,
+    }
+    const scenario: TwinScenario = {
+      id: 'twinsc-1',
+      agent_artifact_id: 'agent-1',
+      name: 'Happy path',
+      inputs: {},
+      system_stubs: {},
+      human_checkpoint_config: { mode: 'probability', approve_probability: 1, seed: null, rule: null },
+      expected_steps: [],
+      expected_outputs: {},
+      created_at: '2026-01-03T00:00:00Z',
+      created_by: null,
+      created_by_name: null,
+    }
+    const run: TwinRun = {
+      id: 'twinrun-1',
+      scenario_id: 'twinsc-1',
+      agent_artifact_id: 'agent-1',
+      status: 'passed',
+      trace: [],
+      final_output: {},
+      deviations: [],
+      total_cost_usd: 0.001,
+      total_tokens: 10,
+      turns_used: 1,
+      started_at: '2026-01-03T00:00:00Z',
+      completed_at: '2026-01-03T00:00:01Z',
+      run_by: null,
+      run_by_name: null,
+    }
+
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(overlay)
+    getVersion.mockResolvedValue(versionDetail)
+    listAgentArtifacts.mockResolvedValue([artifact])
+    listScenarios.mockResolvedValue([scenario])
+    listTwinRuns.mockResolvedValue([])
+    getTwinSummary.mockResolvedValue({
+      agent_artifact_id: 'agent-1',
+      run_count: 0,
+      pass_rate: null,
+      total_cost_usd: null,
+      average_cost_usd: null,
+      common_failure_reasons: [],
+      baseline: null,
+      baseline_comparison: null,
+    })
+    runScenario.mockResolvedValue(run)
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByTestId('blueprint-canvas-stub')
+    await user.click(screen.getByRole('tab', { name: /digital twin simulation/i }))
+
+    const twinPanel = within(await screen.findByTestId('digital-twin-panel'))
+    expect(await twinPanel.findByText('Happy path')).toBeInTheDocument()
+
+    await user.click(twinPanel.getByRole('button', { name: /^run$/i }))
+
+    await waitFor(() => expect(runScenario).toHaveBeenCalledWith('proc-1', 'twinsc-1'))
+    expect(await twinPanel.findByText('passed')).toBeInTheDocument()
+  })
+
+  it('saves a manual baseline on the Digital Twin Simulation tab (US14.5)', async () => {
+    const artifact: AgentArtifact = {
+      id: 'agent-1',
+      process_id: 'proc-1',
+      group_key: 'Task_a',
+      node_ids: ['Task_a'],
+      primary_node_id: 'Task_a',
+      status: 'generated',
+      definition: {
+        name: 'Request Reviewer Agent',
+        purpose: 'Reviews incoming requests against policy.',
+        trigger: 'New request submitted',
+        system_prompt: 'You are Request Reviewer Agent...',
+        input_schema: [],
+        output_schema: [],
+        tools_systems_needed: [],
+        human_checkpoint: 'none',
+        model: 'test-model',
+      },
+      baseline_version_id: 'ver-1',
+      generated_at: '2026-01-03T00:00:00Z',
+      generated_by: null,
+      generated_by_name: null,
+    }
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(overlay)
+    getVersion.mockResolvedValue(versionDetail)
+    listAgentArtifacts.mockResolvedValue([artifact])
+    listScenarios.mockResolvedValue([])
+    listTwinRuns.mockResolvedValue([])
+    getTwinSummary.mockResolvedValue({
+      agent_artifact_id: 'agent-1',
+      run_count: 0,
+      pass_rate: null,
+      total_cost_usd: null,
+      average_cost_usd: null,
+      common_failure_reasons: [],
+      baseline: null,
+      baseline_comparison: null,
+    })
+    setTwinBaseline.mockResolvedValue({
+      agent_artifact_id: 'agent-1',
+      typical_time_seconds: 300,
+      error_rate: 0.2,
+      notes: null,
+      recorded_at: '2026-01-04T00:00:00Z',
+      recorded_by: null,
+      recorded_by_name: null,
+    })
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByTestId('blueprint-canvas-stub')
+    await user.click(screen.getByRole('tab', { name: /digital twin simulation/i }))
+
+    const twinPanel = within(await screen.findByTestId('digital-twin-panel'))
+    await user.type(twinPanel.getByLabelText(/typical time to complete/i), '300')
+    await user.type(twinPanel.getByLabelText(/error rate/i), '20')
+    await user.click(twinPanel.getByRole('button', { name: /save baseline/i }))
+
+    await waitFor(() =>
+      expect(setTwinBaseline).toHaveBeenCalledWith('proc-1', 'agent-1', {
+        typical_time_seconds: 300,
+        error_rate: 0.2,
+        notes: null,
+      }),
+    )
   })
 
   it('shows the connected-agent chain on the Digital Twin Preview tab', async () => {

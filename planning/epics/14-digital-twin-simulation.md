@@ -1,5 +1,26 @@
 # Epic 14 -- Digital Twin Simulation & Validation
 
+**Status: all 6 stories implemented** -- `backend/app/twin/`,
+`backend/app/api/twin.py`, `TwinScenarioModel`/`TwinToolSchemaModel`/
+`TwinRunModel`/`TwinBaselineModel`; `frontend/src/components/
+DigitalTwinPanel.tsx` (the "Digital Twin Simulation" tab on
+`BlueprintPage`, US14.1-14.5) and `TwinConfidenceBadge.tsx` (US14.6, wired
+into `BlueprintDetailPanel` on the main Blueprint tab). Live-verified
+against the real LLM (OpenRouter -> Qwen3.7 Flash) for the core
+scenario-execution slice, not just the fake test client -- see
+`planning/decision-log.md`'s 2026-09-21 entries, including a real gap in
+the shared LLM layer (`ChatMessage` couldn't represent a multi-turn tool
+call) found and fixed during that verification. US14.5/US14.6 are pure
+CRUD/derived-data additions with no new LLM call sites, covered by the
+automated test suite rather than a separate live pass.
+
+**Deliberately deferred, out of this epic's built scope** (see the
+"Discovery" section below for the full reasoning): API system mode (a
+real dev-provided endpoint) and manual (pause-and-wait-for-a-real-person)
+human checkpoints -- the latter needs pause/resume run state that doesn't
+exist in this backend yet. Both remain open scope for a future pass if
+needed.
+
 Goal: Let an Automation Architect test a generated agent artifact against
 representative synthetic scenarios in an isolated environment, so it can be
 trusted -- or sent back for revision -- before it's published or deployed

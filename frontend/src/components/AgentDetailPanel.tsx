@@ -1,7 +1,7 @@
 import type { AgentGroup } from '../lib/blueprintLabels'
 import { GOVERNANCE_DESCRIPTIONS, STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
 import AgentArtifactActions from './AgentArtifactActions'
-import RegistryPushAction from './RegistryPushAction'
+import PublishPanel from './PublishPanel'
 
 // Epic 8 follow-up: the "Agents" tab's card-click detail view. Answers the
 // five questions the user asked for explicitly -- what is this agent, how
@@ -110,16 +110,7 @@ export default function AgentDetailPanel({
           canGenerate={canGenerateAgent}
         />
 
-        {artifact && (
-          <RegistryPushAction
-            agentName={artifact.definition.name}
-            definition={artifact.definition as unknown as Record<string, unknown>}
-            tags={[primary.step_type]}
-            processId={processId}
-            nodeIds={group.nodeIds}
-            canPush={canGenerateAgent}
-          />
-        )}
+        {artifact && <PublishPanel processId={processId} artifactId={artifact.id} canPublish={canGenerateAgent} />}
       </div>
     </aside>
   )

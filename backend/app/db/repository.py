@@ -1,8 +1,8 @@
 """DB-backed persistence for what Epic 2 owns (processes, documents, the
 extracted process schema, embeddings) plus Epic 3's draft BPMN, Epic 5's
 chat messages, Epic 6's finalized versions, Epic 7's blueprint overlay,
-and Epic 12's generated agent artifacts -- see app/db/models.py's module
-docstring.
+Epic 12's generated agent artifacts, Epic 14's digital twin scenarios/runs,
+and Epic 15's publish history -- see app/db/models.py's module docstring.
 """
 
 from __future__ import annotations
@@ -14,22 +14,39 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.generation import build_agent_definition, group_key_for, resolve_group
+from app.config import get_settings
 from app.ids import new_id, utcnow
 from app.ingestion.embeddings import embed_texts
 from app.ingestion.extractors import ExtractedBlock
 from app.ingestion.merge import merge_process_schemas
+from app.llm import LLMClient
+from app.registry.base import RegistryConnector
 from app.schemas.agents import AgentArtifact, AgentDefinition
 from app.schemas.blueprint import BlueprintNodeResult, BlueprintOverlay
 from app.schemas.chat import ChatMessageResult
 from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema, SourceRef
 from app.schemas.documents import IngestionStatus
 from app.schemas.gap_analysis import GapFinding, GapFindingOption
+from app.schemas.publish import AgentPublication, AgentPublishStatus
+from app.schemas.twin import (
+    InferredToolSchema,
+    TwinBaseline,
+    TwinBaselineComparison,
+    TwinBaselineInput,
+    TwinRun,
+    TwinScenario,
+    TwinScenarioCreate,
+    TwinSummary,
+)
 from app.schemas.versions import VersionDetail
 from app.store import NotFoundError
+from app.twin.engine import run_scenario
+from app.twin.schema_inference import infer_tool_schemas
 
 from .models import (
     ActorModel,
     AgentArtifactModel,
+    AgentPublicationModel,
     BlueprintOverlayModel,
     BPMNDraftModel,
     ChatMessageModel,
@@ -42,6 +59,10 @@ from .models import (
     ProcessSchemaChangeModel,
     SessionModel,
     SourceRefModel,
+    TwinBaselineModel,
+    TwinRunModel,
+    TwinScenarioModel,
+    TwinToolSchemaModel,
     UserModel,
     VersionModel,
 )
@@ -588,6 +609,411 @@ def list_agent_artifacts(session: Session, process_id: str) -> list[AgentArtifac
         _to_pydantic_agent_artifact(session, artifact, is_stale=_is_agent_artifact_stale(overlay_model, artifact))
         for artifact in artifacts
     ]
+
+
+def get_agent_artifact(session: Session, process_id: str, artifact_id: str) -> AgentArtifactModel:
+    artifact = session.get(AgentArtifactModel, artifact_id)
+    if artifact is None or artifact.process_id != process_id:
+        raise NotFoundError("agent artifact", artifact_id)
+    return artifact
+
+
+# -- digital twin (Epic 14, core slice: US14.1-14.4) ---------------------------
+
+
+def _to_pydantic_twin_scenario(session: Session, scenario: TwinScenarioModel) -> TwinScenario:
+    return TwinScenario(
+        id=scenario.id,
+        agent_artifact_id=scenario.agent_artifact_id,
+        name=scenario.name,
+        inputs=scenario.inputs,
+        system_stubs=scenario.system_stubs,
+        human_checkpoint_config=scenario.human_checkpoint_config,
+        expected_steps=scenario.expected_steps,
+        expected_outputs=scenario.expected_outputs,
+        created_at=scenario.created_at,
+        created_by=scenario.created_by,
+        created_by_name=_resolve_user_name(session, scenario.created_by),
+    )
+
+
+def _to_pydantic_twin_run(session: Session, run: TwinRunModel) -> TwinRun:
+    return TwinRun(
+        id=run.id,
+        scenario_id=run.scenario_id,
+        agent_artifact_id=run.agent_artifact_id,
+        status=run.status,
+        trace=run.trace,
+        final_output=run.final_output,
+        deviations=run.deviations,
+        total_cost_usd=run.total_cost_usd,
+        total_tokens=run.total_tokens,
+        turns_used=run.turns_used,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        run_by=run.run_by,
+        run_by_name=_resolve_user_name(session, run.run_by),
+    )
+
+
+def create_twin_scenario(
+    session: Session, process_id: str, artifact_id: str, data: TwinScenarioCreate, *, created_by: str | None = None
+) -> TwinScenario:
+    get_process(session, process_id)  # 404s if missing
+    artifact = get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    scenario = TwinScenarioModel(
+        id=new_id("twinsc"),
+        agent_artifact_id=artifact.id,
+        name=data.name,
+        inputs=data.inputs,
+        system_stubs={name: stub.model_dump() for name, stub in data.system_stubs.items()},
+        human_checkpoint_config=data.human_checkpoint_config.model_dump(),
+        expected_steps=[step.model_dump() for step in data.expected_steps],
+        expected_outputs=data.expected_outputs,
+        created_by=created_by,
+    )
+    session.add(scenario)
+    session.flush()
+    return _to_pydantic_twin_scenario(session, scenario)
+
+
+def list_twin_scenarios(session: Session, process_id: str, artifact_id: str) -> list[TwinScenario]:
+    get_process(session, process_id)  # 404s if missing
+    get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    scenarios = session.scalars(
+        select(TwinScenarioModel)
+        .where(TwinScenarioModel.agent_artifact_id == artifact_id)
+        .order_by(TwinScenarioModel.created_at)
+    )
+    return [_to_pydantic_twin_scenario(session, scenario) for scenario in scenarios]
+
+
+def get_twin_scenario(session: Session, process_id: str, scenario_id: str) -> TwinScenarioModel:
+    scenario = session.get(TwinScenarioModel, scenario_id)
+    if scenario is None:
+        raise NotFoundError("scenario", scenario_id)
+    get_agent_artifact(session, process_id, scenario.agent_artifact_id)  # verifies ownership, 404s otherwise
+    return scenario
+
+
+def delete_twin_scenario(session: Session, process_id: str, scenario_id: str) -> None:
+    scenario = get_twin_scenario(session, process_id, scenario_id)
+    session.delete(scenario)
+    session.flush()
+
+
+async def _get_or_infer_tool_schemas(
+    llm: LLMClient, session: Session, artifact: AgentArtifactModel
+) -> dict[str, InferredToolSchema]:
+    """Caches the LLM-inferred tool schema per artifact (TwinToolSchemaModel,
+    one row per artifact, replaced wholesale) -- regenerated only when the
+    artifact's own `tools_systems_needed` set has changed since the schema
+    was last inferred, same "stale on drift" spirit as US12.4, computed by
+    comparing the cached schema's keys against the artifact's current
+    definition rather than a separate stored flag."""
+    definition = AgentDefinition.model_validate(artifact.definition)
+    cached = session.get(TwinToolSchemaModel, artifact.id)
+    if cached is not None and set(cached.schemas) == set(definition.tools_systems_needed):
+        return {name: InferredToolSchema.model_validate(value) for name, value in cached.schemas.items()}
+
+    schemas = await infer_tool_schemas(llm, definition)
+    dumped = {name: schema.model_dump() for name, schema in schemas.items()}
+    if cached is None:
+        session.add(TwinToolSchemaModel(agent_artifact_id=artifact.id, schemas=dumped))
+    else:
+        cached.schemas = dumped
+        cached.generated_at = utcnow()
+    session.flush()
+    return schemas
+
+
+async def execute_twin_run(
+    llm: LLMClient, session: Session, process_id: str, scenario_id: str, *, run_by: str | None = None
+) -> TwinRun:
+    scenario_model = get_twin_scenario(session, process_id, scenario_id)
+    artifact = get_agent_artifact(session, process_id, scenario_model.agent_artifact_id)
+    definition = AgentDefinition.model_validate(artifact.definition)
+    tool_schemas = await _get_or_infer_tool_schemas(llm, session, artifact)
+    scenario = _to_pydantic_twin_scenario(session, scenario_model)
+
+    started_at = utcnow()
+    outcome = await run_scenario(
+        llm,
+        artifact=definition,
+        tool_schemas=tool_schemas,
+        scenario=scenario,
+        max_turns=get_settings().twin_max_loop_turns,
+    )
+    completed_at = utcnow()
+
+    run = TwinRunModel(
+        id=new_id("twinrun"),
+        scenario_id=scenario_model.id,
+        agent_artifact_id=artifact.id,
+        status=outcome.status,
+        trace=[step.model_dump() for step in outcome.trace],
+        final_output=outcome.final_output,
+        deviations=[deviation.model_dump() for deviation in outcome.deviations],
+        total_cost_usd=outcome.total_cost_usd,
+        total_tokens=outcome.total_tokens,
+        turns_used=outcome.turns_used,
+        started_at=started_at,
+        completed_at=completed_at,
+        run_by=run_by,
+    )
+    session.add(run)
+    session.flush()
+    return _to_pydantic_twin_run(session, run)
+
+
+def list_twin_runs(session: Session, process_id: str, artifact_id: str) -> list[TwinRun]:
+    get_process(session, process_id)  # 404s if missing
+    get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    runs = session.scalars(
+        select(TwinRunModel).where(TwinRunModel.agent_artifact_id == artifact_id).order_by(TwinRunModel.started_at.desc())
+    )
+    return [_to_pydantic_twin_run(session, run) for run in runs]
+
+
+def _to_pydantic_twin_baseline(session: Session, baseline: TwinBaselineModel) -> TwinBaseline:
+    return TwinBaseline(
+        agent_artifact_id=baseline.agent_artifact_id,
+        typical_time_seconds=baseline.typical_time_seconds,
+        error_rate=baseline.error_rate,
+        notes=baseline.notes,
+        recorded_at=baseline.recorded_at,
+        recorded_by=baseline.recorded_by,
+        recorded_by_name=_resolve_user_name(session, baseline.recorded_by),
+    )
+
+
+def set_twin_baseline(
+    session: Session, process_id: str, artifact_id: str, data: TwinBaselineInput, *, recorded_by: str | None = None
+) -> TwinBaseline:
+    """US14.5: replaced wholesale on every save (same convention as
+    TwinToolSchemaModel) -- there's no history of past baselines, just the
+    architect's current best manual estimate."""
+    get_process(session, process_id)  # 404s if missing
+    get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    baseline = session.get(TwinBaselineModel, artifact_id)
+    if baseline is None:
+        baseline = TwinBaselineModel(
+            agent_artifact_id=artifact_id,
+            typical_time_seconds=data.typical_time_seconds,
+            error_rate=data.error_rate,
+            notes=data.notes,
+            recorded_by=recorded_by,
+        )
+        session.add(baseline)
+    else:
+        baseline.typical_time_seconds = data.typical_time_seconds
+        baseline.error_rate = data.error_rate
+        baseline.notes = data.notes
+        baseline.recorded_by = recorded_by
+        baseline.recorded_at = utcnow()
+    session.flush()
+    return _to_pydantic_twin_baseline(session, baseline)
+
+
+def delete_twin_baseline(session: Session, process_id: str, artifact_id: str) -> None:
+    get_process(session, process_id)  # 404s if missing
+    get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    baseline = session.get(TwinBaselineModel, artifact_id)
+    if baseline is not None:
+        session.delete(baseline)
+        session.flush()
+
+
+def get_twin_summary(session: Session, process_id: str, artifact_id: str) -> TwinSummary:
+    get_process(session, process_id)  # 404s if missing
+    get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    runs = list(session.scalars(select(TwinRunModel).where(TwinRunModel.agent_artifact_id == artifact_id)))
+    baseline_model = session.get(TwinBaselineModel, artifact_id)
+    baseline = _to_pydantic_twin_baseline(session, baseline_model) if baseline_model is not None else None
+
+    run_count = len(runs)
+    if run_count == 0:
+        return TwinSummary(agent_artifact_id=artifact_id, run_count=0, baseline=baseline)
+
+    pass_rate = sum(1 for run in runs if run.status == "passed") / run_count
+    # A single run with an unpriced model (see estimate_cost_usd) makes the
+    # whole aggregate cost unknown rather than silently under-reporting it --
+    # same "don't show a wrong partial number" principle as
+    # UsageTracker.OperationTotals.cost_estimate_incomplete.
+    cost_incomplete = any(run.total_cost_usd is None for run in runs)
+    total_cost = None if cost_incomplete else sum(run.total_cost_usd or 0.0 for run in runs)
+    average_cost = None if cost_incomplete else total_cost / run_count
+
+    reason_counts: dict[str, int] = {}
+    for run in runs:
+        for deviation in run.deviations:
+            reason = deviation.get("reason", "")
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+    common_failure_reasons = sorted(reason_counts, key=lambda reason: reason_counts[reason], reverse=True)[:5]
+
+    average_duration = sum((run.completed_at - run.started_at).total_seconds() for run in runs) / run_count
+    comparison = None
+    if baseline is not None:
+        # US14.5: only compare a side that actually has both values -- a
+        # baseline that only recorded error_rate (not typical_time_seconds)
+        # gets an error_rate_delta and a None time_delta_seconds, not a
+        # fabricated zero.
+        comparison = TwinBaselineComparison(
+            average_run_duration_seconds=average_duration,
+            time_delta_seconds=(
+                average_duration - baseline.typical_time_seconds if baseline.typical_time_seconds is not None else None
+            ),
+            error_rate_delta=((1 - pass_rate) - baseline.error_rate) if baseline.error_rate is not None else None,
+        )
+
+    return TwinSummary(
+        agent_artifact_id=artifact_id,
+        run_count=run_count,
+        pass_rate=pass_rate,
+        total_cost_usd=total_cost,
+        average_cost_usd=average_cost,
+        common_failure_reasons=common_failure_reasons,
+        baseline=baseline,
+        baseline_comparison=comparison,
+    )
+
+
+# -- publishing (Epic 15) ------------------------------------------------------
+
+
+def _to_pydantic_agent_publication(
+    session: Session, publication: AgentPublicationModel, *, version: int
+) -> AgentPublication:
+    return AgentPublication(
+        id=publication.id,
+        agent_artifact_id=publication.agent_artifact_id,
+        registry_name=publication.registry_name,
+        registry_entry_id=publication.registry_entry_id,
+        version=version,
+        status=publication.status,
+        published_at=publication.published_at,
+        published_by=publication.published_by,
+        published_by_name=_resolve_user_name(session, publication.published_by),
+        deployed_at=publication.deployed_at,
+        deployed_by=publication.deployed_by,
+        deployed_by_name=_resolve_user_name(session, publication.deployed_by),
+    )
+
+
+def _list_agent_publication_models(session: Session, artifact_id: str) -> list[AgentPublicationModel]:
+    """Oldest first -- this order IS the version numbering (US15.4's "new
+    version" is just "next row"), so callers rank off this list's index
+    rather than a stored version column (see AgentPublicationModel's
+    docstring)."""
+    return list(
+        session.scalars(
+            select(AgentPublicationModel)
+            .where(AgentPublicationModel.agent_artifact_id == artifact_id)
+            .order_by(AgentPublicationModel.published_at)
+        )
+    )
+
+
+def publish_agent_artifact(
+    connector: RegistryConnector,
+    session: Session,
+    process_id: str,
+    artifact_id: str,
+    *,
+    published_by: str | None = None,
+) -> AgentPublication:
+    """US15.1: pushes the artifact's current definition through `connector`
+    (the same RegistryConnector.push app/api/registries.py's plain push
+    endpoint uses) and only records a new AgentPublicationModel row once
+    that push actually succeeds -- a RegistryConnectorError (unreachable/
+    auth, US13.6) propagates straight to the caller with no row written, so
+    a failed publish never changes what's tracked here (US15.5). Tags with
+    the node's step_type, same as the artifact's manual-push predecessor
+    (frontend's old RegistryPushAction) used to pass by hand."""
+    get_process(session, process_id)  # 404s if missing
+    artifact = get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    definition = AgentDefinition.model_validate(artifact.definition)
+
+    overlay_model = session.get(BlueprintOverlayModel, process_id)
+    primary_node = None
+    if overlay_model is not None:
+        primary_node = next(
+            (node for node in overlay_model.nodes if node.get("node_id") == artifact.primary_node_id), None
+        )
+    tags = [primary_node["step_type"]] if primary_node else []
+
+    entry = connector.push(
+        agent_name=definition.name,
+        definition=artifact.definition,
+        tags=tags,
+        source_process_id=process_id,
+        source_node_ids=artifact.node_ids,
+        pushed_by=published_by,
+    )
+
+    publication = AgentPublicationModel(
+        id=new_id("pub"),
+        agent_artifact_id=artifact.id,
+        registry_name=entry.registry_name,
+        registry_entry_id=entry.id,
+        source_artifact_generated_at=artifact.generated_at,
+        published_by=published_by,
+    )
+    session.add(publication)
+    session.flush()
+
+    version = len(_list_agent_publication_models(session, artifact_id))  # the row just added ranks last
+    return _to_pydantic_agent_publication(session, publication, version=version)
+
+
+def get_agent_publish_status(session: Session, process_id: str, artifact_id: str) -> AgentPublishStatus:
+    get_process(session, process_id)  # 404s if missing
+    artifact = get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    models = _list_agent_publication_models(session, artifact_id)
+
+    if not models:
+        return AgentPublishStatus(agent_artifact_id=artifact_id, lifecycle_status="generated", needs_republish=False)
+
+    publications = [
+        _to_pydantic_agent_publication(session, model, version=i + 1) for i, model in enumerate(models)
+    ]
+    latest = publications[-1]
+    # US15.2's "deployed" is a fact about how far this agent has ever
+    # gotten, not a per-version flag -- see AgentPublicationModel's
+    # docstring on why this stays "deployed" even once a newer,
+    # not-yet-deployed version is published on top of it.
+    lifecycle_status = "deployed" if any(p.status == "deployed" for p in publications) else "published"
+    needs_republish = models[-1].source_artifact_generated_at != artifact.generated_at
+
+    return AgentPublishStatus(
+        agent_artifact_id=artifact_id,
+        lifecycle_status=lifecycle_status,
+        needs_republish=needs_republish,
+        latest_publication=latest,
+        publications=list(reversed(publications)),  # newest first, matching list_twin_runs
+    )
+
+
+def mark_agent_publication_deployed(
+    session: Session, process_id: str, artifact_id: str, publication_id: str, *, deployed_by: str | None = None
+) -> AgentPublication:
+    """US15.2's Notes: for the local connector there's no registry API to
+    sync deployment state from, so this is the manual path -- an
+    Automation Architect telling the system they deployed it elsewhere."""
+    get_process(session, process_id)  # 404s if missing
+    get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    publication = session.get(AgentPublicationModel, publication_id)
+    if publication is None or publication.agent_artifact_id != artifact_id:
+        raise NotFoundError("agent publication", publication_id)
+
+    publication.status = "deployed"
+    publication.deployed_at = utcnow()
+    publication.deployed_by = deployed_by
+    session.flush()
+
+    models = _list_agent_publication_models(session, artifact_id)
+    version = next(i + 1 for i, model in enumerate(models) if model.id == publication.id)
+    return _to_pydantic_agent_publication(session, publication, version=version)
 
 
 # -- gap findings (Epic 11) ----------------------------------------------------

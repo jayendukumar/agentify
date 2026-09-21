@@ -1155,6 +1155,33 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Epic 14 (core slice): Digital Twin Simulation scenarios/runs form */
+.twin-scenario-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 640px;
+}
+
+.twin-scenario-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.twin-scenario-form input,
+.twin-scenario-form textarea {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: normal;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
 /* App header nav (Registries link) */
 .app-header-nav {
   display: flex;
@@ -1253,4 +1280,33 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 6px;
   font-family: inherit;
+}
+
+.publish-panel {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.publish-panel .registry-push-action {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.publish-panel .info button,
+.publish-panel .info .button-secondary {
+  margin-left: 0.4rem;
+}
+
+.publish-history {
+  font-size: 0.85rem;
+}
+
+.publish-history ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
 }
