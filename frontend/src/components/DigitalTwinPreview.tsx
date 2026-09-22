@@ -1,32 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { BlueprintOverlay } from '../api/types'
+import DigitalTwinBpmnView from './DigitalTwinBpmnView'
+import { buildChain, type ChainItem } from '../lib/digitalTwinChain'
 import type { AgentGroup } from '../lib/blueprintLabels'
 
-type ChainItem = { type: 'agent'; group: AgentGroup } | { type: 'human'; nodeId: string; reason: string }
+type View = 'chain' | 'bpmn'
 
 interface Suggestion {
   name: string
   reason: string
-}
-
-function buildChain(overlay: BlueprintOverlay, groups: AgentGroup[]): ChainItem[] {
-  const seenGroupKeys = new Set<string>()
-  const items: ChainItem[] = []
-  for (const node of overlay.nodes) {
-    if (node.agent_spec) {
-      const groupKey =
-        node.agent_spec.consolidated_from_nodes.length > 0
-          ? [...node.agent_spec.consolidated_from_nodes].sort().join('|')
-          : node.node_id
-      if (seenGroupKeys.has(groupKey)) continue
-      seenGroupKeys.add(groupKey)
-      const group = groups.find((g) => g.groupKey === groupKey)
-      if (group) items.push({ type: 'agent', group })
-    } else {
-      items.push({ type: 'human', nodeId: node.node_id, reason: node.not_automatable_reason ?? node.rationale })
-    }
-  }
-  return items
 }
 
 // Deliberately simple, deterministic heuristics -- not a real simulation
@@ -86,6 +68,7 @@ export default function DigitalTwinPreview({
 }) {
   const chain = useMemo(() => buildChain(overlay, groups), [overlay, groups])
   const suggestions = useMemo(() => buildSuggestions(chain, groups), [chain, groups])
+  const [view, setView] = useState<View>('chain')
 
   return (
     <div className="page twin-preview" data-testid="digital-twin-preview">
@@ -95,7 +78,29 @@ export default function DigitalTwinPreview({
       </p>
 
       <h3>Connected agents</h3>
-      {chain.length === 0 ? (
+      <div className="twin-view-toggle" role="tablist" aria-label="Digital twin preview view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'chain'}
+          className={`tab-button${view === 'chain' ? ' tab-button-active' : ''}`}
+          onClick={() => setView('chain')}
+        >
+          Chain view
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'bpmn'}
+          className={`tab-button${view === 'bpmn' ? ' tab-button-active' : ''}`}
+          onClick={() => setView('bpmn')}
+        >
+          BPMN view
+        </button>
+      </div>
+      {view === 'bpmn' ? (
+        <DigitalTwinBpmnView chain={chain} labelsById={labelsById} />
+      ) : chain.length === 0 ? (
         <p className="meta">No steps evaluated yet -- generate a blueprint first.</p>
       ) : (
         <div className="twin-chain">

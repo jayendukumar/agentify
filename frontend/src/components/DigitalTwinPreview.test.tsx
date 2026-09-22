@@ -1,8 +1,26 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import type { BlueprintNodeResult, BlueprintOverlay, HumanCheckpoint } from '../api/types'
 import { computeAgentGroups } from '../lib/blueprintLabels'
 import DigitalTwinPreview from './DigitalTwinPreview'
+
+const importXML = vi.fn().mockResolvedValue({ warnings: [] })
+
+// See BpmnCanvas.test.tsx -- bpmn-js needs real SVG layout that jsdom
+// doesn't implement, so the viewer is mocked here too.
+vi.mock('bpmn-js/lib/NavigatedViewer', () => ({
+  default: class MockNavigatedViewer {
+    on() {}
+    get(name: string) {
+      if (name === 'canvas') return { zoom: vi.fn(), addMarker: vi.fn(), removeMarker: vi.fn() }
+      if (name === 'elementRegistry') return { getAll: () => [] }
+      throw new Error(`unexpected service ${name}`)
+    }
+    importXML = importXML
+    saveSVG = vi.fn().mockResolvedValue({ svg: '<svg/>' })
+    destroy = vi.fn()
+  },
+}))
 
 function agentNode(id: string, name: string, tools: string[], humanCheckpoint: HumanCheckpoint = 'none'): BlueprintNodeResult {
   return {
@@ -86,5 +104,18 @@ describe('DigitalTwinPreview', () => {
     render(<DigitalTwinPreview overlay={overlay} groups={computeAgentGroups(overlay, [])} labelsById={{}} />)
 
     expect(screen.getByText(/not a verified simulation/i)).toBeInTheDocument()
+  })
+
+  it('switches to a BPMN diagram of the same chain when the BPMN view tab is selected', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const overlay = overlayOf([agentNode('a', 'Agent A', ['CRM']), humanNode('b', 'Needs sign-off')])
+    render(<DigitalTwinPreview overlay={overlay} groups={computeAgentGroups(overlay, [])} labelsById={{ b: 'Manager sign-off' }} />)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'BPMN view' }))
+
+    expect(screen.getByTestId('digital-twin-bpmn-view')).toBeInTheDocument()
+    await waitFor(() => expect(importXML).toHaveBeenCalled())
+    expect(importXML.mock.calls[0][0]).toContain('Agent A')
+    expect(screen.queryByText('Agent A')).not.toBeInTheDocument() // chain-view card, not rendered while BPMN view is active
   })
 })
