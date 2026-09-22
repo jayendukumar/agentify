@@ -1106,12 +1106,11 @@ def mark_gap_analysis_completed(session: Session, process_id: str) -> None:
 
 
 def get_or_create_user(session: Session, *, name: str, role: str) -> UserModel:
-    """First login for a name creates it with the submitted role; every
-    later login with that same name reuses the stored role and ignores
-    whatever role is submitted this time -- see UserModel's docstring for
-    why (a viewer must not be able to just re-login claiming "editor")."""
+    """Create or reuse a local-team user, applying the selected login role."""
     existing = session.scalar(select(UserModel).where(UserModel.name == name))
     if existing is not None:
+        existing.role = role
+        session.flush()
         return existing
     user = UserModel(id=new_id("user"), name=name, role=role)
     session.add(user)

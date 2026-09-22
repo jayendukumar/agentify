@@ -63,7 +63,7 @@ const BpmnCanvas = forwardRef<BpmnCanvasHandle, BpmnCanvasProps>(function BpmnCa
       .importXML(xml)
       .then(() => {
         importedXmlRef.current = xml
-        modeler.get<{ zoom(fit: string): void }>('canvas').zoom('fit-viewport')
+        modeler.get<{ zoom(fit: string, center?: string): void }>('canvas').zoom('fit-viewport', 'auto')
         onDirtyChange(false)
       })
       .catch((err: Error) => {
@@ -85,7 +85,7 @@ const BpmnCanvas = forwardRef<BpmnCanvasHandle, BpmnCanvasProps>(function BpmnCa
       return modelerRef.current?.get<{ canRedo(): boolean }>('commandStack').canRedo() ?? false
     },
     zoomToFit() {
-      modelerRef.current?.get<{ zoom(fit: string): void }>('canvas').zoom('fit-viewport')
+      modelerRef.current?.get<{ zoom(fit: string, center?: string): void }>('canvas').zoom('fit-viewport', 'auto')
     },
     async exportXml() {
       if (!modelerRef.current) return ''

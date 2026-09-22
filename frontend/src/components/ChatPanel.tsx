@@ -86,12 +86,13 @@ export default function ChatPanel({
   }
 
   return (
-    <aside className="chat-panel">
-      <div className="chat-messages">
+    <aside className="chat-panel" aria-label="Diagram assistant">
+      <h2>Diagram assistant</h2>
+      <div className="chat-messages" role="log" aria-label="Conversation" aria-live="polite">
         {messages.length === 0 && !loadError && (
           <p className="meta">Ask about the diagram, or describe a change (e.g. &quot;add a review step after approval&quot;).</p>
         )}
-        {loadError && <p className="error">{loadError}</p>}
+        {loadError && <p className="error" role="alert">{loadError}</p>}
         {messages.map((message) => (
           <div key={message.id} className="chat-turn">
             <div className="chat-message chat-message-user">{message.request_text}</div>
@@ -134,11 +135,12 @@ export default function ChatPanel({
         ))}
       </div>
 
-      {actionError && <p className="error">{actionError}</p>}
+      {actionError && <p className="error" role="alert">{actionError}</p>}
 
       <form className="chat-input-row" onSubmit={handleSend}>
         <input
           type="text"
+          aria-label="Message to diagram assistant"
           value={text}
           onChange={(event) => setText(event.target.value)}
           placeholder={dirty ? 'Save or discard your manual edits first' : 'Ask or describe a change...'}

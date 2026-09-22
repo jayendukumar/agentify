@@ -136,27 +136,29 @@ export default function GapReviewPage() {
       <p>
         <Link to={`/processes/${processId}/diagram`}>&larr; Back to diagram</Link>
       </p>
-      <h2>Gap Review</h2>
+      <h1>Gap Review</h1>
+      <p className="meta">Resolve missing or ambiguous process details before finalizing your baseline.</p>
 
       <button
         type="button"
         onClick={handleAnalyze}
+        className="button-primary"
         disabled={analyzing || !isEditor}
         title={!isEditor ? 'Editor access required' : undefined}
       >
         {analyzing ? 'Analyzing...' : 'Re-run analysis'}
       </button>
 
-      {loadError && <p className="error">{loadError}</p>}
-      {actionError && <p className="error">{actionError}</p>}
-      {loading && <p>Loading...</p>}
+      {loadError && <p className="error" role="alert">{loadError}</p>}
+      {actionError && <p className="error" role="alert">{actionError}</p>}
+      {loading && <p className="loading-state" role="status">Loading gaps...</p>}
 
-      {!loading && findings.length === 0 && (
-        <p>No gaps found yet -- upload a document or run analysis to check for issues.</p>
+      {!loading && !loadError && findings.length === 0 && (
+        <p className="empty-state">No gaps found yet -- upload a document or run analysis to check for issues.</p>
       )}
 
       {openFindings.length === 0 && !loading && findings.length > 0 && (
-        <p className="info">No open gaps -- this process is ready to finalize.</p>
+        <p className="info" role="status">No open gaps -- this process is ready to finalize.</p>
       )}
 
       <ul className="gap-finding-list">
@@ -174,7 +176,7 @@ export default function GapReviewPage() {
 
       {decidedFindings.length > 0 && (
         <>
-          <button type="button" onClick={() => setShowHistory((v) => !v)} className="gap-history-toggle">
+          <button type="button" aria-expanded={showHistory} onClick={() => setShowHistory((v) => !v)} className="gap-history-toggle">
             {showHistory ? 'Hide' : 'Show'} history ({decidedFindings.length})
           </button>
           {showHistory && (

@@ -36,7 +36,7 @@ describe('BpmnCanvas', () => {
   it('imports the given xml and zooms to fit', async () => {
     render(<BpmnCanvas xml="<xml/>" onSelectionChange={() => {}} onDirtyChange={() => {}} />)
     await waitFor(() => expect(importXML).toHaveBeenCalledWith('<xml/>'))
-    expect(canvasService.zoom).toHaveBeenCalledWith('fit-viewport')
+    expect(canvasService.zoom).toHaveBeenCalledWith('fit-viewport', 'auto')
   })
 
   it('reports selection changes via onSelectionChange', async () => {

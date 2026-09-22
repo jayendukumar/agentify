@@ -88,6 +88,7 @@ export default function DiagramPage() {
 
   async function handleRefreshLayout() {
     if (!processId) return
+    if (!window.confirm('Refresh the layout? This regenerates the draft from the process data and replaces manual diagram edits and positions. Export XML first if you need a copy.')) return
     setRefreshingLayout(true)
     setSaveMessage(null)
     try {
@@ -177,12 +178,13 @@ export default function DiagramPage() {
         <p>
           <Link to="/">&larr; All processes</Link>
         </p>
-        <p className="error">{loadError}</p>
+        <p className="error" role="alert">{loadError}</p>
+        <button type="button" onClick={() => window.location.reload()}>Try again</button>
       </div>
     )
   }
 
-  if (loading || !process) return <p>Loading...</p>
+  if (loading || !process) return <p className="loading-state" role="status">Loading diagram...</p>
 
   if (!hasDraft || !xml) {
     return (
@@ -197,12 +199,18 @@ export default function DiagramPage() {
 
   return (
     <div className="diagram-page">
+      <div className="diagram-heading">
+        <h1>Process diagram</h1>
+        <p className="meta">{process.name} · Review the draft, save your changes, then finalize the baseline.</p>
+      </div>
       <div className="diagram-toolbar">
         <Link to={`/processes/${processId}`}>&larr; {process.name}</Link>
 
         <select
           value={processId}
-          onChange={(event) => navigate(`/processes/${event.target.value}/diagram`)}
+          onChange={(event) => {
+            if (!dirty || window.confirm('Switch processes and discard unsaved changes? Save first to keep your edits.')) navigate(`/processes/${event.target.value}/diagram`)
+          }}
           aria-label="Switch process"
         >
           {processList.map((p) => (
@@ -218,9 +226,10 @@ export default function DiagramPage() {
         <button type="button" onClick={() => canvasRef.current?.redo()}>
           Redo
         </button>
+        <button type="button" onClick={() => canvasRef.current?.zoomToFit()}>Fit diagram</button>
 
         <span className="meta">{dirty ? 'Unsaved changes' : 'Saved'}</span>
-        <button type="button" onClick={handleSave} disabled={saving || !dirty || !isEditor}>
+        <button type="button" className={dirty ? 'button-primary' : 'button-secondary'} onClick={handleSave} disabled={saving || !dirty || !isEditor}>
           {saving ? 'Saving...' : 'Save'}
         </button>
 
@@ -236,6 +245,7 @@ export default function DiagramPage() {
         <button
           type="button"
           onClick={handleFinalize}
+          className={!dirty ? 'button-primary' : 'button-secondary'}
           disabled={finalizing || dirty || !isEditor}
           title={!isEditor ? 'Editor access required' : 'Lock the current draft in as a reviewed as-is baseline'}
         >
@@ -256,8 +266,8 @@ export default function DiagramPage() {
         </button>
       </div>
 
-      {saveMessage && <p className={saveMessage.kind === 'error' ? 'error' : 'info'}>{saveMessage.text}</p>}
-      {exportError && <p className="error">{exportError}</p>}
+      {saveMessage && <p role={saveMessage.kind === 'error' ? 'alert' : 'status'} className={saveMessage.kind === 'error' ? 'error' : 'info'}>{saveMessage.text}</p>}
+      {exportError && <p className="error" role="alert">{exportError}</p>}
 
       <div className="diagram-body">
         <BpmnCanvas

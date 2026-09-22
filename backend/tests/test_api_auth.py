@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.llm.client import get_llm_client
@@ -31,17 +32,22 @@ def test_login_creates_user_and_sets_cookie():
         assert me.json()["id"] == body["id"]
 
 
-def test_relogin_with_same_name_ignores_submitted_role():
+@pytest.mark.parametrize(
+    "initial_role, selected_role, write_status",
+    [("viewer", "editor", 201), ("editor", "viewer", 403)],
+)
+def test_relogin_with_same_name_applies_selected_role(initial_role, selected_role, write_status):
     with _fresh_client() as c:
-        first = c.post("/api/auth/login", json={"name": "bob", "role": "viewer"})
-        assert first.json()["role"] == "viewer"
+        first = c.post("/api/auth/login", json={"name": "bob", "role": initial_role})
+        assert first.json()["role"] == initial_role
+        assert c.post("/api/auth/logout").status_code == 204
 
-        # Same name, now claiming editor -- must NOT be granted; the
-        # original role (set on first login) is authoritative.
-        second = c.post("/api/auth/login", json={"name": "bob", "role": "editor"})
+        second = c.post("/api/auth/login", json={"name": "bob", "role": selected_role})
         assert second.status_code == 200
-        assert second.json()["role"] == "viewer"
+        assert second.json()["role"] == selected_role
         assert second.json()["id"] == first.json()["id"]
+        assert c.get("/api/auth/me").json()["role"] == selected_role
+        assert c.post("/api/processes", json={"name": "Role check"}).status_code == write_status
 
 
 def test_logout_clears_session():

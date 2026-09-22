@@ -40,6 +40,7 @@ export default function AgentCardsPanel({
                 <button
                   key={group.groupKey}
                   type="button"
+                  aria-pressed={isSelected}
                   className={`agent-card${isSelected ? ' agent-card-selected' : ''}`}
                   onClick={() => onSelect(group.primary.node_id)}
                 >

@@ -127,28 +127,32 @@ export default function ProcessDetailPage() {
   }
 
   if (!processId) return <p>Missing process id.</p>
-  if (loadError) {
+  if (loadError && !process) {
     return (
       <div className="page">
         <p>
           <Link to="/">&larr; All processes</Link>
         </p>
-        <p className="error">{loadError}</p>
+        <p className="error" role="alert">{loadError}</p>
+        <button type="button" onClick={refresh}>Try again</button>
       </div>
     )
   }
-  if (!process) return <p>Loading...</p>
+  if (!process) return <p className="loading-state" role="status">Loading process...</p>
 
   return (
     <div className="page">
       <p>
         <Link to="/">&larr; All processes</Link>
       </p>
-      <h2>{process.name}</h2>
+      <h1>{process.name}</h1>
+      <p className="meta">Build a reviewed process baseline, then explore its automation opportunities.</p>
+      {loadError && <div><p className="error" role="alert">{loadError}</p><button type="button" onClick={refresh}>Try again</button></div>}
 
+      <nav className="page-actions" aria-label="Process navigation">
       {process.has_draft_bpmn && (
         <p>
-          <Link to={`/processes/${processId}/diagram`}>Open diagram &rarr;</Link>
+          <Link className="button-link button-link-primary" to={`/processes/${processId}/diagram`}>Open diagram &rarr;</Link>
         </p>
       )}
 
@@ -159,6 +163,7 @@ export default function ProcessDetailPage() {
           </Link>
         </p>
       )}
+      </nav>
 
       <ProcessStepper steps={buildSteps(process, hasBlueprint)} />
 
@@ -166,17 +171,18 @@ export default function ProcessDetailPage() {
         <div className="next-step-action">
           <button
             type="button"
+            className="button-primary"
             onClick={handleGenerateBpmn}
             disabled={generatingBpmn || user?.role !== 'editor'}
             title={user?.role !== 'editor' ? 'Editor access required' : undefined}
           >
             {generatingBpmn ? 'Generating...' : 'Generate draft BPMN'}
           </button>
-          {bpmnAction && <p className={bpmnAction.kind === 'error' ? 'error' : 'info'}>{bpmnAction.text}</p>}
+          {bpmnAction && <p role={bpmnAction.kind === 'error' ? 'alert' : 'status'} className={bpmnAction.kind === 'error' ? 'error' : 'info'}>{bpmnAction.text}</p>}
         </div>
       )}
 
-      <h3>Documents</h3>
+      <h2>Documents</h2>
       {/* US10.5: documents are sent to the configured LLM provider for
           extraction -- see planning/claude-api-access-notes.md's "Data
           privacy decision" section before uploading real sensitive
@@ -185,8 +191,9 @@ export default function ProcessDetailPage() {
         Uploaded documents are sent to the configured LLM provider (currently OpenRouter -&gt; Qwen3.7 Flash) for
         extraction. Avoid uploading highly sensitive documents with the current default provider.
       </p>
-      <label className={`upload-button${user?.role !== 'editor' ? ' disabled' : ''}`}>
+      <button type="button" className={process.document_count === 0 ? 'button-primary' : 'button-secondary'} onClick={() => fileInputRef.current?.click()} disabled={uploading || user?.role !== 'editor'} aria-describedby="upload-help">
         {uploading ? 'Uploading...' : 'Upload documents'}
+      </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -195,10 +202,11 @@ export default function ProcessDetailPage() {
           onChange={handleUpload}
           disabled={uploading || user?.role !== 'editor'}
           hidden
+          aria-label="Choose documents"
         />
-      </label>
+      <p id="upload-help" className="meta">PDF, Word, Visio, PNG or JPEG. You can select multiple files.{user?.role !== 'editor' ? ' Editor access is required to upload.' : ''}</p>
 
-      {documents.length === 0 && <p>No documents uploaded yet.</p>}
+      {documents.length === 0 && <p className="empty-state">No documents uploaded yet. Add source documentation to begin extracting this process.</p>}
 
       <ul className="document-list">
         {documents.map((doc) => (

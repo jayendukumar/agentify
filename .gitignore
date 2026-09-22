@@ -11,3 +11,6 @@ Thumbs.db
 # their own .gitignore covering their respective .env files already)
 .env
 .env.local
+
+# Local browser review screenshots and reports
+frontend/.ui-review/

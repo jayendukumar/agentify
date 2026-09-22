@@ -69,17 +69,17 @@ export default function RegistriesPage() {
     )
   }
 
-  if (loading) return <p>Loading...</p>
+  if (loading) return <p className="loading-state" role="status">Loading registries...</p>
 
   return (
     <div className="page">
-      <h2>Agent Registries</h2>
+      <h1>Agent Registries</h1>
       <p className="meta">
         Browse and search agents already registered across connected registries, so you can check for an existing
         equivalent agent before generating and publishing a duplicate for the same process step.
       </p>
 
-      {loadError && <p className="error">{loadError}</p>}
+      {loadError && <div><p className="error" role="alert">{loadError}</p><button type="button" onClick={() => window.location.reload()}>Try again</button></div>}
 
       <div className="registry-status-list">
         {registries.map((registry) => (
@@ -98,26 +98,30 @@ export default function RegistriesPage() {
       </div>
 
       <form className="create-form" onSubmit={handleSubmit}>
+        <label>
+          Search agents
         <input
           type="text"
           placeholder="Search by agent name or tag..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
+        </label>
         <button type="submit" disabled={searching}>
           {searching ? 'Searching...' : 'Search'}
         </button>
       </form>
 
-      {searchError && <p className="error">{searchError}</p>}
+      {searchError && <p className="error" role="alert">{searchError}</p>}
+      {searching && <p role="status" className="meta">Searching connected registries...</p>}
 
       {Object.entries(registryErrors).map(([name, message]) => (
-        <p className="error" key={name}>
+        <p className="error" role="alert" key={name}>
           Registry &ldquo;{name}&rdquo; could not be searched: {message}
         </p>
       ))}
 
-      {searched && entries.length === 0 && !searchError && <p className="meta">No registered agents found.</p>}
+      {searched && entries.length === 0 && !searchError && !loadError && <p className="empty-state" role="status">No registered agents found. Try another name or tag, or publish an agent from a process blueprint.</p>}
 
       <ul className="registry-entry-list">
         {entries.map((entry) => (
@@ -140,7 +144,7 @@ export default function RegistriesPage() {
               {entry.pushed_by_name ? ` by ${entry.pushed_by_name}` : ''}
             </span>
             <div className="registry-entry-actions">
-              <button type="button" onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}>
+              <button type="button" aria-expanded={expandedId === entry.id} aria-controls={`definition-${entry.id}`} onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}>
                 {expandedId === entry.id ? 'Hide definition' : 'View definition'}
               </button>
               <button type="button" className="button-secondary" onClick={() => handleDownload(entry)}>
@@ -148,7 +152,7 @@ export default function RegistriesPage() {
               </button>
             </div>
             {expandedId === entry.id && (
-              <pre className="agent-system-prompt">{JSON.stringify(entry.definition, null, 2)}</pre>
+              <pre id={`definition-${entry.id}`} className="agent-system-prompt" tabIndex={0} aria-label={`${entry.agent_name} definition`}>{JSON.stringify(entry.definition, null, 2)}</pre>
             )}
           </li>
         ))}

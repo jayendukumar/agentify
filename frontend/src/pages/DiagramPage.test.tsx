@@ -200,6 +200,29 @@ describe('DiagramPage', () => {
     expect(screen.getByRole('link', { name: /gap review/i })).toHaveAttribute('href', '/processes/proc-1/gaps')
   })
 
+  it.each([false, true])('requires confirmation before replacing the layout (confirmed=%s)', async (confirmed) => {
+    getProcess.mockResolvedValue(process1)
+    getBpmn.mockResolvedValue(bpmnDoc)
+    listProcesses.mockResolvedValue(summaries)
+    generateBpmn.mockResolvedValue(bpmnDoc)
+    stubShouldMarkDirty = false
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed)
+    const user = userEvent.setup()
+    try {
+      renderDiagramPage()
+      await screen.findByTestId('bpmn-canvas-stub')
+      await user.click(screen.getByRole('button', { name: /refresh layout/i }))
+      expect(confirm).toHaveBeenCalled()
+      if (confirmed) {
+        await waitFor(() => expect(generateBpmn).toHaveBeenCalledWith('proc-1'))
+      } else {
+        expect(generateBpmn).not.toHaveBeenCalled()
+      }
+    } finally {
+      confirm.mockRestore()
+    }
+  })
+
   it('finalizes the draft when Finalize is clicked', async () => {
     getProcess.mockResolvedValue(process1)
     getBpmn.mockResolvedValue(bpmnDoc)

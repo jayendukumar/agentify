@@ -316,11 +316,10 @@ class GapFindingModel(Base):
 
 class UserModel(Base):
     """Epic 9/10, US9.9/US10.4: a lightweight named-user model -- no
-    password, "log in" just means "tell me your name" (first login for a
-    name creates the user and its role; every later login with that same
-    name reuses the stored role regardless of what's submitted, so a
-    viewer can't just re-login claiming "editor" -- see
-    app/api/auth.py). Deliberately not a dead end: a real SSO login would
+    password, "log in" means selecting a name and role. Each login updates
+    the user's role, which also applies to their existing sessions. This
+    role selector is for trusted local-team use (see app/api/auth.py).
+    Deliberately not a dead end: a real SSO login would
     only replace this table's population + app/api/auth.py's login
     endpoint, not the SessionModel/CurrentUserDep/EditorDep plumbing every
     other route already depends on.

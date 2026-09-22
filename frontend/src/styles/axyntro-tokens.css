@@ -50,4 +50,19 @@
   --axyntro-radius-feature: 16px;
   --axyntro-shadow-card: 0 8px 24px rgba(24, 40, 95, 0.10);
   --axyntro-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #00a4f7;
+
+  /* Product aliases: preserve the palette while meeting small-text and UI contrast. */
+  --axyntro-link: var(--axyntro-blue-hover);
+  --axyntro-control-border: var(--axyntro-muted);
+  --axyntro-text-small: 0.875rem;
+  --axyntro-text-body: 1rem;
+  --axyntro-text-action: 1.1875rem;
+  --axyntro-text-title: clamp(1.75rem, 2.5vw, 2.5rem);
+  --axyntro-line-height: 1.5;
+  --axyntro-control-height: 44px;
+  --axyntro-content-width: 1200px;
+  --axyntro-workspace-width: 1800px;
+  --axyntro-panel-width: 320px;
+  --axyntro-canvas-height: 65vh;
+  --axyntro-canvas-min-height: 400px;
 }

@@ -28,7 +28,8 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="page">
-          <p className="error">Something went wrong displaying this page.</p>
+          <h1>Unable to display this page</h1>
+          <p className="error" role="alert">Something went wrong displaying this page. Reload to try again.</p>
           <button type="button" onClick={() => window.location.reload()}>
             Reload
           </button>

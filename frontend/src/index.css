@@ -1,7 +1,7 @@
 @import './styles/axyntro-tokens.css';
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   font-family: var(--axyntro-font-body);
 
   /* App-level names aliased onto the Axyntro token set (see
@@ -221,6 +221,16 @@ button:disabled {
 
 .home-hero h2 {
   margin: 0 0 0.25rem;
+}
+
+.home-tagline {
+  margin: 0 0 var(--axyntro-space-3);
+  color: var(--axyntro-royal-navy);
+  font-family: var(--axyntro-font-display);
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  font-weight: 600;
+  line-height: 1.4;
+  text-wrap: balance;
 }
 
 .home-hero .meta {

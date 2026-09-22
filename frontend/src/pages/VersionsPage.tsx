@@ -90,15 +90,16 @@ export default function VersionsPage() {
       <p>
         <Link to={`/processes/${processId}/diagram`}>&larr; Back to diagram</Link>
       </p>
-      <h2>Version History</h2>
+      <h1>Version History</h1>
+      <p className="meta">Compare reviewed baselines or restore an earlier version to the draft.</p>
 
-      {loadError && <p className="error">{loadError}</p>}
-      {loading && <p>Loading...</p>}
-      {restoreMessage && <p className="info">{restoreMessage}</p>}
-      {actionError && <p className="error">{actionError}</p>}
+      {loadError && <p className="error" role="alert">{loadError}</p>}
+      {loading && <p className="loading-state" role="status">Loading versions...</p>}
+      {restoreMessage && <p className="info" role="status">{restoreMessage}</p>}
+      {actionError && <p className="error" role="alert">{actionError}</p>}
 
-      {!loading && versions.length === 0 && (
-        <p>No finalized versions yet -- finalize a draft from the diagram page.</p>
+      {!loading && !loadError && versions.length === 0 && (
+        <p className="empty-state">No finalized versions yet -- finalize a draft from the diagram page.</p>
       )}
 
       <ul className="version-list">
@@ -171,7 +172,7 @@ export default function VersionsPage() {
             </button>
           </form>
 
-          {diffError && <p className="error">{diffError}</p>}
+          {diffError && <p className="error" role="alert">{diffError}</p>}
 
           {diffResult && (
             <div className="version-diff">

@@ -58,7 +58,7 @@ const BlueprintCanvas = forwardRef<BlueprintCanvasHandle, BlueprintCanvasProps>(
       .importXML(xml)
       .then(() => {
         importedXmlRef.current = xml
-        viewer.get<{ zoom(fit: string): void }>('canvas').zoom('fit-viewport')
+        viewer.get<{ zoom(fit: string, center?: string): void }>('canvas').zoom('fit-viewport', 'auto')
 
         const elementRegistry =
           viewer.get<{ getAll(): Array<{ id: string; businessObject?: { name?: string } }> }>('elementRegistry')
@@ -104,7 +104,7 @@ const BlueprintCanvas = forwardRef<BlueprintCanvasHandle, BlueprintCanvasProps>(
 
   useImperativeHandle(ref, () => ({
     zoomToFit() {
-      viewerRef.current?.get<{ zoom(fit: string): void }>('canvas').zoom('fit-viewport')
+      viewerRef.current?.get<{ zoom(fit: string, center?: string): void }>('canvas').zoom('fit-viewport', 'auto')
     },
     async exportSvg() {
       if (!viewerRef.current) return ''

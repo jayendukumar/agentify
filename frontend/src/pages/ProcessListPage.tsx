@@ -10,6 +10,9 @@ export default function ProcessListPage() {
   const [newName, setNewName] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createdName, setCreatedName] = useState<string | null>(null)
 
   async function refresh() {
     setLoading(true)
@@ -38,66 +41,81 @@ export default function ProcessListPage() {
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault()
-    if (!newName.trim()) return
+    if (!newName.trim() || creating) return
 
-    setError(null)
+    setCreating(true)
+    setCreateError(null)
+    setCreatedName(null)
     try {
       await createProcess(newName.trim())
+      setCreatedName(newName.trim())
       setNewName('')
       await refresh()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create process')
+      setCreateError(err instanceof ApiError ? err.message : 'Failed to create process. Please try again.')
+    } finally {
+      setCreating(false)
     }
   }
 
   return (
     <div className="page home-page">
       <section className="home-hero">
-        <h2>Welcome back{user ? `, ${user.name}` : ''}</h2>
+        <p className="eyebrow">Your workspace</p>
+        <h1>Welcome back{user ? `, ${user.name}` : ''}</h1>
+        <p className="home-tagline">Discover processes. Activate intelligence.</p>
         <p className="meta">Pick up a process below, or start a new one from source documentation.</p>
       </section>
 
       <section className="home-stats" aria-label="Process summary">
         <div className="stat-card">
-          <span className="stat-value">{stats.total}</span>
+          <span className="stat-value">{loading ? '—' : stats.total}</span>
           <span className="stat-label">Processes</span>
         </div>
         <div className="stat-card">
-          <span className="stat-value">{stats.inDraft}</span>
+          <span className="stat-value">{loading ? '—' : stats.inDraft}</span>
           <span className="stat-label">In draft</span>
         </div>
         <div className="stat-card">
-          <span className="stat-value">{stats.finalized}</span>
+          <span className="stat-value">{loading ? '—' : stats.finalized}</span>
           <span className="stat-label">Finalized</span>
         </div>
       </section>
 
       <section className="home-section">
-        <h3>New process</h3>
+        <h2>New process</h2>
+        {user?.role !== 'editor' && <p className="meta">You have Viewer access. An Editor can create processes and upload documents.</p>}
         <form className="create-form" onSubmit={handleCreate}>
+          <label>
+            Process name
           <input
             type="text"
             placeholder="New process name"
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
-            disabled={user?.role !== 'editor'}
+            disabled={creating || user?.role !== 'editor'}
+            required
+            aria-describedby={createError ? 'create-error' : undefined}
           />
+          </label>
           <button
             type="submit"
-            disabled={user?.role !== 'editor'}
+            disabled={creating || !newName.trim() || user?.role !== 'editor'}
             title={user?.role !== 'editor' ? 'Editor access required' : undefined}
           >
-            Create
+            {creating ? 'Creating...' : 'Create process'}
           </button>
         </form>
-        {error && <p className="error">{error}</p>}
+        {createError && <p id="create-error" className="error" role="alert">{createError}</p>}
+        {createdName && <p className="success" role="status">“{createdName}” created. Open it below to upload documents.</p>}
       </section>
 
       <section className="home-section">
-        <h3>Your processes</h3>
+        <h2>Your processes</h2>
 
-        {loading && <p className="meta">Loading...</p>}
-        {!loading && processes.length === 0 && <p className="meta">No processes yet -- create one above.</p>}
+        {loading && <p className="loading-state" role="status">Loading processes...</p>}
+        {error && <div><p className="error" role="alert">{error}</p><button type="button" onClick={refresh}>Try again</button></div>}
+        {!loading && !error && processes.length === 0 && <p className="empty-state">{user?.role === 'editor' ? 'No processes yet. Create your first process above, then upload its source documents.' : 'No processes yet. An Editor can add the first process.'}</p>}
 
         <div className="process-grid">
           {processes.map((process) => (
@@ -114,6 +132,7 @@ export default function ProcessListPage() {
                   </span>
                 )}
               </span>
+              <span className="process-card-action">Open process <span aria-hidden="true">→</span></span>
             </Link>
           ))}
         </div>

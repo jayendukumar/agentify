@@ -20,6 +20,7 @@ import type {
   TwinSystemStub,
 } from '../api/types'
 import type { AgentGroup } from '../lib/blueprintLabels'
+import { handleTabKeyDown } from '../lib/tabKeyboard'
 
 const DEFAULT_HUMAN_CHECKPOINT_CONFIG = '{"mode": "probability", "approve_probability": 1.0}'
 
@@ -141,8 +142,14 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
   }
 
   async function handleDelete(scenarioId: string) {
-    await deleteScenario(processId, scenarioId)
-    setScenarios((prev) => prev.filter((s) => s.id !== scenarioId))
+    if (!window.confirm('Delete this scenario? This cannot be undone.')) return
+    setRunError(null)
+    try {
+      await deleteScenario(processId, scenarioId)
+      setScenarios((prev) => prev.filter((s) => s.id !== scenarioId))
+    } catch (err) {
+      setRunError(err instanceof ApiError ? err.message : 'Could not delete the scenario. Please try again.')
+    }
   }
 
   async function handleSaveBaseline(event: React.FormEvent) {
@@ -171,11 +178,17 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
 
   async function handleClearBaseline() {
     if (!selectedArtifactId) return
-    await deleteTwinBaseline(processId, selectedArtifactId)
-    setBaselineTimeInput('')
-    setBaselineErrorPercentInput('')
-    setBaselineNotes('')
-    await refreshSummary(selectedArtifactId)
+    if (!window.confirm('Clear the baseline estimates and notes? This cannot be undone.')) return
+    setBaselineError(null)
+    try {
+      await deleteTwinBaseline(processId, selectedArtifactId)
+      setBaselineTimeInput('')
+      setBaselineErrorPercentInput('')
+      setBaselineNotes('')
+      await refreshSummary(selectedArtifactId)
+    } catch (err) {
+      setBaselineError(err instanceof ApiError ? err.message : 'Could not clear the baseline. Please try again.')
+    }
   }
 
   async function handleRun(scenarioId: string) {
@@ -205,12 +218,13 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
 
   return (
     <div className="page" data-testid="digital-twin-panel">
-      <div className="create-form" role="tablist" aria-label="Select agent artifact">
+      <div className="create-form" role="tablist" aria-label="Select agent artifact" onKeyDown={handleTabKeyDown}>
         {artifacts.map((artifact) => (
           <button
             key={artifact.id}
             type="button"
             role="tab"
+            id={`artifact-tab-${artifact.id}`} aria-controls="artifact-panel" tabIndex={artifact.id === selectedArtifactId ? 0 : -1}
             aria-selected={artifact.id === selectedArtifactId}
             className={`tab-button${artifact.id === selectedArtifactId ? ' tab-button-active' : ''}`}
             onClick={() => setSelectedArtifactId(artifact.id)}
@@ -220,7 +234,8 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
         ))}
       </div>
 
-      {loadError && <p className="error">{loadError}</p>}
+      <div id="artifact-panel" role="tabpanel" aria-labelledby={`artifact-tab-${selectedArtifactId}`} tabIndex={0}>
+      {loadError && <p className="error" role="alert">{loadError}</p>}
 
       {summary && (
         <div className="registry-entry-card" data-testid="twin-summary-card">
@@ -284,7 +299,7 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
                 </button>
               )}
             </div>
-            {baselineError && <p className="error">{baselineError}</p>}
+            {baselineError && <p className="error" role="alert">{baselineError}</p>}
           </form>
 
           {summary.baseline_comparison && (
@@ -353,7 +368,7 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
           })}
         </ul>
       )}
-      {runError && <p className="error">{runError}</p>}
+      {runError && <p className="error" role="alert">{runError}</p>}
 
       <h3>New scenario</h3>
       <form className="twin-scenario-form" onSubmit={handleCreateScenario}>
@@ -384,8 +399,9 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
         <button type="submit" disabled={creating}>
           {creating ? 'Creating...' : 'Add scenario'}
         </button>
-        {createError && <p className="error">{createError}</p>}
+        {createError && <p className="error" role="alert">{createError}</p>}
       </form>
+      </div>
     </div>
   )
 }

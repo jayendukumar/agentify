@@ -20,6 +20,7 @@ import DigitalTwinPanel from '../components/DigitalTwinPanel'
 import DigitalTwinPreview from '../components/DigitalTwinPreview'
 import { computeAgentGroups } from '../lib/blueprintLabels'
 import { downloadText } from '../lib/exportPng'
+import { handleTabKeyDown } from '../lib/tabKeyboard'
 
 function markerClass(verdict: BlueprintVerdict): string {
   return `blueprint-node-${verdict.replace(/_/g, '-')}`
@@ -90,6 +91,7 @@ export default function BlueprintPage() {
 
   async function handleGenerate() {
     if (!processId) return
+    if (overlay && !window.confirm('Regenerate the blueprint? This replaces the current recommendations and manual overrides. Export Markdown first if you need a copy.')) return
     setGenerating(true)
     setGenerateError(null)
     try {
@@ -181,12 +183,13 @@ export default function BlueprintPage() {
         <p>
           <Link to="/">&larr; All processes</Link>
         </p>
-        <p className="error">{loadError}</p>
+        <p className="error" role="alert">{loadError}</p>
+        <button type="button" onClick={() => window.location.reload()}>Try again</button>
       </div>
     )
   }
 
-  if (loading || !process) return <p>Loading...</p>
+  if (loading || !process) return <p className="loading-state" role="status">Loading blueprint...</p>
 
   if (!overlay) {
     return (
@@ -194,7 +197,7 @@ export default function BlueprintPage() {
         <p>
           <Link to={`/processes/${processId}/diagram`}>&larr; Back to diagram</Link>
         </p>
-        <h2>Agentic Blueprint</h2>
+        <h1>Agentic Blueprint</h1>
         {process.finalized_version_count === 0 ? (
           <p>No finalized version yet -- finalize a diagram baseline first.</p>
         ) : (
@@ -203,6 +206,7 @@ export default function BlueprintPage() {
             <button
               type="button"
               onClick={handleGenerate}
+              className="button-primary"
               disabled={generating || !isEditor}
               title={!isEditor ? 'Editor access required' : undefined}
             >
@@ -210,16 +214,19 @@ export default function BlueprintPage() {
             </button>
           </>
         )}
-        {generateError && <p className="error">{generateError}</p>}
+        {generateError && <p className="error" role="alert">{generateError}</p>}
       </div>
     )
   }
 
   return (
     <div className="diagram-page">
+      <div className="diagram-heading">
+        <h1>Agentic Blueprint</h1>
+        <p className="meta">{process.name} · Review automation recommendations, generated agents and simulation results.</p>
+      </div>
       <div className="diagram-toolbar">
         <Link to={`/processes/${processId}/diagram`}>&larr; {process.name}</Link>
-        <h2 className="blueprint-title">Agentic Blueprint</h2>
 
         <button
           type="button"
@@ -234,8 +241,8 @@ export default function BlueprintPage() {
         </button>
       </div>
 
-      {generateError && <p className="error">{generateError}</p>}
-      {exportError && <p className="error">{exportError}</p>}
+      {generateError && <p className="error" role="alert">{generateError}</p>}
+      {exportError && <p className="error" role="alert">{exportError}</p>}
 
       {stats && (
         <div className="blueprint-summary">
@@ -270,11 +277,12 @@ export default function BlueprintPage() {
         </div>
       )}
 
-      <div className="tab-bar" role="tablist">
+      <div className="tab-bar" role="tablist" aria-label="Blueprint views" onKeyDown={handleTabKeyDown}>
         <button
           type="button"
           role="tab"
           aria-selected={activeTab === 'blueprint'}
+          id="tab-blueprint" aria-controls="panel-blueprint" tabIndex={activeTab === 'blueprint' ? 0 : -1}
           className={`tab-button${activeTab === 'blueprint' ? ' tab-button-active' : ''}`}
           onClick={() => setActiveTab('blueprint')}
         >
@@ -284,6 +292,7 @@ export default function BlueprintPage() {
           type="button"
           role="tab"
           aria-selected={activeTab === 'agents'}
+          id="tab-agents" aria-controls="panel-agents" tabIndex={activeTab === 'agents' ? 0 : -1}
           className={`tab-button${activeTab === 'agents' ? ' tab-button-active' : ''}`}
           onClick={() => setActiveTab('agents')}
         >
@@ -293,6 +302,7 @@ export default function BlueprintPage() {
           type="button"
           role="tab"
           aria-selected={activeTab === 'twin'}
+          id="tab-twin" aria-controls="panel-twin" tabIndex={activeTab === 'twin' ? 0 : -1}
           className={`tab-button${activeTab === 'twin' ? ' tab-button-active' : ''}`}
           onClick={() => setActiveTab('twin')}
         >
@@ -302,6 +312,7 @@ export default function BlueprintPage() {
           type="button"
           role="tab"
           aria-selected={activeTab === 'twin-runs'}
+          id="tab-twin-runs" aria-controls="panel-twin-runs" tabIndex={activeTab === 'twin-runs' ? 0 : -1}
           className={`tab-button${activeTab === 'twin-runs' ? ' tab-button-active' : ''}`}
           onClick={() => setActiveTab('twin-runs')}
         >
@@ -314,7 +325,14 @@ export default function BlueprintPage() {
           and onDiagramReady's labelsById is needed by the other two tabs too. */}
       {/* Inline style (not a CSS class) so it hides reliably even where a
           stylesheet isn't loaded, e.g. component tests. */}
-      <div className="diagram-body" style={activeTab === 'blueprint' ? undefined : { display: 'none' }}>
+      <div id="panel-blueprint" role="tabpanel" aria-labelledby="tab-blueprint" tabIndex={0} style={activeTab === 'blueprint' ? undefined : { display: 'none' }}>
+        <label className="step-inspector">Inspect process step
+          <select value={selectedNodeId ?? ''} onChange={event => setSelectedNodeId(event.target.value || null)}>
+            <option value="">Select a step to review</option>
+            {overlay.nodes.map(node => <option key={node.node_id} value={node.node_id}>{labelsById[node.node_id] ?? node.node_id}</option>)}
+          </select>
+        </label>
+      <div className="diagram-body">
         {versionXml && (
           <BlueprintCanvas
             xml={versionXml}
@@ -337,7 +355,9 @@ export default function BlueprintPage() {
           canGenerateAgent={isEditor}
         />
       </div>
+      </div>
 
+      <div id="panel-agents" role="tabpanel" aria-labelledby="tab-agents" tabIndex={0} hidden={activeTab !== 'agents'}>
       {activeTab === 'agents' && (
         <AgentCardsPanel
           groups={agentGroups}
@@ -350,12 +370,17 @@ export default function BlueprintPage() {
           processId={processId}
         />
       )}
+      </div>
 
+      <div id="panel-twin" role="tabpanel" aria-labelledby="tab-twin" tabIndex={0} hidden={activeTab !== 'twin'}>
       {activeTab === 'twin' && overlay && (
         <DigitalTwinPreview overlay={overlay} groups={agentGroups} labelsById={labelsById} />
       )}
+      </div>
 
+      <div id="panel-twin-runs" role="tabpanel" aria-labelledby="tab-twin-runs" tabIndex={0} hidden={activeTab !== 'twin-runs'}>
       {activeTab === 'twin-runs' && processId && <DigitalTwinPanel processId={processId} groups={agentGroups} />}
+      </div>
     </div>
   )
 }
