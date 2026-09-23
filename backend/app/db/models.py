@@ -85,6 +85,8 @@ class DocumentModel(Base):
     size_bytes: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    process_definition_confidence: Mapped[int | None] = mapped_column(nullable=True)
+    validation_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     process: Mapped[ProcessModel] = relationship(back_populates="documents")

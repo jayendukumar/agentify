@@ -15,6 +15,8 @@ class DocumentSummary(BaseModel):
     content_type: str
     size_bytes: int
     status: IngestionStatus
+    process_definition_confidence: int | None = None
+    validation_message: str | None = None
     created_at: datetime
 
 

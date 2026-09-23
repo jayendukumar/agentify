@@ -1521,3 +1521,45 @@ instead of each caller placing it next to the publish button separately
 and `AgentDetailPanel` (which previously lacked twin evidence entirely)
 both now just render one `<PublishPanel>` and get lifecycle status, twin
 confidence, and version history together.
+
+## 2026-09-23 -- Per-document process-definition validation
+
+### Gap analysis makes zero LLM calls right after a document's own merge, not one
+
+Added `is_process_definition`/`process_definition_confidence`/`validation_message`
+to the structuring LLM contract so a non-process upload (a backlog, a
+roadmap, meeting notes) is rejected per-document instead of silently
+merging empty/junk extraction results into the process schema
+(`app/ingestion/structuring.py`, `structure_process_with_validation` /
+`structure_process_from_image_with_validation`).
+
+While verifying this against the real pytest suite (not just reading the
+code), a new two-document test assumed three LLM calls would happen:
+doc1 extraction, doc1's gap-analysis pass, then doc2 extraction -- and
+pre-loaded `fake_llm.complete.side_effect` with three payloads in that
+order. It failed with the *second* document silently getting the
+gap-analysis stub instead of its intended "this is a backlog" rejection
+payload. Root cause: `run_gap_analysis` (`app/gap_analysis/service.py`)
+calls `repository.get_process_schema` on the *same* session that just
+committed the merge, but for a single freshly-merged document this
+returns `None`/empty in a way that short-circuits `analyze_gaps` before
+it ever calls the LLM -- confirmed as existing, intentional behavior by
+an unrelated, unmodified test in the same file
+(`test_pdf_upload_and_extract_process_schema` asserts
+`fake_llm.complete.assert_awaited_once()` after a single document with a
+non-empty schema). So there are only two LLM calls per two-document
+upload, not three; fixed by removing the phantom middle payload from the
+new test's `side_effect` list rather than changing production code.
+
+Running the full suite (not just the new test file) after that fix
+surfaced a second, unrelated break: `tests/test_db_repository.py` has its
+own `_PAYLOAD` fixture, never updated with the new
+`is_process_definition` fields, so under the new validation logic it now
+defaults to "not a process document" and gets rejected -- the document
+ends up `failed` instead of `done`, so the embeddings/schema-change-log
+assertions in `test_document_upload_stores_embeddings_and_schema_change_log`
+and `test_process_data_survives_a_fresh_session` never see any data.
+Fixed by adding the same three validation fields to that fixture. Lesson:
+a schema contract change like this one needs a repo-wide grep for every
+hand-built LLM payload fixture, not just the test file that motivated the
+change.

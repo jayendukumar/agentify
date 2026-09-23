@@ -20,7 +20,12 @@ from app.llm import LLMClient
 
 from . import storage
 from .extractors import ExtractedBlock, extract_docx, extract_pdf, extract_vsdx
-from .structuring import StructuringError, structure_process, structure_process_from_image
+from .structuring import (
+    DocumentValidationError,
+    StructuringError,
+    structure_process_from_image_with_validation,
+    structure_process_with_validation,
+)
 
 logger = logging.getLogger("app.ingestion.pipeline")
 
@@ -58,7 +63,7 @@ async def process_document(
             # straight to vision-based structuring (US1.5). Nothing to
             # embed either (US2.3 embeds extraction blocks, and there are
             # none for an image).
-            schema = await structure_process_from_image(
+            schema, validation_confidence, validation_message = await structure_process_from_image_with_validation(
                 llm,
                 document_id=document_id,
                 filename=document.filename,
@@ -76,7 +81,7 @@ async def process_document(
             else:
                 raise StructuringError(f"No extractor available yet for content type '{document.content_type}'")
 
-            schema = await structure_process(
+            schema, validation_confidence, validation_message = await structure_process_with_validation(
                 llm,
                 document_id=document_id,
                 filename=document.filename,
@@ -84,6 +89,9 @@ async def process_document(
                 process_name=process.name,
             )
 
+        repository.update_document_validation(
+            session, process_id, document_id, validation_confidence, validation_message
+        )
         repository.merge_process_schema(session, process_id, schema, document_id=document_id)
         if blocks:
             repository.add_document_embeddings(session, document_id, blocks)
@@ -117,6 +125,21 @@ async def process_document(
             extra={"process_id": process_id, "document_id": document_id, "error": str(exc)},
         )
         try:
+            if isinstance(exc, DocumentValidationError):
+                repository.update_document_validation(
+                    session, process_id, document_id, exc.confidence, str(exc)
+                )
+            else:
+                # Keep the per-document validation result visible even when
+                # extraction itself fails. One bad document must not appear
+                # unvalidated just because another document was processed.
+                repository.update_document_validation(
+                    session,
+                    process_id,
+                    document_id,
+                    0,
+                    f"Could not validate '{document.filename}' as a process document: {exc}",
+                )
             repository.update_document_status(session, process_id, document_id, "failed", error_message=str(exc))
             session.commit()
         except Exception:

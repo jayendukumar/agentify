@@ -29,6 +29,9 @@ def _llm_result(payload: dict) -> ChatCompletionResult:
 
 
 _PAYLOAD = {
+    "is_process_definition": True,
+    "process_definition_confidence": 92,
+    "validation_message": "The document describes an ordered request process.",
     "actors": [{"id": "actor-1", "name": "Requester", "type": "role"}],
     "elements": [
         {

@@ -29,6 +29,8 @@ each step touches.
 
 {schema_contract}
 
+Before extracting entities, validate whether this document is actually a process definition. A process definition describes how work is performed: an ordered or connected sequence of activities, decisions, events, inputs/outputs, roles, or systems. Project backlogs, issue lists, roadmaps, meeting notes, status reports, and generic requirement inventories are not process definitions unless they also clearly describe how work flows from start to finish.
+
 Rules:
 - Every element must have at least one source_ref. Never invent an element \
 that isn't evidenced in the document content.
@@ -54,6 +56,8 @@ inputs/outputs/systems.
 
 {schema_contract}
 
+First validate whether the image actually depicts a process definition or flow. A project board, backlog, roadmap, status report, or generic list of work items is not a process definition unless it clearly shows how work flows from start to finish.
+
 Rules:
 - Every element must have at least one source_ref with location "image" \
 and an excerpt describing what you saw (e.g. the shape's label text) --  \
@@ -73,6 +77,9 @@ proximity or reading order.
 _SCHEMA_CONTRACT = """Respond with a single JSON object matching exactly this shape (no prose, no \
 markdown code fences, just the JSON object):
 {
+  "is_process_definition": true,
+  "process_definition_confidence": 0,
+  "validation_message": "One or two concise sentences explaining the evidence for the decision.",
   "actors": [
     {"id": "string, unique, e.g. actor-1", "name": "string", "type": "role" | "system" | "external_party"}
   ],
@@ -98,6 +105,9 @@ markdown code fences, just the JSON object):
 
 
 class _ExtractedSchema(BaseModel):
+    is_process_definition: bool | None = None
+    process_definition_confidence: int | None = Field(default=None, ge=0, le=100)
+    validation_message: str | None = None
     actors: list[Actor] = Field(default_factory=list)
     elements: list[ProcessElement] = Field(default_factory=list)
     flows: list[ProcessFlow] = Field(default_factory=list)
@@ -106,6 +116,14 @@ class _ExtractedSchema(BaseModel):
 class StructuringError(Exception):
     """Raised when a document has nothing to extract, or the LLM's
     structured output can't be parsed into the canonical schema."""
+
+
+class DocumentValidationError(StructuringError):
+    """Raised when the uploaded file is not a process definition."""
+
+    def __init__(self, message: str, confidence: int) -> None:
+        super().__init__(message)
+        self.confidence = confidence
 
 
 def _render_blocks(blocks: list[ExtractedBlock]) -> str:
@@ -131,7 +149,7 @@ async def _run_structuring_call(
     filename: str,
     process_name: str,
     content: str | list[ContentBlock],
-) -> ProcessSchema:
+) -> tuple[ProcessSchema, int, str, bool]:
     result = await llm.complete(
         [ChatMessage(role="user", content=content)],
         operation="document_extraction",
@@ -167,12 +185,30 @@ async def _run_structuring_call(
 
     _assign_globally_unique_ids(extracted)
 
-    return ProcessSchema(
+    schema = ProcessSchema(
         process_name=process_name,
         actors=extracted.actors,
         elements=extracted.elements,
         flows=extracted.flows,
     )
+    # Validation is per uploaded document, including when the process already
+    # contains other documents. Do not infer a positive classification from
+    # extracted elements: a backlog or requirements list can contain things
+    # that look like steps without describing an executable process.
+    is_process = extracted.is_process_definition
+    confidence = extracted.process_definition_confidence
+    message = extracted.validation_message
+    if is_process is None:
+        is_process = False
+    if confidence is None:
+        confidence = 70 if is_process else 0
+    if not message:
+        message = (
+            "The document contains process activities or flow evidence."
+            if is_process
+            else "The document did not receive an explicit process-document classification."
+        )
+    return schema, confidence, message, is_process
 
 
 def _assign_globally_unique_ids(extracted: _ExtractedSchema) -> None:
@@ -239,9 +275,39 @@ async def structure_process(
         f"Document content:\n{_render_blocks(blocks)}"
     )
 
-    return await _run_structuring_call(
+    schema, _confidence, _message, _is_process = await _run_structuring_call(
         llm, document_id=document_id, filename=filename, process_name=process_name, content=prompt
     )
+    return schema
+
+
+async def structure_process_with_validation(
+    llm: LLMClient,
+    *,
+    document_id: str,
+    filename: str,
+    blocks: list[ExtractedBlock],
+    process_name: str,
+) -> tuple[ProcessSchema, int, str]:
+    """Extract a process and reject documents classified as non-processes."""
+    if not blocks:
+        raise StructuringError(f"No extractable text or tables found in '{filename}'")
+    instructions = _TEXT_INSTRUCTIONS.format(schema_contract=_SCHEMA_CONTRACT)
+    prompt = (
+        f"{instructions}\n\n"
+        f'Document id: "{document_id}"\n'
+        f'Document filename: "{filename}"\n\n'
+        f"Document content:\n{_render_blocks(blocks)}"
+    )
+    schema, confidence, message, is_process = await _run_structuring_call(
+        llm, document_id=document_id, filename=filename, process_name=process_name, content=prompt
+    )
+    if not is_process:
+        raise DocumentValidationError(
+            f"'{filename}' does not appear to be a process definition (confidence {confidence}%). {message}",
+            confidence,
+        )
+    return schema, confidence, message
 
 
 async def structure_process_from_image(
@@ -264,6 +330,30 @@ async def structure_process_from_image(
         ImageContent.from_bytes(image_bytes, mime_type),
     ]
 
-    return await _run_structuring_call(
+    schema, _confidence, _message, _is_process = await _run_structuring_call(
         llm, document_id=document_id, filename=filename, process_name=process_name, content=content
     )
+    return schema
+
+
+async def structure_process_from_image_with_validation(
+    llm: LLMClient,
+    *,
+    document_id: str,
+    filename: str,
+    image_bytes: bytes,
+    mime_type: str,
+    process_name: str,
+) -> tuple[ProcessSchema, int, str]:
+    instructions = _IMAGE_INSTRUCTIONS.format(schema_contract=_SCHEMA_CONTRACT)
+    prompt_text = f'{instructions}\n\nDocument id: "{document_id}"\nDocument filename: "{filename}"'
+    content: list[ContentBlock] = [TextContent(text=prompt_text), ImageContent.from_bytes(image_bytes, mime_type)]
+    schema, confidence, message, is_process = await _run_structuring_call(
+        llm, document_id=document_id, filename=filename, process_name=process_name, content=content
+    )
+    if not is_process:
+        raise DocumentValidationError(
+            f"'{filename}' does not appear to be a process definition (confidence {confidence}%). {message}",
+            confidence,
+        )
+    return schema, confidence, message

@@ -88,6 +88,9 @@ export default function ProcessDetailPage() {
     return () => clearInterval(interval)
   }, [documents])
 
+  const hasPendingDocuments = documents.some((doc) => doc.status === 'queued' || doc.status === 'processing')
+  const allDocumentsProcessed = documents.length > 0 && documents.every((doc) => doc.status === 'done')
+
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
     if (!processId || !event.target.files || event.target.files.length === 0) return
 
@@ -169,15 +172,32 @@ export default function ProcessDetailPage() {
 
       {!process.has_draft_bpmn && process.document_count > 0 && (
         <div className="next-step-action">
+          {hasPendingDocuments && (
+            <div className="processing-progress" role="status" aria-live="polite">
+              <div className="processing-progress-header">
+                <span>Processing uploaded documents</span>
+                <span className="meta">Please wait...</span>
+              </div>
+              <div
+                className="processing-progress-bar"
+                role="progressbar"
+                aria-label="Document processing progress"
+                aria-valuetext="Processing uploaded documents"
+              />
+            </div>
+          )}
           <button
             type="button"
             className="button-primary"
             onClick={handleGenerateBpmn}
-            disabled={generatingBpmn || user?.role !== 'editor'}
-            title={user?.role !== 'editor' ? 'Editor access required' : undefined}
+            disabled={generatingBpmn || !allDocumentsProcessed || user?.role !== 'editor'}
+            title={user?.role !== 'editor' ? 'Editor access required' : !allDocumentsProcessed ? 'Document processing must complete first' : undefined}
           >
             {generatingBpmn ? 'Generating...' : 'Generate draft BPMN'}
           </button>
+          {!hasPendingDocuments && !allDocumentsProcessed && documents.length > 0 && (
+            <p className="error" role="alert">BPMN generation is unavailable until all documents finish processing.</p>
+          )}
           {bpmnAction && <p role={bpmnAction.kind === 'error' ? 'alert' : 'status'} className={bpmnAction.kind === 'error' ? 'error' : 'info'}>{bpmnAction.text}</p>}
         </div>
       )}
@@ -220,7 +240,17 @@ export default function ProcessDetailPage() {
             {doc.status === 'processing' && (
               <span className="status-note">Extracting the process -- this can take a minute or two for larger documents.</span>
             )}
-            {doc.status === 'failed' && <span className="status-note error">Processing failed for this document.</span>}
+            {doc.status === 'failed' && (
+              <span className="status-note error">
+                {doc.validation_message || 'Processing failed for this document.'}
+              </span>
+            )}
+            {doc.status === 'done' && doc.process_definition_confidence !== null && (
+              <span className="status-note">
+                Process definition confidence: {doc.process_definition_confidence}%
+                {doc.validation_message ? ` — ${doc.validation_message}` : ''}
+              </span>
+            )}
           </li>
         ))}
       </ul>

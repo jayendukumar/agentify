@@ -22,6 +22,8 @@ def _to_summary(document: DocumentModel) -> DocumentSummary:
         content_type=document.content_type,
         size_bytes=document.size_bytes,
         status=document.status,
+        process_definition_confidence=document.process_definition_confidence,
+        validation_message=document.validation_message,
         created_at=document.created_at,
     )
 

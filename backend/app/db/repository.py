@@ -139,6 +139,15 @@ def update_document_status(
     session.flush()
 
 
+def update_document_validation(
+    session: Session, process_id: str, document_id: str, confidence: int, message: str
+) -> None:
+    document = get_document(session, process_id, document_id)
+    document.process_definition_confidence = confidence
+    document.validation_message = message
+    session.flush()
+
+
 # -- process schema (US2.1, US2.5) -------------------------------------------
 
 

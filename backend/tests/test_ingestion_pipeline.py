@@ -48,6 +48,9 @@ def _llm_result(payload: dict) -> ChatCompletionResult:
 
 
 _VALID_PAYLOAD = {
+    "is_process_definition": True,
+    "process_definition_confidence": 94,
+    "validation_message": "The document describes an ordered request process.",
     "actors": [{"id": "actor-1", "name": "Requester", "type": "role"}],
     "elements": [
         {
@@ -123,6 +126,49 @@ def test_pdf_upload_with_no_extractable_text_marks_document_failed(client, fake_
     fake_llm.complete.assert_not_awaited()
 
 
+def test_each_document_is_validated_before_cross_document_merge(client, fake_llm):
+    process = client.post("/api/processes", json={"name": "Mixed Documents"}).json()
+    non_process_payload = {
+        "is_process_definition": False,
+        "process_definition_confidence": 98,
+        "validation_message": "This is a project backlog, not an ordered business process.",
+        "actors": [],
+        "elements": [],
+        "flows": [],
+    }
+    # One LLM call per document (gap analysis after a single document's merge
+    # finds nothing to flag, so it never calls the LLM -- see
+    # test_pdf_upload_and_extract_process_schema's assert_awaited_once()).
+    # Second document gets its own, independent process-document
+    # classification before it can be merged.
+    fake_llm.complete.side_effect = [
+        _llm_result(_VALID_PAYLOAD),
+        _llm_result(non_process_payload),
+    ]
+
+    files = [
+        ("files", ("process.docx", _docx_bytes(["Submit the request."]), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+        ("files", ("backlog.docx", _docx_bytes(["Item 1: improve onboarding."]), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+    ]
+    response = client.post(f"/api/processes/{process['id']}/documents", files=files)
+    assert response.status_code == 201
+
+    documents = {
+        client.get(f"/api/processes/{process['id']}/documents/{document['id']}").json()["filename"]: client.get(
+            f"/api/processes/{process['id']}/documents/{document['id']}"
+        ).json()
+        for document in response.json()
+    }
+    assert documents["process.docx"]["status"] == "done"
+    assert documents["process.docx"]["process_definition_confidence"] == 94
+    assert documents["backlog.docx"]["status"] == "failed"
+    assert documents["backlog.docx"]["process_definition_confidence"] == 98
+    assert "project backlog" in documents["backlog.docx"]["validation_message"]
+
+    process_detail = client.get(f"/api/processes/{process['id']}").json()
+    assert len(process_detail["process_schema"]["elements"]) == 1
+
+
 def test_vsdx_upload_processes_in_background_and_updates_status(client, fake_llm):
     fake_llm.complete.return_value = _llm_result(_VALID_PAYLOAD)
 
@@ -175,6 +221,9 @@ def test_second_document_merges_into_existing_process_schema(client, fake_llm):
     client.post(f"/api/processes/{process['id']}/documents", files=files_1)
 
     second_payload = {
+        "is_process_definition": True,
+        "process_definition_confidence": 91,
+        "validation_message": "The document describes an ordered approval process.",
         "actors": [{"id": "actor-2", "name": "Manager", "type": "role"}],
         "elements": [
             {

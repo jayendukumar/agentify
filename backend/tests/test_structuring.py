@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.ingestion.extractors import ExtractedBlock
-from app.ingestion.structuring import StructuringError, structure_process
+from app.ingestion.structuring import DocumentValidationError, StructuringError, structure_process, structure_process_with_validation
 from app.llm.types import ChatCompletionResult, Usage
 from app.llm.client import LLMClient
 from app.config import Settings
@@ -68,6 +68,24 @@ async def test_structure_process_parses_valid_response():
     _, kwargs = client.complete.await_args
     assert kwargs["operation"] == "document_extraction"
     assert kwargs["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_structure_process_rejects_non_process_document():
+    payload = {
+        "is_process_definition": False,
+        "process_definition_confidence": 96,
+        "validation_message": "This is a project backlog with work items and statuses, not an ordered process flow.",
+        "actors": [],
+        "elements": [],
+        "flows": [],
+    }
+    client = _client_with_response(json.dumps(payload))
+
+    with pytest.raises(DocumentValidationError, match="confidence 96%.*project backlog"):
+        await structure_process_with_validation(
+            client, document_id="doc-1", filename="backlog.docx", blocks=_BLOCKS, process_name="Onboarding"
+        )
 
 
 @pytest.mark.asyncio

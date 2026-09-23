@@ -63,6 +63,8 @@ export interface DocumentSummary {
   content_type: string
   size_bytes: number
   status: IngestionStatus
+  process_definition_confidence: number | null
+  validation_message: string | null
   created_at: string
 }
 
