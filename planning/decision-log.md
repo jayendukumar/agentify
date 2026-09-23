@@ -1563,3 +1563,53 @@ Fixed by adding the same three validation fields to that fixture. Lesson:
 a schema contract change like this one needs a repo-wide grep for every
 hand-built LLM payload fixture, not just the test file that motivated the
 change.
+
+### Live-testing the deployed feature found two more defects the mocked test suite couldn't catch
+
+The user reported the just-shipped validation feature "not working" against
+a real uploaded backlog document. First finding was environmental, not a
+code bug: a stray `.venv` `uvicorn --reload` process (started days earlier)
+was bound to `127.0.0.1:8000` alongside the Docker `api` container's
+`0.0.0.0:8000` -- Windows allows both to coexist, and the browser's
+requests to `localhost:8000` were silently landing on the stale process
+running pre-feature code. Confirmed by diffing each listener's
+`/openapi.json` for the new `process_definition_confidence` field, then
+killed the stray process (and its orphaned `--reload` worker subprocess,
+which kept holding the port after the parent died).
+
+With traffic actually reaching the rebuilt container, two real defects in
+`app/ingestion/structuring.py` showed up that no amount of mocked-payload
+testing would have found, only real calls to OpenRouter/Qwen3.7 Flash:
+
+1. **`process_definition_confidence` sometimes returned as a 0-1 fraction**
+   (e.g. `0.9`) instead of the prompted 0-100 integer. Pydantic's strict
+   `int` field raised `int_from_float`, which surfaced as a generic
+   `StructuringError` -- misreported as "not a process document" for a
+   document that actually was one (Employee Onboarding, a real test file).
+   Fixed by accepting `float` and normalizing (`<=1` treated as a
+   fraction, scaled by 100) rather than trusting the model's declared unit.
+
+2. **The model omits `is_process_definition`/`confidence`/`message`
+   entirely** (not `null` -- the keys are just absent) in roughly half of
+   real calls on a real, larger (24-element) document, confirmed by 8
+   repeated live calls on the identical prompt: 4 included the fields, 4
+   didn't. The original code defaulted a missing classification straight
+   to "reject" -- correct as a last resort, unsafe as the primary
+   behavior, since it turned model flakiness into false-negative
+   rejections of legitimate documents on a roughly 50/50 coin flip.
+   First fix attempt (retry the whole extraction call up to 3x) was
+   measured *still insufficient*: on the same 24-element document, 3
+   fresh full-extraction retries came back unclassified all 3 times (a
+   ~12.5% tail outcome, but real, and each retry cost a full ~15-90s call
+   under the host's memory pressure at the time). Redesigned instead as a
+   **small, focused classification-only follow-up call** on top of the
+   *same* first extraction (keeping its elements rather than discarding
+   them) -- cheaper, faster, and a simpler task for the model to actually
+   answer, since it isn't competing with a large element-extraction task
+   for output budget/attention in the same response.
+
+Verified end to end against the live API after each fix: re-uploaded both
+the real backlog document (correctly rejected, with a specific model-
+written reason, not the generic fallback) and the real Employee Onboarding
+document (correctly accepted, confidence 100, all 22 elements preserved)
+through the actual Docker container, not just pytest's mocked client.

@@ -106,7 +106,14 @@ markdown code fences, just the JSON object):
 
 class _ExtractedSchema(BaseModel):
     is_process_definition: bool | None = None
-    process_definition_confidence: int | None = Field(default=None, ge=0, le=100)
+    # The prompt asks for an integer 0-100, but real responses (observed
+    # against the live OpenRouter/Qwen3.7 Flash model, not just the mocked
+    # test payloads) sometimes come back as a 0-1 fraction instead (e.g.
+    # 0.9) -- accepting float here and normalizing in _run_structuring_call
+    # avoids a strict-int ValidationError there turning into a StructuringError
+    # that then gets misreported as "not a process document" for a document
+    # that actually is one.
+    process_definition_confidence: float | None = Field(default=None, ge=0)
     validation_message: str | None = None
     actors: list[Actor] = Field(default_factory=list)
     elements: list[ProcessElement] = Field(default_factory=list)
@@ -142,14 +149,75 @@ def _strip_source_marker(location: str) -> str:
     return stripped
 
 
-async def _run_structuring_call(
-    llm: LLMClient,
-    *,
-    document_id: str,
-    filename: str,
-    process_name: str,
-    content: str | list[ContentBlock],
-) -> tuple[ProcessSchema, int, str, bool]:
+# Live testing against the real OpenRouter/Qwen3.7 Flash model (not just
+# mocked payloads) found it omits is_process_definition/confidence/message
+# entirely in roughly half of calls on a real, larger document -- despite
+# reliably classifying the same document correctly on other calls. Silently
+# treating "omitted" the same as "explicitly not a process" (the old
+# behavior) meant a real process document had a coin-flip chance of being
+# wrongly rejected. Re-running the whole (large, slow) extraction call just
+# to get a yes/no was tried first and measured worse than expected -- on a
+# 24-element document it still came back unclassified 3 times in a row.
+# Instead, keep the first (expensive) extraction's elements and retry only a
+# small, focused classification-only follow-up call when it's missing --
+# cheaper, faster, and a simpler task for the model to actually answer.
+_MAX_CLASSIFICATION_ATTEMPTS = 3
+
+_CLASSIFICATION_FOLLOWUP = """
+
+Ignore the JSON schema above. Answer ONLY this question about the same document/image: does it describe \
+a business process -- an ordered or connected sequence of activities, decisions, events, inputs/outputs, \
+roles, or systems showing how work flows from start to finish? Project backlogs, issue lists, roadmaps, \
+meeting notes, status reports, and generic requirement inventories are NOT process definitions unless \
+they also clearly describe how work flows from start to finish.
+
+Respond with a single JSON object matching exactly this shape (no prose, no markdown code fences). All \
+three fields are required -- never omit any of them:
+{
+  "is_process_definition": true,
+  "process_definition_confidence": 0,
+  "validation_message": "One or two concise sentences explaining the evidence for the decision."
+}"""
+
+
+class _ClassificationResult(BaseModel):
+    is_process_definition: bool
+    process_definition_confidence: float = Field(ge=0)
+    validation_message: str
+
+
+def _with_classification_followup(content: str | list[ContentBlock]) -> str | list[ContentBlock]:
+    if isinstance(content, str):
+        return content + _CLASSIFICATION_FOLLOWUP
+    return [
+        TextContent(text=block.text + _CLASSIFICATION_FOLLOWUP) if isinstance(block, TextContent) else block
+        for block in content
+    ]
+
+
+async def _classify_process_definition(
+    llm: LLMClient, *, filename: str, content: str | list[ContentBlock]
+) -> _ClassificationResult | None:
+    """Best-effort fallback used only when the main extraction call omits
+    the classification fields. Never raises -- any failure here just means
+    the caller keeps waiting for a definitive answer (or, after exhausting
+    attempts, falls back to the existing fail-closed default), the same as
+    if the model had omitted the fields again."""
+    try:
+        result = await llm.complete(
+            [ChatMessage(role="user", content=_with_classification_followup(content))],
+            operation="document_extraction",
+            response_format={"type": "json_object"},
+            max_tokens=2000,
+        )
+        if not result.text:
+            return None
+        return _ClassificationResult.model_validate(json.loads(result.text))
+    except (json.JSONDecodeError, ValidationError):
+        return None
+
+
+async def _complete_and_parse(llm: LLMClient, *, filename: str, content: str | list[ContentBlock]) -> _ExtractedSchema:
     result = await llm.complete(
         [ChatMessage(role="user", content=content)],
         operation="document_extraction",
@@ -172,9 +240,29 @@ async def _run_structuring_call(
 
     try:
         payload: Any = json.loads(result.text)
-        extracted = _ExtractedSchema.model_validate(payload)
+        return _ExtractedSchema.model_validate(payload)
     except (json.JSONDecodeError, ValidationError) as exc:
         raise StructuringError(f"LLM returned invalid structured output for '{filename}': {exc}") from exc
+
+
+async def _run_structuring_call(
+    llm: LLMClient,
+    *,
+    document_id: str,
+    filename: str,
+    process_name: str,
+    content: str | list[ContentBlock],
+    require_classification: bool = False,
+) -> tuple[ProcessSchema, int, str, bool]:
+    extracted = await _complete_and_parse(llm, filename=filename, content=content)
+    if require_classification and extracted.is_process_definition is None:
+        for _attempt in range(_MAX_CLASSIFICATION_ATTEMPTS - 1):
+            classification = await _classify_process_definition(llm, filename=filename, content=content)
+            if classification is not None:
+                extracted.is_process_definition = classification.is_process_definition
+                extracted.process_definition_confidence = classification.process_definition_confidence
+                extracted.validation_message = classification.validation_message
+                break
 
     # Don't trust the model to follow the prompt's formatting instructions
     # exactly -- normalize deterministically instead of relying on it.
@@ -202,6 +290,13 @@ async def _run_structuring_call(
         is_process = False
     if confidence is None:
         confidence = 70 if is_process else 0
+    else:
+        # Real responses from the live model sometimes use a 0-1 fraction
+        # (e.g. 0.9) instead of the requested 0-100 integer -- normalize
+        # rather than let a strict int field reject the whole response.
+        if confidence <= 1:
+            confidence *= 100
+        confidence = round(min(100, confidence))
     if not message:
         message = (
             "The document contains process activities or flow evidence."
@@ -300,7 +395,12 @@ async def structure_process_with_validation(
         f"Document content:\n{_render_blocks(blocks)}"
     )
     schema, confidence, message, is_process = await _run_structuring_call(
-        llm, document_id=document_id, filename=filename, process_name=process_name, content=prompt
+        llm,
+        document_id=document_id,
+        filename=filename,
+        process_name=process_name,
+        content=prompt,
+        require_classification=True,
     )
     if not is_process:
         raise DocumentValidationError(
@@ -349,7 +449,12 @@ async def structure_process_from_image_with_validation(
     prompt_text = f'{instructions}\n\nDocument id: "{document_id}"\nDocument filename: "{filename}"'
     content: list[ContentBlock] = [TextContent(text=prompt_text), ImageContent.from_bytes(image_bytes, mime_type)]
     schema, confidence, message, is_process = await _run_structuring_call(
-        llm, document_id=document_id, filename=filename, process_name=process_name, content=content
+        llm,
+        document_id=document_id,
+        filename=filename,
+        process_name=process_name,
+        content=content,
+        require_classification=True,
     )
     if not is_process:
         raise DocumentValidationError(

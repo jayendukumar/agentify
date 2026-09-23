@@ -89,6 +89,129 @@ async def test_structure_process_rejects_non_process_document():
 
 
 @pytest.mark.asyncio
+async def test_structure_process_normalizes_fractional_confidence_from_real_model_responses():
+    # Found against the live OpenRouter/Qwen3.7 Flash model, not a mocked
+    # payload: it returned process_definition_confidence as a 0-1 fraction
+    # (0.9) despite the prompt asking for a 0-100 integer. A strict `int`
+    # field rejects that with a ValidationError, which previously surfaced
+    # as "not a process document" for a document that actually is one.
+    payload = {
+        "is_process_definition": True,
+        "process_definition_confidence": 0.9,
+        "validation_message": "The document describes an ordered onboarding process.",
+        "actors": [{"id": "actor-1", "name": "Requester", "type": "role"}],
+        "elements": [
+            {
+                "id": "el-1",
+                "type": "task",
+                "label": "Submit the request form",
+                "actor_id": "actor-1",
+                "source_refs": [{"document_id": "doc-1", "location": "page 1", "excerpt": "Submit the request form."}],
+                "confidence": "high",
+            }
+        ],
+        "flows": [],
+    }
+    client = _client_with_response(json.dumps(payload))
+
+    schema, confidence, message = await structure_process_with_validation(
+        client, document_id="doc-1", filename="onboarding.docx", blocks=_BLOCKS, process_name="Onboarding"
+    )
+
+    assert confidence == 90
+    assert message == "The document describes an ordered onboarding process."
+    assert len(schema.elements) == 1
+
+
+def _payload(is_process_definition, confidence, message, num_elements=1):
+    payload = {
+        "actors": [{"id": "actor-1", "name": "Requester", "type": "role"}],
+        "elements": [
+            {
+                "id": f"el-{i}",
+                "type": "task",
+                "label": f"Step {i}",
+                "actor_id": "actor-1",
+                "source_refs": [{"document_id": "doc-1", "location": "page 1", "excerpt": "Submit the request form."}],
+                "confidence": "high",
+            }
+            for i in range(num_elements)
+        ],
+        "flows": [],
+    }
+    if is_process_definition is not None:
+        payload["is_process_definition"] = is_process_definition
+        payload["process_definition_confidence"] = confidence
+        payload["validation_message"] = message
+    return payload
+
+
+def _completion(text: str) -> ChatCompletionResult:
+    return ChatCompletionResult(
+        text=text, tool_calls=[], finish_reason="stop",
+        usage=Usage(input_tokens=10, output_tokens=10, total_tokens=20), model="qwen/qwen3.7-flash",
+    )
+
+
+@pytest.mark.asyncio
+async def test_structure_process_with_validation_falls_back_to_classification_followup():
+    # Found against the live model: it omits is_process_definition entirely
+    # (not just null) in roughly half of real calls on a real document, even
+    # though it reliably classifies the same document correctly on other
+    # calls. Re-running the whole (large, slow) extraction to get a fresh
+    # classification measured worse than a small dedicated follow-up call --
+    # so the fallback keeps the first attempt's elements and only retries a
+    # focused classification-only question.
+    unclassified = _payload(None, None, None, num_elements=3)
+    classification_only = {
+        "is_process_definition": True,
+        "process_definition_confidence": 88,
+        "validation_message": "Ordered steps with clear actors.",
+    }
+    client = _client_with_response(json.dumps(unclassified))
+    client.complete.side_effect = [_completion(json.dumps(unclassified)), _completion(json.dumps(classification_only))]
+
+    schema, confidence, message = await structure_process_with_validation(
+        client, document_id="doc-1", filename="onboarding.docx", blocks=_BLOCKS, process_name="Onboarding"
+    )
+
+    assert client.complete.await_count == 2
+    assert confidence == 88
+    assert message == "Ordered steps with clear actors."
+    assert len(schema.elements) == 3  # the first (only) extraction's elements, not discarded
+
+
+@pytest.mark.asyncio
+async def test_structure_process_with_validation_rejects_after_exhausting_classification_followups():
+    unclassified = _payload(None, None, None)
+    client = _client_with_response(json.dumps(unclassified))
+    # First call is the real extraction; the classification follow-up also
+    # comes back without a usable answer every time, so all attempts miss.
+    client.complete.side_effect = [_completion(json.dumps(unclassified))] * 3
+
+    with pytest.raises(DocumentValidationError):
+        await structure_process_with_validation(
+            client, document_id="doc-1", filename="ambiguous.docx", blocks=_BLOCKS, process_name="Onboarding"
+        )
+
+    assert client.complete.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_structure_process_does_not_retry_missing_classification():
+    # The non-validating structure_process doesn't need the classification,
+    # so it shouldn't pay for retries that only exist to secure it.
+    unclassified = _payload(None, None, None)
+    client = _client_with_response(json.dumps(unclassified))
+
+    await structure_process(
+        client, document_id="doc-1", filename="sop.pdf", blocks=_BLOCKS, process_name="Onboarding"
+    )
+
+    client.complete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_structure_process_overwrites_document_id_regardless_of_llm_output():
     # The LLM is told the document_id in the prompt but can't be trusted to
     # echo it back correctly -- structure_process must set it deterministically.
