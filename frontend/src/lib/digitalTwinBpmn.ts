@@ -73,6 +73,14 @@ export function buildDigitalTwinBpmnXml(chain: ChainItem[], labelsById: Record<s
       const id = `Task_human_${slug(item.nodeId)}`
       nodeIdByChainIndex.push(id)
       humanNodes.push({ id, name: labelsById[item.nodeId] ?? item.nodeId, kind: 'human', col: i, row: 0 })
+    } else if (item.type === 'suggested') {
+      // A hypothesis, not a generated agent spec -- no tools/checkpoint
+      // data to diagram, so it's placed in the Agents pool like any other
+      // agent (that's the point of the orchestrated view: part of the
+      // sequence, not a footnote) but its name says plainly it's proposed.
+      const id = `Task_suggested_${slug(item.id)}`
+      nodeIdByChainIndex.push(id)
+      agentNodes.push({ id, name: `(Suggested) ${item.name}`, kind: 'agent', col: i, row: 0 })
     } else {
       const spec = item.group.primary.agent_spec!
       const id = `Task_agent_${slug(item.group.groupKey)}`

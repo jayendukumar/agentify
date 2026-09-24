@@ -139,4 +139,18 @@ describe('buildDigitalTwinBpmnXml', () => {
       expect(semanticIds.has(ref)).toBe(true)
     }
   })
+
+  it('places a suggested agent in the Agents pool, named as a proposal, with no system/checkpoint connections', () => {
+    const chain: ChainItem[] = [
+      { type: 'agent', group: agentGroup('a', agentSpec({ name: 'Agent A', tools_systems_needed: ['CRM'] })) },
+      { type: 'suggested', id: 'orchestrator', name: 'Process Orchestrator Agent', reason: 'Coordinates handoffs.' },
+    ]
+    const doc = parse(buildDigitalTwinBpmnXml(chain, {})!)
+
+    const serviceTasks = Array.from(doc.querySelectorAll('serviceTask')).map((el) => el.getAttribute('name'))
+    expect(serviceTasks).toEqual(['Agent A', '(Suggested) Process Orchestrator Agent'])
+    // A real agent's messageFlow-emitting loop skips 'suggested' entirely --
+    // no system or checkpoint node should trace back to it.
+    expect(doc.querySelectorAll('task, userTask[name^="Checkpoint"]')).toHaveLength(1)
+  })
 })

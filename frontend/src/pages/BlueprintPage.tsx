@@ -18,6 +18,7 @@ import BlueprintCanvas from '../components/BlueprintCanvas'
 import BlueprintDetailPanel from '../components/BlueprintDetailPanel'
 import DigitalTwinPanel from '../components/DigitalTwinPanel'
 import DigitalTwinPreview from '../components/DigitalTwinPreview'
+import DigitalTwinPreviewOrchestrated from '../components/DigitalTwinPreviewOrchestrated'
 import { computeAgentGroups } from '../lib/blueprintLabels'
 import { downloadText } from '../lib/exportPng'
 import { handleTabKeyDown } from '../lib/tabKeyboard'
@@ -26,7 +27,7 @@ function markerClass(verdict: BlueprintVerdict): string {
   return `blueprint-node-${verdict.replace(/_/g, '-')}`
 }
 
-type Tab = 'blueprint' | 'agents' | 'twin' | 'twin-runs'
+type Tab = 'blueprint' | 'agents' | 'twin' | 'twin-orchestrated' | 'twin-runs'
 
 export default function BlueprintPage() {
   const { user } = useAuth()
@@ -339,6 +340,16 @@ export default function BlueprintPage() {
         <button
           type="button"
           role="tab"
+          aria-selected={activeTab === 'twin-orchestrated'}
+          id="tab-twin-orchestrated" aria-controls="panel-twin-orchestrated" tabIndex={activeTab === 'twin-orchestrated' ? 0 : -1}
+          className={`tab-button${activeTab === 'twin-orchestrated' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('twin-orchestrated')}
+        >
+          Digital Twin Preview Orchestrated
+        </button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={activeTab === 'twin-runs'}
           id="tab-twin-runs" aria-controls="panel-twin-runs" tabIndex={activeTab === 'twin-runs' ? 0 : -1}
           className={`tab-button${activeTab === 'twin-runs' ? ' tab-button-active' : ''}`}
@@ -403,6 +414,12 @@ export default function BlueprintPage() {
       <div id="panel-twin" role="tabpanel" aria-labelledby="tab-twin" tabIndex={0} hidden={activeTab !== 'twin'}>
       {activeTab === 'twin' && overlay && (
         <DigitalTwinPreview overlay={overlay} groups={agentGroups} labelsById={labelsById} />
+      )}
+      </div>
+
+      <div id="panel-twin-orchestrated" role="tabpanel" aria-labelledby="tab-twin-orchestrated" tabIndex={0} hidden={activeTab !== 'twin-orchestrated'}>
+      {activeTab === 'twin-orchestrated' && overlay && (
+        <DigitalTwinPreviewOrchestrated overlay={overlay} groups={agentGroups} labelsById={labelsById} />
       )}
       </div>
 

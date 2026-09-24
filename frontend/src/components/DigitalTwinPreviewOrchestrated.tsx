@@ -1,12 +1,17 @@
 import { useMemo, useState } from 'react'
 import type { BlueprintOverlay } from '../api/types'
 import DigitalTwinBpmnView from './DigitalTwinBpmnView'
-import { buildChain, buildSuggestedAgents } from '../lib/digitalTwinChain'
+import { buildOrchestratedChain } from '../lib/digitalTwinChain'
 import type { AgentGroup } from '../lib/blueprintLabels'
 
 type View = 'chain' | 'bpmn'
 
-export default function DigitalTwinPreview({
+// Same underlying chain and heuristics as DigitalTwinPreview, but every
+// suggested agent is spliced directly into the sequence (buildOrchestratedChain)
+// instead of listed separately below -- so the proposed solution shown here
+// already includes the suggested coverage, not just what the blueprint
+// generated on its own.
+export default function DigitalTwinPreviewOrchestrated({
   overlay,
   groups,
   labelsById,
@@ -15,19 +20,21 @@ export default function DigitalTwinPreview({
   groups: AgentGroup[]
   labelsById: Record<string, string>
 }) {
-  const chain = useMemo(() => buildChain(overlay, groups), [overlay, groups])
-  const suggestions = useMemo(() => buildSuggestedAgents(chain, groups), [chain, groups])
+  const chain = useMemo(() => buildOrchestratedChain(overlay, groups), [overlay, groups])
+  const suggestedItems = useMemo(() => chain.filter((item) => item.type === 'suggested'), [chain])
   const [view, setView] = useState<View>('chain')
 
   return (
-    <div className="page twin-preview" data-testid="digital-twin-preview">
+    <div className="page twin-preview" data-testid="digital-twin-preview-orchestrated">
       <p className="twin-disclaimer">
-        Hypothetical preview, not a verified simulation: this follows the current blueprint's step order and tooling
-        only. Real scenario-based validation is Epic 14 (Digital Twin Simulation &amp; Validation), not yet built.
+        Hypothetical preview, not a verified simulation: follows the current blueprint's step order and tooling,
+        with suggested additional agents woven directly into the sequence below as part of the proposed solution
+        rather than listed separately. Real scenario-based validation is Epic 14 (Digital Twin Simulation &amp;
+        Validation), not yet built.
       </p>
 
-      <h3>Connected agents</h3>
-      <div className="twin-view-toggle" role="tablist" aria-label="Digital twin preview view">
+      <h3>Orchestrated solution</h3>
+      <div className="twin-view-toggle" role="tablist" aria-label="Digital twin preview orchestrated view">
         <button
           type="button"
           role="tab"
@@ -54,7 +61,10 @@ export default function DigitalTwinPreview({
       ) : (
         <div className="twin-chain">
           {chain.map((item, i) => (
-            <div className="twin-chain-entry" key={item.type === 'agent' ? item.group.groupKey : item.nodeId}>
+            <div
+              className="twin-chain-entry"
+              key={item.type === 'agent' ? item.group.groupKey : item.type === 'human' ? item.nodeId : item.id}
+            >
               {item.type === 'agent' ? (
                 <div className="twin-chain-item twin-chain-item-agent">
                   <span className="badge status-done">Agent</span>
@@ -67,10 +77,15 @@ export default function DigitalTwinPreview({
                     </span>
                   )}
                 </div>
-              ) : (
+              ) : item.type === 'human' ? (
                 <div className="twin-chain-item twin-chain-item-human">
                   <span className="badge">Human</span>
                   <span className="twin-chain-item-name">{labelsById[item.nodeId] ?? item.nodeId}</span>
+                </div>
+              ) : (
+                <div className="twin-chain-item twin-chain-item-suggested" title={item.reason}>
+                  <span className="badge">Suggested</span>
+                  <span className="twin-chain-item-name">{item.name}</span>
                 </div>
               )}
               {i < chain.length - 1 && <span className="twin-chain-arrow">&rarr;</span>}
@@ -79,15 +94,15 @@ export default function DigitalTwinPreview({
         </div>
       )}
 
-      <h3>Suggested additional agents for a fuller digital twin</h3>
-      {suggestions.length === 0 ? (
-        <p className="meta">No gaps identified from the current blueprint -- nothing to suggest yet.</p>
+      <h3>Why the suggested agents above were added</h3>
+      {suggestedItems.length === 0 ? (
+        <p className="meta">No gaps identified from the current blueprint -- nothing suggested.</p>
       ) : (
         <div className="twin-suggestion-list">
-          {suggestions.map((suggestion) => (
-            <div className="twin-suggestion-card" key={suggestion.id}>
-              <span className="twin-suggestion-name">{suggestion.name}</span>
-              <span className="meta">{suggestion.reason}</span>
+          {suggestedItems.map((item) => (
+            <div className="twin-suggestion-card" key={item.id}>
+              <span className="twin-suggestion-name">{item.name}</span>
+              <span className="meta">{item.reason}</span>
             </div>
           ))}
         </div>

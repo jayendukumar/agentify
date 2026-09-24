@@ -678,12 +678,42 @@ describe('BlueprintPage', () => {
     renderPage()
 
     await screen.findByTestId('blueprint-canvas-stub')
-    await user.click(screen.getByRole('tab', { name: /digital twin preview/i }))
+    await user.click(screen.getByRole('tab', { name: 'Digital Twin Preview' }))
 
     const twinPanel = within(screen.getByTestId('digital-twin-preview'))
     expect(twinPanel.getByText(/hypothetical preview, not a verified simulation/i)).toBeInTheDocument()
     expect(twinPanel.getByText('Request Reviewer Agent')).toBeInTheDocument()
     expect(twinPanel.getByText('Send confirmation')).toBeInTheDocument()
     expect(twinPanel.getByText(/no gaps identified/i)).toBeInTheDocument()
+  })
+
+  it('weaves suggested agents directly into the sequence on the Digital Twin Preview Orchestrated tab', async () => {
+    const escalatingOverlay: BlueprintOverlay = {
+      ...overlay,
+      nodes: [
+        {
+          ...overlay.nodes[0],
+          agent_spec: { ...overlay.nodes[0].agent_spec!, human_checkpoint: 'escalation_on_exception' },
+        },
+        overlay.nodes[1],
+      ],
+    }
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(escalatingOverlay)
+    getVersion.mockResolvedValue(versionDetail)
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByTestId('blueprint-canvas-stub')
+    await user.click(screen.getByRole('tab', { name: 'Digital Twin Preview Orchestrated' }))
+
+    const twinPanel = within(screen.getByTestId('digital-twin-preview-orchestrated'))
+    expect(twinPanel.getByText('Request Reviewer Agent')).toBeInTheDocument()
+    // The suggested agent shows up as its own entry in the same chain as
+    // the real ones (and, separately, in the rationale list below it) --
+    // two matches, not zero, is the point.
+    expect(twinPanel.getAllByText('Exception Handling Agent')).toHaveLength(2)
+    expect(twinPanel.getByText('Suggested')).toBeInTheDocument()
+    expect(twinPanel.getByText(/currently escalate exceptions straight to a human/i)).toBeInTheDocument()
   })
 })

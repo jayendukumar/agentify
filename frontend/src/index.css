@@ -1191,6 +1191,12 @@ button:disabled {
   background: var(--axyntro-mist);
 }
 
+.twin-chain-item-suggested {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: var(--axyntro-blue-mist);
+}
+
 .twin-chain-item-name {
   font-weight: 600;
   font-size: 0.9rem;
