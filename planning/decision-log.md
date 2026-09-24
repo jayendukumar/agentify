@@ -1613,3 +1613,85 @@ the real backlog document (correctly rejected, with a specific model-
 written reason, not the generic fallback) and the real Employee Onboarding
 document (correctly accepted, confidence 100, all 22 elements preserved)
 through the actual Docker container, not just pytest's mocked client.
+
+## 2026-09-24 -- Document/process deletion (Editor-only), and a real post-deploy login bug
+
+### Only a `failed` document can be deleted, not any document
+
+Added `DELETE /api/processes/{id}/documents/{document_id}` (Editor-only,
+matching the existing `DELETE /api/processes/{id}`) so a rejected upload
+no longer permanently blocks `Generate draft BPMN` (which requires every
+document to reach `done`). Deliberately scoped to `status == "failed"`
+only, enforced server-side, not just hidden in the UI: `SourceRefModel.
+document_id` has `ondelete="CASCADE"`, so deleting a `done` document would
+DB-cascade-delete the `source_refs` rows of any element it contributed to
+merge_process_schema's output -- leaving orphaned, provenance-less
+elements behind rather than actually retracting the document's
+contribution. A failed document never reached `merge_process_schema` in
+the first place, so it's the one case that's safe to just remove outright.
+
+### Chased a login redirect loop through two real bugs before finding the actual one
+
+User reported: log in, immediately bounced back to the login screen. Root-
+caused via `curl -D -` on the real login response header, not
+speculation: `set-cookie: asg_session=...; SameSite=lax` with no `Domain`
+attribute, and the frontend's `frontend/.env` hardcoded
+`VITE_API_BASE_URL=http://127.0.0.1:8000`. `localhost` and `127.0.0.1` are
+different *sites* for SameSite purposes (no shared registrable domain),
+so a page opened via `http://localhost:3000` (start.ps1's own printed
+URL, and what was suggested for testing) would get a session cookie
+scoped to `127.0.0.1` that never gets attached to its own API calls.
+Genuine bug, fixed in `frontend/src/api/client.ts`: default
+`API_BASE_URL` to `${protocol}//${window.location.hostname}:8000` so the
+frontend always calls the API on whatever host the browser actually used,
+keeping them same-site regardless of which of the two anyone opens.
+Cleared the hardcoded override from `frontend/.env`/`.env.example` so the
+dynamic default isn't shadowed.
+
+Rebuilt and reported it fixed -- user replied "same issue still". Rather
+than assume the fix was wrong, verified the *deployed* artifact directly:
+`curl`'d the live JS bundle out of the running `web` container and
+confirmed it now contains `window.location.hostname`, not a hardcoded
+`127.0.0.1` -- so the code fix genuinely was live. That ruled out "fix
+didn't work" and left "something else". Browser automation
+(claude-in-chrome) then hit its own dead end: screenshots failed with a
+generic "Frame with ID 0 is showing error page" against a URL `curl`
+could reach fine -- looked like a tooling bug, until running
+`document.body.innerText` via the JS-execution tool (which, unlike
+screenshot capture, still worked) showed the real Chrome error text
+verbatim: `ERR_CONNECTION_REFUSED`. That redirected the investigation
+away from the automation tool and toward a second, real, separate defect:
+`netstat` showed a *second* listener on `[::1]:3000` (IPv6 loopback)
+owned by `wslrelay.exe`, distinct from Docker's own `0.0.0.0:3000` /
+`[::]:3000` publish -- a stale relay left over from an unrelated,
+already-exited `docplatform-web-1` container that had previously used the
+same host port. Windows/Chrome's IPv6-preferring resolution of
+`localhost` (and, it turned out, even literal `127.0.0.1` inside this
+particular automated Chrome instance, which by then was confirmed to be
+sandboxed away from local network access entirely -- a tooling
+limitation, not a lead worth chasing further) kept landing on the dead
+relay. This was ultimately a red herring for the user's *specific*
+report, since the user could reproduce the same symptom in a browser
+unaffected by that stale relay -- but it's worth knowing this failure
+mode exists on this host if `localhost` connections ever mysteriously
+refuse elsewhere.
+
+The user's actual root cause, confirmed by them opening the same URL in a
+different, cache-empty browser and it working immediately: nginx
+(`frontend/nginx.conf`) served `index.html` with only `Last-Modified`/
+`ETag` and no explicit `Cache-Control`. Per RFC 7234, a response with no
+explicit freshness directive can be treated as heuristically fresh by the
+browser for a while, skipping revalidation entirely -- so a browser that
+had the SPA open before the rebuild could keep serving the *old*
+`index.html`, which references the *previous* build's content-hashed
+`/assets/*.js` filenames, indefinitely past redeploys, with no obvious
+symptom pointing at caching at all. Fixed by giving `/assets/` (Vite
+content-hashes every filename there, so a cached copy is valid forever
+under its own name) `Cache-Control: public, max-age=31536000, immutable`,
+and everything else -- `index.html` and the SPA fallback -- `Cache-
+Control: no-cache`, forcing revalidation on every load. Lesson for next
+time: when a just-shipped frontend fix "doesn't work" after a rebuild,
+check the *served* Cache-Control headers before re-diagnosing the
+application logic again -- an unset header on `index.html` in an nginx-
+served Vite SPA is a much more common cause than it looks like from the
+symptom alone.

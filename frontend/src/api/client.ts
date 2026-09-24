@@ -29,7 +29,17 @@ import type {
   VersionSummary,
 } from './types'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+// The session cookie (backend/app/api/auth.py) is SameSite=Lax with no
+// explicit Domain, so it's only ever sent back on requests whose target
+// host exactly matches whatever host issued it. Hardcoding this to
+// 127.0.0.1 silently broke login for anyone who opened the frontend via
+// http://localhost:3000 instead (start.ps1's own printed URL) -- same
+// page, "different site" as far as the browser's cookie jar is concerned,
+// so every post-login request came back 401 and bounced straight back to
+// the login screen. Defaulting to the page's own hostname keeps the API
+// on the same site as the frontend regardless of which of the two the
+// browser was actually pointed at.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`
 
 export class ApiError extends Error {
   status: number
@@ -120,6 +130,10 @@ export function deleteProcess(processId: string): Promise<void> {
 
 export function listDocuments(processId: string): Promise<DocumentSummary[]> {
   return request(`/api/processes/${processId}/documents`)
+}
+
+export function deleteDocument(processId: string, documentId: string): Promise<void> {
+  return request(`/api/processes/${processId}/documents/${documentId}`, { method: 'DELETE' })
 }
 
 export function generateBpmn(processId: string): Promise<BPMNDocument> {

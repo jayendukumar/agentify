@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ApiError, generateBpmn, getBlueprint, getProcess, listDocuments, listGapFindings, uploadDocuments } from '../api/client'
+import { ApiError, deleteDocument, generateBpmn, getBlueprint, getProcess, listDocuments, listGapFindings, uploadDocuments } from '../api/client'
 import type { DocumentSummary, ProcessDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import ProcessSchemaView from '../components/ProcessSchemaView'
@@ -55,6 +55,8 @@ export default function ProcessDetailPage() {
   const [uploading, setUploading] = useState(false)
   const [bpmnAction, setBpmnAction] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const [generatingBpmn, setGeneratingBpmn] = useState(false)
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function refresh() {
@@ -104,6 +106,22 @@ export default function ProcessDetailPage() {
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleDeleteDocument(documentId: string, filename: string) {
+    if (!processId) return
+    if (!window.confirm(`Delete "${filename}"? This cannot be undone.`)) return
+
+    setDeletingDocId(documentId)
+    setDeleteError(null)
+    try {
+      await deleteDocument(processId, documentId)
+      await refresh()
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Could not delete the document. Please try again.')
+    } finally {
+      setDeletingDocId(null)
     }
   }
 
@@ -227,6 +245,7 @@ export default function ProcessDetailPage() {
       <p id="upload-help" className="meta">PDF, Word, Visio, PNG or JPEG. You can select multiple files.{user?.role !== 'editor' ? ' Editor access is required to upload.' : ''}</p>
 
       {documents.length === 0 && <p className="empty-state">No documents uploaded yet. Add source documentation to begin extracting this process.</p>}
+      {deleteError && <p className="error" role="alert">{deleteError}</p>}
 
       <ul className="document-list">
         {documents.map((doc) => (
@@ -235,6 +254,16 @@ export default function ProcessDetailPage() {
               <span>{doc.filename}</span>
               <span className={`status status-${doc.status}`}>{doc.status}</span>
               <span className="meta">{(doc.size_bytes / 1024).toFixed(1)} KB</span>
+              {doc.status === 'failed' && user?.role === 'editor' && (
+                <button
+                  type="button"
+                  className="button-secondary document-delete-button"
+                  onClick={() => handleDeleteDocument(doc.id, doc.filename)}
+                  disabled={deletingDocId === doc.id}
+                >
+                  {deletingDocId === doc.id ? 'Deleting...' : 'Delete'}
+                </button>
+              )}
             </span>
             {doc.status === 'queued' && <span className="status-note">Waiting to start processing...</span>}
             {doc.status === 'processing' && (

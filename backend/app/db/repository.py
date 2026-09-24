@@ -130,6 +130,11 @@ def list_documents(session: Session, process_id: str) -> list[DocumentModel]:
     )
 
 
+def delete_document(session: Session, process_id: str, document_id: str) -> None:
+    session.delete(get_document(session, process_id, document_id))
+    session.flush()
+
+
 def update_document_status(
     session: Session, process_id: str, document_id: str, status: IngestionStatus, error_message: str | None = None
 ) -> None:

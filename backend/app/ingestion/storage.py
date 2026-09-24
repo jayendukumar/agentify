@@ -18,3 +18,7 @@ def save_uploaded_file(settings: Settings, process_id: str, document_id: str, fi
 
 def read_uploaded_file(settings: Settings, process_id: str, document_id: str, filename: str) -> bytes:
     return _document_path(settings, process_id, document_id, filename).read_bytes()
+
+
+def delete_uploaded_file(settings: Settings, process_id: str, document_id: str, filename: str) -> None:
+    _document_path(settings, process_id, document_id, filename).unlink(missing_ok=True)

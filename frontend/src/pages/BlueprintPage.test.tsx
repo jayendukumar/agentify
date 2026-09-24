@@ -1,5 +1,5 @@
 import { forwardRef, useEffect } from 'react'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -210,6 +210,25 @@ describe('BlueprintPage', () => {
 
     await waitFor(() => expect(generateBlueprint).toHaveBeenCalledWith('proc-1'))
     expect(await screen.findByTestId('blueprint-canvas-stub')).toBeInTheDocument()
+  })
+
+  it('shows a progress indicator while a blueprint is generating', async () => {
+    getProcess.mockResolvedValue(process1)
+    getBlueprint.mockResolvedValue(null)
+    let resolveGenerate!: (value: typeof overlay) => void
+    generateBlueprint.mockImplementation(() => new Promise((resolve) => { resolveGenerate = resolve }))
+    getVersion.mockResolvedValue(versionDetail)
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /generate blueprint/i }))
+
+    expect(await screen.findByRole('progressbar', { name: /blueprint generation progress/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Generating...' })).toBeDisabled()
+
+    await act(async () => resolveGenerate(overlay))
+
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
   })
 
   it('shows the summary dashboard once a blueprint exists', async () => {

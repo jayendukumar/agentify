@@ -1,15 +1,24 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ProcessSummary } from '../api/types'
 import ProcessListPage from './ProcessListPage'
 
 const listProcesses = vi.fn()
 const createProcess = vi.fn()
+const deleteProcess = vi.fn()
 vi.mock('../api/client', () => ({
-  ApiError: class ApiError extends Error {},
+  ApiError: class ApiError extends Error {
+    status: number
+    constructor(status: number, detail: string) {
+      super(detail)
+      this.status = status
+    }
+  },
   listProcesses: (...args: unknown[]) => listProcesses(...args),
   createProcess: (...args: unknown[]) => createProcess(...args),
+  deleteProcess: (...args: unknown[]) => deleteProcess(...args),
 }))
 afterEach(() => vi.resetAllMocks())
 
@@ -38,5 +47,45 @@ describe('Process workspace feedback', () => {
     expect(createProcess).toHaveBeenCalledTimes(1)
     await act(async () => complete())
     expect(await screen.findByRole('status')).toHaveTextContent('Invoice approval')
+  })
+})
+
+describe('Deleting a process', () => {
+  const process: ProcessSummary = {
+    id: 'proc-1',
+    name: 'Invoice approval',
+    document_count: 2,
+    has_draft_bpmn: false,
+    finalized_version_count: 0,
+    created_at: '',
+    updated_at: '',
+  }
+
+  it('deletes the process on confirm and refreshes the list', async () => {
+    listProcesses.mockResolvedValue([process])
+    deleteProcess.mockResolvedValue(undefined)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+    render(<MemoryRouter><ProcessListPage /></MemoryRouter>)
+
+    await screen.findByText('Invoice approval')
+    listProcesses.mockResolvedValue([])
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Invoice approval'))
+    expect(deleteProcess).toHaveBeenCalledWith('proc-1')
+    await waitFor(() => expect(screen.queryByText('Invoice approval')).not.toBeInTheDocument())
+  })
+
+  it('does not delete when the confirmation is declined', async () => {
+    listProcesses.mockResolvedValue([process])
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<MemoryRouter><ProcessListPage /></MemoryRouter>)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete' }))
+
+    expect(deleteProcess).not.toHaveBeenCalled()
+    expect(screen.getByText('Invoice approval')).toBeInTheDocument()
   })
 })

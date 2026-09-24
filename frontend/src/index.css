@@ -284,14 +284,24 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  text-decoration: none;
-  color: inherit;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .process-card:hover {
   border-color: var(--accent);
   box-shadow: 0 6px 16px rgba(17, 24, 39, 0.06);
+}
+
+.process-card-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.process-card-delete {
+  align-self: flex-start;
 }
 
 .process-card-name {
@@ -327,6 +337,10 @@ button:disabled {
 
 .status-note.error {
   color: var(--danger);
+}
+
+.document-delete-button {
+  margin-left: auto;
 }
 
 .processing-progress {

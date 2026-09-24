@@ -94,3 +94,23 @@ def list_documents(process_id: str, db: DbDep, user: CurrentUserDep) -> list[Doc
 def get_document(process_id: str, document_id: str, db: DbDep, user: CurrentUserDep) -> DocumentDetail:
     del user
     return _to_detail(repository.get_document(db, process_id, document_id))
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(process_id: str, document_id: str, db: DbDep, user: EditorDep) -> None:
+    del user
+    document = repository.get_document(db, process_id, document_id)
+    if document.status != "failed":
+        # A done document's extraction is already merged into the process
+        # schema (its elements' source_refs point at it) -- deleting it out
+        # from under that would leave the schema with dangling provenance
+        # rather than actually retracting its contribution. Only a failed
+        # document was never merged, so it's the only case safe to just
+        # remove outright.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Only a failed document can be deleted. Re-upload a corrected file instead of removing one that succeeded.",
+        )
+    settings = get_settings()
+    storage.delete_uploaded_file(settings, process_id, document_id, document.filename)
+    repository.delete_document(db, process_id, document_id)

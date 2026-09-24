@@ -212,6 +212,20 @@ export default function BlueprintPage() {
             >
               {generating ? 'Generating...' : 'Generate Blueprint'}
             </button>
+            {generating && (
+              <div className="processing-progress" role="status" aria-live="polite">
+                <div className="processing-progress-header">
+                  <span>Generating agentic blueprint</span>
+                  <span className="meta">Evaluating each step for automation potential -- this can take a minute or two.</span>
+                </div>
+                <div
+                  className="processing-progress-bar"
+                  role="progressbar"
+                  aria-label="Blueprint generation progress"
+                  aria-valuetext="Generating agentic blueprint"
+                />
+              </div>
+            )}
           </>
         )}
         {generateError && <p className="error" role="alert">{generateError}</p>}
@@ -241,6 +255,20 @@ export default function BlueprintPage() {
         </button>
       </div>
 
+      {generating && (
+        <div className="processing-progress" role="status" aria-live="polite">
+          <div className="processing-progress-header">
+            <span>Regenerating agentic blueprint</span>
+            <span className="meta">Evaluating each step for automation potential -- this can take a minute or two.</span>
+          </div>
+          <div
+            className="processing-progress-bar"
+            role="progressbar"
+            aria-label="Blueprint generation progress"
+            aria-valuetext="Regenerating agentic blueprint"
+          />
+        </div>
+      )}
       {generateError && <p className="error" role="alert">{generateError}</p>}
       {exportError && <p className="error" role="alert">{exportError}</p>}
 
