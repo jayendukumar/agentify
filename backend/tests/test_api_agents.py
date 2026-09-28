@@ -190,3 +190,82 @@ def test_list_agent_artifacts_requires_login(client, viewer_client):
     # ...but not generate.
     r = viewer_client.post(f"/api/processes/{process['id']}/blueprint/nodes/a/agent-artifact")
     assert r.status_code == 403
+
+
+# -- Epic 20: governance updates -----------------------------------------------
+
+
+def test_generated_artifact_has_default_governance_fields(client):
+    process = client.post("/api/processes", json={"name": "P"}).json()
+    version = _finalize(client, process["id"])
+    _seed_blueprint(process["id"], version["id"], [_automatable_node("a")])
+
+    r = client.post(f"/api/processes/{process['id']}/blueprint/nodes/a/agent-artifact")
+    definition = r.json()["definition"]
+
+    assert definition["tool_contracts"][0]["system_name"] == "CRM API"
+    assert definition["permissions"][0]["actions"]["read"] is True
+    assert definition["guardrails"]["max_steps"] == 15
+    assert definition["escalation_policy"]["escalation_target"]["role"] == "Operations Specialist"
+    assert definition["model_policy"]["model"] == definition["model"]
+
+
+def test_update_agent_governance_widens_permission(client):
+    process = client.post("/api/processes", json={"name": "P"}).json()
+    version = _finalize(client, process["id"])
+    _seed_blueprint(process["id"], version["id"], [_automatable_node("a")])
+    artifact = client.post(f"/api/processes/{process['id']}/blueprint/nodes/a/agent-artifact").json()
+
+    r = client.patch(
+        f"/api/processes/{process['id']}/blueprint/agent-artifacts/{artifact['id']}/governance",
+        json={"permissions": [{"resource": "CRM API", "actions": {"read": True, "update": True}}]},
+    )
+    assert r.status_code == 200
+    updated = r.json()["definition"]
+    assert updated["permissions"][0]["actions"]["update"] is True
+    # Fields not included in the PATCH body are left untouched.
+    assert updated["guardrails"]["max_steps"] == 15
+    assert updated["tool_contracts"][0]["system_name"] == "CRM API"
+
+
+def test_update_agent_governance_does_not_affect_staleness_or_attribution(client):
+    process = client.post("/api/processes", json={"name": "P"}).json()
+    version = _finalize(client, process["id"])
+    _seed_blueprint(process["id"], version["id"], [_automatable_node("a")])
+    artifact = client.post(f"/api/processes/{process['id']}/blueprint/nodes/a/agent-artifact").json()
+
+    client.patch(
+        f"/api/processes/{process['id']}/blueprint/agent-artifacts/{artifact['id']}/governance",
+        json={"guardrails": {"max_steps": 5}},
+    )
+
+    listed = client.get(f"/api/processes/{process['id']}/blueprint/agent-artifacts").json()
+    assert listed[0]["status"] == "generated"
+    # Who generated it is untouched by a governance edit -- only the
+    # definition's governance fields and the row's own "last touched"
+    # timestamp (AgentArtifactModel's onupdate convention) change.
+    assert listed[0]["generated_by"] == artifact["generated_by"]
+
+
+def test_update_agent_governance_unknown_artifact_returns_404(client):
+    process = client.post("/api/processes", json={"name": "P"}).json()
+    _finalize(client, process["id"])
+
+    r = client.patch(
+        f"/api/processes/{process['id']}/blueprint/agent-artifacts/does-not-exist/governance",
+        json={"guardrails": {"max_steps": 5}},
+    )
+    assert r.status_code == 404
+
+
+def test_update_agent_governance_requires_editor(client, viewer_client):
+    process = client.post("/api/processes", json={"name": "P"}).json()
+    version = _finalize(client, process["id"])
+    _seed_blueprint(process["id"], version["id"], [_automatable_node("a")])
+    artifact = client.post(f"/api/processes/{process['id']}/blueprint/nodes/a/agent-artifact").json()
+
+    r = viewer_client.patch(
+        f"/api/processes/{process['id']}/blueprint/agent-artifacts/{artifact['id']}/governance",
+        json={"guardrails": {"max_steps": 5}},
+    )
+    assert r.status_code == 403

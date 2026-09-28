@@ -19,6 +19,7 @@ import BlueprintDetailPanel from '../components/BlueprintDetailPanel'
 import DigitalTwinPanel from '../components/DigitalTwinPanel'
 import DigitalTwinPreview from '../components/DigitalTwinPreview'
 import DigitalTwinPreviewOrchestrated from '../components/DigitalTwinPreviewOrchestrated'
+import OrchestrationPanel from '../components/OrchestrationPanel'
 import { computeAgentGroups } from '../lib/blueprintLabels'
 import { downloadText } from '../lib/exportPng'
 import { handleTabKeyDown } from '../lib/tabKeyboard'
@@ -27,7 +28,7 @@ function markerClass(verdict: BlueprintVerdict): string {
   return `blueprint-node-${verdict.replace(/_/g, '-')}`
 }
 
-type Tab = 'blueprint' | 'agents' | 'twin' | 'twin-orchestrated' | 'twin-runs'
+type Tab = 'blueprint' | 'agents' | 'twin' | 'twin-orchestrated' | 'twin-runs' | 'orchestration-rehearsal'
 
 export default function BlueprintPage() {
   const { user } = useAuth()
@@ -357,6 +358,16 @@ export default function BlueprintPage() {
         >
           Digital Twin Simulation
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'orchestration-rehearsal'}
+          id="tab-orchestration-rehearsal" aria-controls="panel-orchestration-rehearsal" tabIndex={activeTab === 'orchestration-rehearsal' ? 0 : -1}
+          className={`tab-button${activeTab === 'orchestration-rehearsal' ? ' tab-button-active' : ''}`}
+          onClick={() => setActiveTab('orchestration-rehearsal')}
+        >
+          Orchestration Rehearsal
+        </button>
       </div>
 
       {/* The canvas stays mounted across tabs (just hidden) rather than being
@@ -425,6 +436,10 @@ export default function BlueprintPage() {
 
       <div id="panel-twin-runs" role="tabpanel" aria-labelledby="tab-twin-runs" tabIndex={0} hidden={activeTab !== 'twin-runs'}>
       {activeTab === 'twin-runs' && processId && <DigitalTwinPanel processId={processId} groups={agentGroups} />}
+      </div>
+
+      <div id="panel-orchestration-rehearsal" role="tabpanel" aria-labelledby="tab-orchestration-rehearsal" tabIndex={0} hidden={activeTab !== 'orchestration-rehearsal'}>
+      {activeTab === 'orchestration-rehearsal' && processId && <OrchestrationPanel processId={processId} />}
       </div>
     </div>
   )

@@ -14,6 +14,16 @@ via one code path. The stored `AgentDefinition.system_prompt` itself is
 never modified; the twin-only instructions (which tool maps to which
 system, how to ask for human review, how to report the final answer) are
 appended as a separate system message that only exists for this run.
+
+Epic 20: every tool call is checked against the artifact's own declared
+governance (permissions, tool contracts) via app/twin/gateway.py's
+check_tool_permission before app/twin/simulators.py ever produces a
+response, and the whole run is bounded by the artifact's RuntimeGuardrails
+(steps, tool calls, wall-clock time, model calls, tokens, cost, loop
+detection) via gateway.py's GuardrailTracker -- replacing this module's
+previous single hardcoded max_turns-only limit. Both are opt-in per
+artifact (see gateway.py's module docstring): an artifact with no declared
+tool_contracts behaves exactly as it did before this epic.
 """
 
 from __future__ import annotations
@@ -28,6 +38,7 @@ from app.schemas.agents import AgentDefinition
 from app.schemas.twin import InferredToolSchema, TwinDeviation, TwinRunStatus, TwinScenario, TwinSystemStub, TwinTraceStep
 
 from .errors import TwinServiceError
+from .gateway import GuardrailExceeded, GuardrailTracker, check_tool_permission
 from .simulators import resolve_human_decision, resolve_tool_call
 
 _HUMAN_DECISION_TOOL = ToolDefinition(
@@ -188,6 +199,7 @@ async def run_scenario(
     final_output: dict[str, Any] | None = None
     turns_used = 0
     loop_deviation: TwinDeviation | None = None
+    policy_deviations: list[TwinDeviation] = []
 
     def account(model: str, usage: Usage) -> None:
         nonlocal total_tokens, total_cost, cost_incomplete
@@ -198,67 +210,108 @@ async def run_scenario(
         else:
             total_cost += cost
 
-    for turn in range(1, max_turns + 1):
+    # Epic 20: an artifact's own RuntimeGuardrails narrow (never widen) the
+    # caller-supplied max_turns -- whichever is stricter wins.
+    effective_max_turns = min(max_turns, artifact.guardrails.max_steps)
+    tracker = GuardrailTracker(guardrails=artifact.guardrails)
+
+    for turn in range(1, effective_max_turns + 1):
         turns_used = turn
-        result = await llm.complete(
-            messages,
-            operation="twin_run",
-            tools=tools or None,
-            model=artifact.model,
-            response_format=None if tools else {"type": "json_object"},
-        )
-        account(result.model, result.usage)
-
-        if not result.tool_calls:
-            final_output = _parse_json_object(result.text)
-            break
-
-        messages.append(ChatMessage(role="assistant", content=result.text or "", tool_calls=result.tool_calls))
-        for call in result.tool_calls:
-            if call.name == _HUMAN_DECISION_TOOL.name:
-                proposed_action = call.arguments.get("proposed_action")
-                proposed_action = proposed_action if isinstance(proposed_action, dict) else {}
-                decision = resolve_human_decision(proposed_action, scenario.human_checkpoint_config, rng)
-                trace.append(
-                    TwinTraceStep(
-                        kind="human_checkpoint", target="human_checkpoint", arguments=call.arguments, decision=decision
-                    )
-                )
-                tool_response: dict[str, Any] = {"decision": decision}
-            else:
-                system_name = tool_name_to_system.get(call.name)
-                if system_name is None:
-                    raise TwinServiceError(f"Agent called an unknown tool '{call.name}' that wasn't offered to it")
-                schema = tool_schemas[system_name]
-                stub = scenario.system_stubs.get(system_name) or TwinSystemStub()
-                tool_response, static_fallback, llm_call = await resolve_tool_call(
-                    llm, system_name=system_name, call_arguments=call.arguments, schema=schema, stub=stub
-                )
-                if llm_call is not None:
-                    usage, model = llm_call
-                    account(model, usage)
-                trace.append(
-                    TwinTraceStep(
-                        kind="tool_call",
-                        target=system_name,
-                        arguments=call.arguments,
-                        result=tool_response,
-                        static_fallback=static_fallback,
-                    )
-                )
-            messages.append(
-                ChatMessage(role="tool", tool_call_id=call.id, name=call.name, content=json.dumps(tool_response))
+        try:
+            tracker.before_model_call()
+            result = await llm.complete(
+                messages,
+                operation="twin_run",
+                tools=tools or None,
+                model=artifact.model,
+                response_format=None if tools else {"type": "json_object"},
             )
+            account(result.model, result.usage)
+            tracker.record_usage(result.usage.total_tokens, estimate_cost_usd(result.model, result.usage))
+
+            if not result.tool_calls:
+                final_output = _parse_json_object(result.text)
+                break
+
+            messages.append(ChatMessage(role="assistant", content=result.text or "", tool_calls=result.tool_calls))
+            for call in result.tool_calls:
+                if call.name == _HUMAN_DECISION_TOOL.name:
+                    tracker.before_tool_call("__human_checkpoint__", json.dumps(call.arguments, sort_keys=True, default=str))
+                    proposed_action = call.arguments.get("proposed_action")
+                    proposed_action = proposed_action if isinstance(proposed_action, dict) else {}
+                    decision = resolve_human_decision(proposed_action, scenario.human_checkpoint_config, rng)
+                    trace.append(
+                        TwinTraceStep(
+                            kind="human_checkpoint", target="human_checkpoint", arguments=call.arguments, decision=decision
+                        )
+                    )
+                    tool_response: dict[str, Any] = {"decision": decision}
+                else:
+                    system_name = tool_name_to_system.get(call.name)
+                    if system_name is None:
+                        raise TwinServiceError(f"Agent called an unknown tool '{call.name}' that wasn't offered to it")
+                    tracker.before_tool_call(system_name, json.dumps(call.arguments, sort_keys=True, default=str))
+                    decision_check = check_tool_permission(artifact, system_name)
+                    if not decision_check.allowed:
+                        trace.append(
+                            TwinTraceStep(
+                                kind="tool_call",
+                                target=system_name,
+                                arguments=call.arguments,
+                                result={"error": "permission_denied", "reason": decision_check.reason},
+                                denied=True,
+                            )
+                        )
+                        policy_deviations.append(
+                            TwinDeviation(
+                                reason=f"Tool call to '{system_name}' denied by policy: {decision_check.reason}",
+                                step_index=len(trace) - 1,
+                            )
+                        )
+                        tool_response = {"error": "permission_denied", "reason": decision_check.reason}
+                    else:
+                        schema = tool_schemas[system_name]
+                        stub = scenario.system_stubs.get(system_name) or TwinSystemStub()
+                        tool_response, static_fallback, llm_call = await resolve_tool_call(
+                            llm, system_name=system_name, call_arguments=call.arguments, schema=schema, stub=stub
+                        )
+                        if llm_call is not None:
+                            usage, model = llm_call
+                            account(model, usage)
+                            tracker.record_usage(usage.total_tokens, estimate_cost_usd(model, usage))
+                        trace.append(
+                            TwinTraceStep(
+                                kind="tool_call",
+                                target=system_name,
+                                arguments=call.arguments,
+                                result=tool_response,
+                                static_fallback=static_fallback,
+                            )
+                        )
+                messages.append(
+                    ChatMessage(role="tool", tool_call_id=call.id, name=call.name, content=json.dumps(tool_response))
+                )
+        except GuardrailExceeded as exc:
+            loop_deviation = TwinDeviation(reason=exc.reason)
+            break
     else:
-        loop_deviation = TwinDeviation(reason=f"Exceeded max turns ({max_turns}) without producing a final answer")
+        loop_deviation = TwinDeviation(
+            reason=f"Exceeded max turns ({effective_max_turns}) without producing a final answer"
+        )
 
     status, deviations = grade_run(trace, final_output, scenario)
+    deviations = policy_deviations + deviations
     if loop_deviation is not None:
         deviations.append(loop_deviation)
         status = "error"
     elif final_output is None:
         deviations.insert(0, TwinDeviation(reason="Final response was not a valid JSON object"))
         status = "error"
+    elif policy_deviations and status == "passed":
+        # A policy-denied tool call is always at least a reportable
+        # deviation, even if the agent recovered and still produced a
+        # grading-correct final output.
+        status = "failed"
 
     return TwinRunOutcome(
         status=status,

@@ -97,6 +97,11 @@ class TwinTraceStep(BaseModel):
     result: dict[str, Any] | None = None
     decision: Literal["approve", "reject"] | None = None
     static_fallback: bool = False
+    # Epic 20: True when app/twin/gateway.py's Tool Gateway denied this
+    # call against the artifact's own declared permissions/tool contracts
+    # -- `result` carries the denial reason, this flag makes it filterable
+    # without parsing `result`.
+    denied: bool = False
 
 
 class TwinDeviation(BaseModel):

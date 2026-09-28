@@ -77,3 +77,16 @@ explicitly the most speculative, discovery-needed part of this phase --
 hard-gating publish on it would block the whole publishing flow on work that
 may take longer to land. This can be tightened into a real gate later once
 Epic 14 has enough real usage to trust its signal.
+
+## Amendment (2026-09-28): future lifecycle reconciliation
+
+Epic 23 (groomed 2026-09-28 from the "Digital Twin Agent Simulation"
+requirements doc) introduces a richer `DRAFT -> VALIDATED ->
+SIMULATION_READY -> SIMULATING -> EVALUATED -> RELEASE_CANDIDATE ->
+APPROVED -> DEPLOYED` lifecycle and needs to reconcile it with this
+epic's own `draft`/`generated`/`published`/`deployed` status
+(`AgentPublicationModel`) rather than running two status fields on the
+same artifact -- see Epic 23's US23.1. No change to this epic's own scope,
+status, or the "twin results are advisory" decision above; Epic 23 is
+expected to extend this epic's status enum, not replace this epic's
+publish flow.

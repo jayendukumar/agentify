@@ -7,8 +7,10 @@ Epic 6's finalized versions (VersionModel), Epic 7's blueprint overlay
 12's generated agent artifacts (AgentArtifactModel), Epic 13's local
 registry entries (RegistryEntryModel), Epic 14's digital twin scenarios/
 runs/baselines (TwinToolSchemaModel/TwinScenarioModel/TwinRunModel/
-TwinBaselineModel), Epic 15's publish history (AgentPublicationModel), and
-Epic 9/10's users/sessions (UserModel/SessionModel), each promoted out of
+TwinBaselineModel), Epic 15's publish history (AgentPublicationModel),
+Epic 16's orchestration rehearsal scenarios/runs (OrchestrationScenarioModel/
+OrchestrationRunModel), and Epic 9/10's users/sessions (UserModel/
+SessionModel), each promoted out of
 the in-memory store (app/store.py) once its own epic made the data real.
 app/store.py now only defines NotFoundError -- nothing left to hold in
 memory.
@@ -553,4 +555,64 @@ class TwinRunModel(Base):
     turns_used: Mapped[int] = mapped_column(nullable=False, default=0)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     completed_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class OrchestrationScenarioModel(Base):
+    """Epic 16, US16.1: one defined process-level rehearsal scenario --
+    start-event inputs, plus config keyed by node_id (gateway decisions,
+    manual-node resolution, per-node system stubs/checkpoints, per-node
+    data-mapping mode override) needed to walk the whole blueprint's agents
+    together. `baseline_version_id` pins the scenario to the exact
+    finalized diagram it was authored against, same reasoning as
+    AgentArtifactModel's `source_baseline_version_id`."""
+
+    __tablename__ = "orchestration_scenarios"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    baseline_version_id: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    gateway_decisions: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    manual_node_config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    system_stubs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    human_checkpoint_config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    data_mapping_mode: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    expected_path: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    expected_final_output: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class OrchestrationRunModel(Base):
+    """Epic 16, US16.2-16.7: one execution of a rehearsal scenario across
+    every node the walk reaches. Kept forever once finished, like
+    TwinRunModel -- but, deliberately unlike TwinRunModel, this row *is*
+    mutated while `status == "running"` (node_runs/visited_path/etc.
+    appended incrementally as each node completes) so the frontend can
+    poll it for live progress (US16.7) the same way Epic 1's document
+    processing status is polled -- see this epic's planning doc for why
+    that's an intentional, scoped exception to the "runs are immutable
+    evidence" convention. `process_id` is denormalized from
+    `scenario.process_id` for the same reason TwinRunModel denormalizes
+    `agent_artifact_id`."""
+
+    __tablename__ = "orchestration_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(
+        ForeignKey("orchestration_scenarios.id", ondelete="CASCADE"), index=True
+    )
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="running")
+    node_runs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    handoffs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    visited_path: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    total_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    total_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

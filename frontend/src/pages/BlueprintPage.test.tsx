@@ -3,8 +3,33 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentArtifact, BlueprintOverlay, ProcessDetail, TwinRun, TwinScenario, VersionDetail } from '../api/types'
+import type { AgentArtifact, AgentDefinition, BlueprintOverlay, ProcessDetail, TwinRun, TwinScenario, VersionDetail } from '../api/types'
 import BlueprintPage from './BlueprintPage'
+
+// Epic 20: every AgentDefinition fixture below needs these fields since
+// they're non-optional on the real API response (the backend always
+// serializes their defaults) -- spread this in rather than repeating it
+// six times.
+const DEFAULT_GOVERNANCE: Pick<
+  AgentDefinition,
+  'tool_contracts' | 'permissions' | 'guardrails' | 'escalation_policy' | 'knowledge_sources' | 'model_policy'
+> = {
+  tool_contracts: [],
+  permissions: [],
+  guardrails: {
+    max_steps: 15,
+    max_tool_calls: 10,
+    max_runtime_seconds: 120,
+    max_model_calls: 15,
+    max_tokens: 50000,
+    max_cost_usd: 1,
+    retry_max_attempts: 2,
+    loop_detection_enabled: true,
+  },
+  escalation_policy: { escalate_when: [], escalation_target: null },
+  knowledge_sources: [],
+  model_policy: null,
+}
 
 const getProcess = vi.fn()
 const getBlueprint = vi.fn()
@@ -278,6 +303,7 @@ describe('BlueprintPage', () => {
         tools_systems_needed: [],
         human_checkpoint: 'none',
         model: 'test-model',
+        ...DEFAULT_GOVERNANCE,
       },
       baseline_version_id: 'ver-1',
       generated_at: '2026-01-03T00:00:00Z',
@@ -320,6 +346,7 @@ describe('BlueprintPage', () => {
           tools_systems_needed: [],
           human_checkpoint: 'none',
           model: 'test-model',
+          ...DEFAULT_GOVERNANCE,
         },
         baseline_version_id: 'ver-1',
         generated_at: '2026-01-03T00:00:00Z',
@@ -351,6 +378,7 @@ describe('BlueprintPage', () => {
         tools_systems_needed: [],
         human_checkpoint: 'none',
         model: 'test-model',
+        ...DEFAULT_GOVERNANCE,
       },
       baseline_version_id: 'ver-1',
       generated_at: '2026-01-03T00:00:00Z',
@@ -398,6 +426,7 @@ describe('BlueprintPage', () => {
         tools_systems_needed: [],
         human_checkpoint: 'none',
         model: 'test-model',
+        ...DEFAULT_GOVERNANCE,
       },
       baseline_version_id: 'ver-1',
       generated_at: '2026-01-03T00:00:00Z',
@@ -533,6 +562,7 @@ describe('BlueprintPage', () => {
         tools_systems_needed: ['Intake system'],
         human_checkpoint: 'none',
         model: 'test-model',
+        ...DEFAULT_GOVERNANCE,
       },
       baseline_version_id: 'ver-1',
       generated_at: '2026-01-03T00:00:00Z',
@@ -619,6 +649,7 @@ describe('BlueprintPage', () => {
         tools_systems_needed: [],
         human_checkpoint: 'none',
         model: 'test-model',
+        ...DEFAULT_GOVERNANCE,
       },
       baseline_version_id: 'ver-1',
       generated_at: '2026-01-03T00:00:00Z',

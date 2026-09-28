@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.llm.types import ChatCompletionResult, ToolCall, Usage
-from app.schemas.agents import AgentDefinition
+from app.schemas.agents import AgentDefinition, ResourcePermission, RuntimeGuardrails, ToolContract
 from app.schemas.twin import (
     HumanDecisionRule,
     InferredToolSchema,
@@ -267,3 +267,130 @@ async def test_run_scenario_exceeds_max_turns_returns_error():
     assert outcome.status == "error"
     assert outcome.turns_used == 1
     assert any("Exceeded max turns" in d.reason for d in outcome.deviations)
+
+
+# -- Epic 20: Tool Gateway / guardrail enforcement -----------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_denies_call_to_undeclared_tool_and_feeds_back_denial():
+    """An artifact that HAS declared governance (a non-empty tool_contracts
+    list) denies a call to a system with no granted permission -- the
+    denial is fed back to the model as a tool observation (like a real
+    403), recorded in the trace with `denied=True`, and reported as a
+    deviation even though the agent still produces a valid final output."""
+    artifact = AgentDefinition(
+        name="Refund Agent",
+        purpose="Process a refund request",
+        trigger="Refund requested",
+        system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"],
+        model="test-model",
+        tool_contracts=[ToolContract(system_name="CRM system", resource="customer", action="read")],
+        permissions=[],  # nothing granted -- read on "customer" is NOT allowed
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    # expected_steps matches the trace exactly, so grade_run itself reports
+    # no deviations -- isolating this assertion to Epic 20's own
+    # policy-denial downgrade (a policy_deviation always fails a run, even
+    # one that otherwise passed grading) rather than piggybacking on
+    # grade_run's separate "unexpected step" logic.
+    scenario = _scenario(expected_steps=[TwinExpectedStep(kind="tool_call", target="CRM system")])
+
+    llm = AsyncMock()
+    llm.complete.side_effect = [
+        _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "123"})]),
+        _llm_result(text='{"confirmation": "handled"}'),
+    ]
+
+    outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
+
+    assert outcome.status == "failed"
+    assert outcome.trace[0].denied is True
+    assert outcome.trace[0].result["error"] == "permission_denied"
+    assert any("denied by policy" in d.reason for d in outcome.deviations)
+    # The agent still ran to completion using the denial as an observation,
+    # not a crashed/aborted run.
+    assert outcome.final_output == {"confirmation": "handled"}
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_allows_call_when_permission_granted():
+    artifact = AgentDefinition(
+        name="Refund Agent",
+        purpose="Process a refund request",
+        trigger="Refund requested",
+        system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"],
+        model="test-model",
+        tool_contracts=[ToolContract(system_name="CRM system", resource="customer", action="read")],
+        permissions=[ResourcePermission(resource="customer", actions={"read": True})],
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(
+        system_stubs={"CRM system": TwinSystemStub(mode="static", static_responses=[StaticResponseRule(match={}, response={"tier": "gold"})])},
+        expected_steps=[TwinExpectedStep(kind="tool_call", target="CRM system")],
+    )
+
+    llm = AsyncMock()
+    llm.complete.side_effect = [
+        _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "123"})]),
+        _llm_result(text='{"confirmation": "handled"}'),
+    ]
+
+    outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
+
+    assert outcome.status == "passed"
+    assert outcome.trace[0].denied is False
+    assert outcome.trace[0].result == {"tier": "gold"}
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_stops_when_max_tool_calls_exceeded():
+    artifact = AgentDefinition(
+        name="Looping Agent",
+        purpose="x",
+        trigger="x",
+        system_prompt="You are Looping Agent.",
+        tools_systems_needed=["CRM system"],
+        model="test-model",
+        guardrails=RuntimeGuardrails(max_tool_calls=1),
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(system_stubs={"CRM system": TwinSystemStub(mode="static", static_responses=[StaticResponseRule()])})
+
+    llm = AsyncMock()
+    llm.complete.return_value = _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "1"})])
+
+    outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
+
+    assert outcome.status == "error"
+    assert any("Exceeded max_tool_calls" in d.reason for d in outcome.deviations)
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_effective_max_turns_clamped_by_artifact_guardrails():
+    """An artifact's own RuntimeGuardrails.max_steps narrows the caller-
+    supplied max_turns -- whichever is stricter wins."""
+    artifact = AgentDefinition(
+        name="Looping Agent",
+        purpose="x",
+        trigger="x",
+        system_prompt="You are Looping Agent.",
+        tools_systems_needed=["CRM system"],
+        model="test-model",
+        guardrails=RuntimeGuardrails(max_steps=1),
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(system_stubs={"CRM system": TwinSystemStub(mode="static", static_responses=[StaticResponseRule()])})
+
+    llm = AsyncMock()
+    llm.complete.return_value = _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "1"})])
+
+    # max_turns=5 (the global default) would allow 5 turns, but the
+    # artifact's own guardrails.max_steps=1 is stricter and wins.
+    outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
+
+    assert outcome.status == "error"
+    assert outcome.turns_used == 1
+    assert "Exceeded max turns (1)" in outcome.deviations[-1].reason

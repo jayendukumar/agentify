@@ -188,3 +188,41 @@ expected resolutions, not something inferred after the fact.
   haven't been reconsidered against this model yet; they were written
   before this discussion and may need adjusting once execution mechanics
   are settled.
+
+## Amendment (2026-09-28): scoped into follow-on epics
+
+The "Digital Twin Agent Simulation" requirements doc describes a much
+richer simulation capability than this epic's built 6-story slice --
+reviewed against the current code and groomed into seven new epics
+(17-23) rather than reopening this epic's already-implemented scope. What
+each new epic takes from here:
+
+- **Epic 17** replaces this epic's flat `passed/failed/error` `TwinRun`
+  status and two-kind (`tool_call`/`human_checkpoint`) `TwinTraceStep` with
+  a full run state machine and typed step taxonomy -- and is where the
+  manual (pause-and-wait-for-a-real-person) human-checkpoint mode this
+  epic explicitly deferred finally becomes buildable (it needs exactly the
+  `WAITING_FOR_HUMAN` state Epic 17 adds). It also moves twin runs onto
+  background-task execution (today's `engine.py` blocks the request until
+  the run finishes -- orchestration already doesn't).
+- **Epic 18** builds the three-pane synchronized/replay UI on top of
+  today's flat `DigitalTwinPanel.tsx` list.
+- **Epic 19** replaces this epic's binary pass/fail grading
+  (`grade_run`) with named evaluation dimensions, plus reusable regression
+  suites and cross-version comparison -- none of which exist today.
+- **Epic 20** is where API mode (a real dev-provided endpoint) becomes
+  buildable again, as a declared adapter on a tool contract rather than a
+  scenario-only concept -- still deliberately out of this epic's shipped
+  scope, and out of Epic 20's first slice too, but no longer structurally
+  blocked.
+- **Epic 21** factors `system_stubs`/environment config out of individual
+  scenarios into reusable, versioned Digital Twin Environments, and adds
+  the fuller fault-injection catalog (timeout/500/429/duplicate-event/
+  out-of-order/permission-denied/dependency-unavailable) this epic's
+  Proxy/Static modes only partially cover today.
+- **Epic 22** adds the "exact versions of everything a run used" snapshot
+  this epic's `TwinRun` doesn't currently record.
+
+This epic's own status and shipped scope are unchanged -- see
+`planning/decision-log.md`'s 2026-09-28 entry for the review this
+amendment came from.

@@ -12,6 +12,7 @@ from app.api import (
     chat,
     documents,
     gap_analysis,
+    orchestration,
     processes,
     publish,
     registries,
@@ -90,6 +91,7 @@ app.include_router(gap_analysis.router)
 app.include_router(agents.router)
 app.include_router(registries.router)
 app.include_router(twin.router)
+app.include_router(orchestration.router)
 app.include_router(publish.router)
 
 

@@ -78,6 +78,35 @@ def test_build_agent_definition_maps_spec_fields():
     assert definition.model
 
 
+def test_build_agent_definition_defaults_epic20_governance_fields():
+    """Epic 20: a freshly generated artifact declares a read-only tool
+    contract + matching permission for every tool the blueprint spec named
+    -- exactly what it was already allowed to do before this epic, and
+    nothing more (write/initiate/override start denied)."""
+    definition = build_agent_definition([_node("a")], primary_node_id="a")
+
+    assert len(definition.tool_contracts) == 1
+    contract = definition.tool_contracts[0]
+    assert contract.system_name == "CRM API"
+    assert contract.resource == "CRM API"
+    assert contract.action == "read"
+
+    assert len(definition.permissions) == 1
+    permission = definition.permissions[0]
+    assert permission.resource == "CRM API"
+    assert permission.actions == {"read": True, "update": False, "initiate": False, "override": False}
+
+    assert definition.guardrails.max_steps == 15
+    assert definition.guardrails.loop_detection_enabled is True
+
+    assert definition.escalation_policy.escalate_when
+    assert definition.escalation_policy.escalation_target is not None
+    assert definition.escalation_policy.escalation_target.role == "Operations Specialist"
+
+    assert definition.model_policy is not None
+    assert definition.model_policy.model == definition.model
+
+
 def test_build_agent_definition_notes_consolidation_in_prompt():
     nodes = [_node("a", consolidated=["a", "b"]), _node("b", consolidated=["a", "b"])]
     definition = build_agent_definition(nodes, primary_node_id="a")

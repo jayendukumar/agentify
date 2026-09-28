@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # "error") instead of looping indefinitely against a live LLM.
     twin_max_loop_turns: int = Field(default=8, ge=1)
 
+    # Epic 16: bounds an orchestration rehearsal's total node-visit count so
+    # a rework loop with no configured exit gateway decision fails fast
+    # (status "error") instead of looping indefinitely against a live LLM.
+    orchestration_max_total_steps: int = Field(default=50, ge=1)
+
     # Epic 10 (cross-cutting logging): a persistent app log file alongside
     # the console output logging.basicConfig already gave us -- distinct
     # from llm_usage_log_path above, which is a structured cost/usage

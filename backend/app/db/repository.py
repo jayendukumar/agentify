@@ -14,25 +14,34 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.generation import build_agent_definition, group_key_for, resolve_group
-from app.config import get_settings
+from app.bpmn.nodes import FlowNodeInfo, extract_flow_nodes
+from app.config import Settings, get_settings
 from app.ids import new_id, utcnow
 from app.ingestion.embeddings import embed_texts
 from app.ingestion.extractors import ExtractedBlock
 from app.ingestion.merge import merge_process_schemas
 from app.llm import LLMClient
 from app.registry.base import RegistryConnector
-from app.schemas.agents import AgentArtifact, AgentDefinition
+from app.schemas.agents import AgentArtifact, AgentDefinition, AgentGovernanceUpdate
 from app.schemas.blueprint import BlueprintNodeResult, BlueprintOverlay
 from app.schemas.chat import ChatMessageResult
 from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema, SourceRef
 from app.schemas.documents import IngestionStatus
 from app.schemas.gap_analysis import GapFinding, GapFindingOption
+from app.schemas.orchestration import (
+    DataHandoff,
+    NodeRun,
+    OrchestrationRun,
+    OrchestrationScenario,
+    OrchestrationScenarioCreate,
+)
 from app.schemas.publish import AgentPublication, AgentPublishStatus
 from app.schemas.twin import (
     InferredToolSchema,
     TwinBaseline,
     TwinBaselineComparison,
     TwinBaselineInput,
+    TwinDeviation,
     TwinRun,
     TwinScenario,
     TwinScenarioCreate,
@@ -41,6 +50,8 @@ from app.schemas.twin import (
 from app.schemas.versions import VersionDetail
 from app.store import NotFoundError
 from app.twin.engine import run_scenario
+from app.twin.errors import TwinServiceError
+from app.twin.orchestrator import NodeArtifact, run_orchestration
 from app.twin.schema_inference import infer_tool_schemas
 
 from .models import (
@@ -53,6 +64,8 @@ from .models import (
     DocumentEmbeddingModel,
     DocumentModel,
     GapFindingModel,
+    OrchestrationRunModel,
+    OrchestrationScenarioModel,
     ProcessElementModel,
     ProcessFlowModel,
     ProcessModel,
@@ -632,6 +645,39 @@ def get_agent_artifact(session: Session, process_id: str, artifact_id: str) -> A
     return artifact
 
 
+def update_agent_governance(
+    session: Session, process_id: str, artifact_id: str, update: AgentGovernanceUpdate
+) -> AgentArtifact:
+    """Epic 20, US20.1: lets an Automation Architect widen/narrow an
+    already-generated artifact's governance fields (permissions,
+    guardrails, escalation policy, tool contracts, knowledge sources,
+    model policy) without a full blueprint regenerate -- regenerating via
+    US12.1/generate_agent_artifact would silently reset these back to
+    generation.py's defaults, so this is a targeted, additive update
+    instead. Deliberately never reassigns generated_by, and doesn't affect
+    staleness (US12.4) -- a governance edit doesn't change what the
+    definition's content was generated from, even though the row's
+    generated_at timestamp does still advance (AgentArtifactModel's own
+    onupdate=func.now() convention, shared with every other "replace
+    wholesale" model in this codebase -- it tracks "last touched", not
+    specifically "last regenerated")."""
+    artifact = get_agent_artifact(session, process_id, artifact_id)
+    updated_fields = update.model_dump(exclude_unset=True)
+    # Re-validate through AgentDefinition rather than BaseModel.model_copy
+    # (which assigns the update's raw dicts without re-running nested
+    # model validation) so the stored definition's nested governance
+    # fields are always real ToolContract/ResourcePermission/etc.
+    # instances, never plain dicts left over from the partial update.
+    definition = AgentDefinition.model_validate({**artifact.definition, **updated_fields})
+    artifact.definition = definition.model_dump()
+    session.flush()
+
+    overlay_model = session.get(BlueprintOverlayModel, process_id)
+    return _to_pydantic_agent_artifact(
+        session, artifact, is_stale=_is_agent_artifact_stale(overlay_model, artifact)
+    )
+
+
 # -- digital twin (Epic 14, core slice: US14.1-14.4) ---------------------------
 
 
@@ -890,6 +936,244 @@ def get_twin_summary(session: Session, process_id: str, artifact_id: str) -> Twi
         baseline=baseline,
         baseline_comparison=comparison,
     )
+
+
+# -- orchestration rehearsal (Epic 16) -----------------------------------------
+
+
+def _to_pydantic_orchestration_scenario(session: Session, scenario: OrchestrationScenarioModel) -> OrchestrationScenario:
+    return OrchestrationScenario(
+        id=scenario.id,
+        process_id=scenario.process_id,
+        baseline_version_id=scenario.baseline_version_id,
+        name=scenario.name,
+        inputs=scenario.inputs,
+        gateway_decisions=scenario.gateway_decisions,
+        manual_node_config=scenario.manual_node_config,
+        system_stubs=scenario.system_stubs,
+        human_checkpoint_config=scenario.human_checkpoint_config,
+        data_mapping_mode=scenario.data_mapping_mode,
+        expected_path=scenario.expected_path,
+        expected_final_output=scenario.expected_final_output,
+        created_at=scenario.created_at,
+        created_by=scenario.created_by,
+        created_by_name=_resolve_user_name(session, scenario.created_by),
+    )
+
+
+def create_orchestration_scenario(
+    session: Session, process_id: str, data: OrchestrationScenarioCreate, *, created_by: str | None = None
+) -> OrchestrationScenario:
+    """US16.1. Pinned to the process's current blueprint baseline version
+    (same reasoning as AgentArtifactModel's source_baseline_version_id) --
+    a scenario authored against one finalized diagram shouldn't silently
+    start walking a different one if the blueprint is later regenerated."""
+    get_process(session, process_id)  # 404s if missing
+    overlay = get_blueprint_overlay(session, process_id)
+    if overlay is None:
+        raise NotFoundError("blueprint", process_id)
+    scenario = OrchestrationScenarioModel(
+        id=new_id("orchsc"),
+        process_id=process_id,
+        baseline_version_id=overlay.baseline_version_id,
+        name=data.name,
+        inputs=data.inputs,
+        gateway_decisions={node_id: decision.model_dump() for node_id, decision in data.gateway_decisions.items()},
+        manual_node_config={node_id: config.model_dump() for node_id, config in data.manual_node_config.items()},
+        system_stubs={
+            node_id: {name: stub.model_dump() for name, stub in stubs.items()}
+            for node_id, stubs in data.system_stubs.items()
+        },
+        human_checkpoint_config={
+            node_id: config.model_dump() for node_id, config in data.human_checkpoint_config.items()
+        },
+        data_mapping_mode=dict(data.data_mapping_mode),
+        expected_path=list(data.expected_path),
+        expected_final_output=data.expected_final_output,
+        created_by=created_by,
+    )
+    session.add(scenario)
+    session.flush()
+    return _to_pydantic_orchestration_scenario(session, scenario)
+
+
+def list_orchestration_scenarios(session: Session, process_id: str) -> list[OrchestrationScenario]:
+    get_process(session, process_id)  # 404s if missing
+    scenarios = session.scalars(
+        select(OrchestrationScenarioModel)
+        .where(OrchestrationScenarioModel.process_id == process_id)
+        .order_by(OrchestrationScenarioModel.created_at)
+    )
+    return [_to_pydantic_orchestration_scenario(session, scenario) for scenario in scenarios]
+
+
+def get_orchestration_scenario_model(session: Session, process_id: str, scenario_id: str) -> OrchestrationScenarioModel:
+    scenario = session.get(OrchestrationScenarioModel, scenario_id)
+    if scenario is None or scenario.process_id != process_id:
+        raise NotFoundError("orchestration scenario", scenario_id)
+    return scenario
+
+
+def delete_orchestration_scenario(session: Session, process_id: str, scenario_id: str) -> None:
+    scenario = get_orchestration_scenario_model(session, process_id, scenario_id)
+    session.delete(scenario)
+    session.flush()
+
+
+def _to_pydantic_orchestration_run(session: Session, run: OrchestrationRunModel) -> OrchestrationRun:
+    return OrchestrationRun(
+        id=run.id,
+        scenario_id=run.scenario_id,
+        process_id=run.process_id,
+        status=run.status,
+        node_runs=[NodeRun.model_validate(node_run) for node_run in run.node_runs],
+        handoffs=[DataHandoff.model_validate(handoff) for handoff in run.handoffs],
+        visited_path=run.visited_path,
+        final_output=run.final_output,
+        deviations=[TwinDeviation.model_validate(deviation) for deviation in run.deviations],
+        total_cost_usd=run.total_cost_usd,
+        total_tokens=run.total_tokens,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        run_by=run.run_by,
+        run_by_name=_resolve_user_name(session, run.run_by),
+    )
+
+
+def start_orchestration_run(
+    session: Session, process_id: str, scenario_id: str, *, run_by: str | None = None
+) -> OrchestrationRun:
+    """US16.7: creates the run row in `status="running"` with no node_runs
+    yet and returns immediately -- the caller (app/api/orchestration.py)
+    commits this and enqueues `execute_orchestration_run_background` as a
+    FastAPI BackgroundTask, the same two-step handoff
+    app/api/documents.py uses for Epic 1's ingestion pipeline."""
+    scenario_model = get_orchestration_scenario_model(session, process_id, scenario_id)
+    run = OrchestrationRunModel(
+        id=new_id("orchrun"),
+        scenario_id=scenario_model.id,
+        process_id=process_id,
+        status="running",
+        run_by=run_by,
+    )
+    session.add(run)
+    session.flush()
+    return _to_pydantic_orchestration_run(session, run)
+
+
+def get_orchestration_run(session: Session, process_id: str, run_id: str) -> OrchestrationRun:
+    run = session.get(OrchestrationRunModel, run_id)
+    if run is None or run.process_id != process_id:
+        raise NotFoundError("orchestration run", run_id)
+    return _to_pydantic_orchestration_run(session, run)
+
+
+def list_orchestration_runs(
+    session: Session, process_id: str, scenario_id: str | None = None
+) -> list[OrchestrationRun]:
+    get_process(session, process_id)  # 404s if missing
+    stmt = select(OrchestrationRunModel).where(OrchestrationRunModel.process_id == process_id)
+    if scenario_id is not None:
+        stmt = stmt.where(OrchestrationRunModel.scenario_id == scenario_id)
+    runs = session.scalars(stmt.order_by(OrchestrationRunModel.started_at.desc()))
+    return [_to_pydantic_orchestration_run(session, run) for run in runs]
+
+
+async def _build_node_artifacts(
+    llm: LLMClient, session: Session, process_id: str, flow_nodes: list[FlowNodeInfo]
+) -> dict[str, NodeArtifact]:
+    """Maps every flow node with a generated agent to a runnable
+    `NodeArtifact`, reusing `_get_or_infer_tool_schemas`'s per-artifact
+    cache so a consolidated group's artifact only has its tools inferred
+    once even though it covers multiple node ids."""
+    artifact_models = session.scalars(select(AgentArtifactModel).where(AgentArtifactModel.process_id == process_id))
+    artifact_by_node_id: dict[str, AgentArtifactModel] = {}
+    for artifact_model in artifact_models:
+        for node_id in artifact_model.node_ids:
+            artifact_by_node_id[node_id] = artifact_model
+
+    tool_schema_cache: dict[str, dict[str, InferredToolSchema]] = {}
+    node_artifacts: dict[str, NodeArtifact] = {}
+    for node in flow_nodes:
+        artifact_model = artifact_by_node_id.get(node.id)
+        if artifact_model is None:
+            continue
+        if artifact_model.id not in tool_schema_cache:
+            tool_schema_cache[artifact_model.id] = await _get_or_infer_tool_schemas(llm, session, artifact_model)
+        node_artifacts[node.id] = NodeArtifact(
+            artifact_id=artifact_model.id,
+            definition=AgentDefinition.model_validate(artifact_model.definition),
+            tool_schemas=tool_schema_cache[artifact_model.id],
+        )
+    return node_artifacts
+
+
+async def execute_orchestration_run_background(
+    run_id: str, llm: LLMClient, settings: Settings | None = None
+) -> None:
+    """US16.2-16.7: the FastAPI BackgroundTask entry point for a rehearsal
+    run. Opens its own DB session/connection -- same reasoning as
+    app/ingestion/pipeline.py's process_document, since a BackgroundTask
+    can outlive the request-scoped session's teardown. Persists
+    node_runs/visited_path incrementally (via the orchestrator's
+    on_node_run callback) so a concurrent GET on this run id shows live
+    progress, then writes the final status/deviations/cost once the walk
+    ends."""
+    from app.db.session import get_session_factory
+
+    settings = settings or get_settings()
+    session = get_session_factory()()
+    try:
+        run_model = session.get(OrchestrationRunModel, run_id)
+        if run_model is None:
+            return
+        scenario_model = session.get(OrchestrationScenarioModel, run_model.scenario_id)
+        if scenario_model is None:
+            run_model.status = "error"
+            run_model.deviations = [{"reason": "The scenario this run was started from no longer exists", "step_index": None}]
+            run_model.completed_at = utcnow()
+            session.commit()
+            return
+
+        try:
+            version = get_version(session, run_model.process_id, scenario_model.baseline_version_id)
+            flow_nodes = extract_flow_nodes(version.xml)
+            scenario = _to_pydantic_orchestration_scenario(session, scenario_model)
+            node_artifacts = await _build_node_artifacts(llm, session, run_model.process_id, flow_nodes)
+
+            async def on_node_run(node_run: NodeRun) -> None:
+                run_model.node_runs = [*run_model.node_runs, node_run.model_dump(mode="json")]
+                run_model.visited_path = [*run_model.visited_path, node_run.node_id]
+                session.commit()
+
+            outcome = await run_orchestration(
+                llm,
+                flow_nodes=flow_nodes,
+                node_artifacts=node_artifacts,
+                scenario=scenario,
+                max_turns_per_node=settings.twin_max_loop_turns,
+                max_total_steps=settings.orchestration_max_total_steps,
+                on_node_run=on_node_run,
+            )
+        except (TwinServiceError, NotFoundError) as exc:
+            run_model.status = "error"
+            run_model.deviations = [{"reason": str(exc), "step_index": None}]
+            run_model.completed_at = utcnow()
+            session.commit()
+            return
+
+        run_model.node_runs = [node_run.model_dump(mode="json") for node_run in outcome.node_runs]
+        run_model.status = outcome.status
+        run_model.handoffs = [handoff.model_dump(mode="json") for handoff in outcome.handoffs]
+        run_model.visited_path = outcome.visited_path
+        run_model.final_output = outcome.final_output
+        run_model.deviations = [deviation.model_dump(mode="json") for deviation in outcome.deviations]
+        run_model.total_cost_usd = outcome.total_cost_usd
+        run_model.total_tokens = outcome.total_tokens
+        run_model.completed_at = utcnow()
+        session.commit()
+    finally:
+        session.close()
 
 
 # -- publishing (Epic 15) ------------------------------------------------------

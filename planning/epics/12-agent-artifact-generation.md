@@ -75,3 +75,24 @@ primary artifact format.
 "Model choice" per artifact is a new field, not previously modeled anywhere.
 Default it to whatever Epic 9's LLM layer currently uses; don't build a
 model-selection engine here -- that's speculative scope beyond what's asked.
+
+## Amendment (2026-09-28): governance fields and versioning
+
+The "Digital Twin Agent Simulation" requirements doc groomed a set of
+follow-on epics (17-23) that build a much richer simulation/observability/
+evaluation/governance capability on top of what this epic ships. Two of
+them extend this epic's artifact schema directly rather than treating it
+as closed:
+
+- Epic 20 adds permissions, runtime guardrails, escalation rules, versioned
+  knowledge sources, split tool contracts (logical schema vs.
+  sandbox/production adapter), and a fuller model policy -- this epic's
+  `tools_systems_needed: list[str]` and single "model choice" field remain
+  the input those build on, not something this epic needs to redo.
+- Epic 19 (US19.5) adds an explicit incrementing version identifier,
+  additive to this epic's existing `draft`/`generated`/`stale` status, so
+  runs/suites/comparisons downstream have something stable to key against.
+
+No change to this epic's own scope or status -- noted here so a future
+reader doesn't mistake the artifact schema as permanently fixed at what's
+described above.

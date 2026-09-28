@@ -70,12 +70,48 @@ them relative to the original backlog items:
 | 13 | [Agent Registry Connectivity](epics/13-agent-registry-connectivity.md) | Pluggable registry connector, local reference registry, browse/search |
 | 14 | [Digital Twin Simulation & Validation](epics/14-digital-twin-simulation.md) | Test a generated agent against synthetic scenarios in an isolated sandbox before it's trusted |
 | 15 | [Agent Publishing & Lifecycle Management](epics/15-agent-publishing-lifecycle.md) | Publish a generated artifact to a registry and track its status over time |
+| 16 | [Orchestration Rehearsal](epics/16-orchestration-rehearsal.md) | Run an entire blueprint's generated agents together, end to end along the real process flow |
 
 Suggested order: Epic 12 and Epic 13 can be built in parallel (neither
 depends on the other). Epic 14 depends only on Epic 12 and is recommended
 *before* Epic 15, so agents are twin-tested before they reach a shared
 registry, even though the original backlog listed digital-twin testing
-(B3) last. Epic 15 depends on both 12 and 13.
+(B3) last. Epic 15 depends on both 12 and 13. Epic 16 depends on Epic 7,
+12, and 14 (it runs Epic 14's engine per node, walking the finalized
+process graph, rather than duplicating it).
+
+## Phase 3 epics (groomed 2026-09-28 from the "Digital Twin Agent
+Simulation" requirements doc)
+
+Epics 12-16 above already deliver a working, if first-slice, digital twin:
+agent artifacts (12), a sandboxed execution engine with scenario-based
+grading (14), and multi-agent process rehearsal (16). A separate,
+much more detailed requirements document ("Digital Twin Agent Simulation")
+was reviewed against that existing implementation and groomed into seven
+further epics -- it describes the fuller run-lifecycle model, observability
+UI, evaluation/regression tooling, governance, environment/fault
+management, reproducibility, and release-gate lifecycle that today's
+first slice doesn't yet have, rather than a from-scratch rebuild of
+"digital twin" itself:
+
+| # | Epic | Summary |
+|---|---|---|
+| 17 | [Simulation Run Lifecycle & Execution Trace Model](epics/17-simulation-run-lifecycle.md) | Unify Epic 14/16's run states and trace shapes into one state machine + typed step model; unblocks manual human-in-the-loop pause/resume |
+| 18 | [Live Observability: Synchronized Views, Inspector & Replay](epics/18-live-observability.md) | Three-pane Process/Agent/Technical views, step inspector, canvas highlighting, replay/time-travel |
+| 19 | [Evaluation Dimensions, Regression Suites & Version Comparison](epics/19-evaluation-and-regression.md) | Named evaluation dimensions beyond pass/fail, reusable regression suites, side-by-side version comparison |
+| 20 | [Agent Definition Governance](epics/20-agent-definition-governance.md) | Permissions, runtime guardrails, escalation rules, versioned knowledge sources, tool-contract/adapter split, model policy -- plus a Tool Gateway/Policy Engine that actually enforces them |
+| 21 | [Digital Twin Environments & Fault Injection Catalog](epics/21-twin-environments-and-fault-injection.md) | Named/versioned reusable environments and datasets; the full fault-injection catalog (timeout, 5xx/429, duplicate/out-of-order event, permission-denied, dependency-unavailable, ...) |
+| 22 | [Reproducibility: Execution Snapshots](epics/22-reproducibility-snapshots.md) | Every run records the exact versions of everything that influenced it, and that configuration can be reconstructed |
+| 23 | [Agent Definition Quality Gate & Unified Release Lifecycle](epics/23-quality-gate-and-release-lifecycle.md) | DRAFT -> ... -> DEPLOYED checklist-gated lifecycle, reconciled with Epic 12/15's existing status fields |
+
+Suggested order: Epic 20 first (17, 21, and 23 all assume its fields
+exist), then Epic 17, then 18/19/21 roughly in parallel (each depends on
+17 but not on each other), then 22 last (it snapshots versions the others
+introduce), then 23 (depends on 20, 19, and reconciling with 12/15).
+Epic 19's Notes section explicitly declines to scope the requirements
+doc's "automated agent improvement loop" (its Section 12) as a committed
+epic -- the source document itself frames that as future-looking, not
+current scope.
 
 ## Backlog (superseded by the Phase 2 epics above)
 

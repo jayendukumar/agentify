@@ -197,6 +197,61 @@ export interface BlueprintOverlay {
 // Epic 12
 export type AgentArtifactStatus = 'generated' | 'stale'
 
+// Epic 20: agent-level governance -- see planning/epics/20-agent-definition-governance.md
+export type PermissionAction = 'read' | 'update' | 'initiate' | 'override'
+
+export interface ResourcePermission {
+  resource: string
+  actions: Partial<Record<PermissionAction, boolean>>
+}
+
+export interface RuntimeGuardrails {
+  max_steps: number
+  max_tool_calls: number
+  max_runtime_seconds: number
+  max_model_calls: number
+  max_tokens: number
+  max_cost_usd: number
+  retry_max_attempts: number
+  loop_detection_enabled: boolean
+}
+
+export interface EscalationTarget {
+  type: 'human'
+  role: string
+}
+
+export interface EscalationPolicy {
+  escalate_when: string[]
+  escalation_target: EscalationTarget | null
+}
+
+export interface KnowledgeSourceRef {
+  id: string
+  version: number
+}
+
+export type ToolSandboxMode = 'proxy' | 'static' | 'api'
+
+export interface ToolContract {
+  system_name: string
+  description: string
+  resource: string
+  action: PermissionAction
+  timeout_seconds: number
+  retry_max_attempts: number
+  side_effect: 'none' | 'read_only' | 'mutating'
+  sandbox_mode: ToolSandboxMode
+}
+
+export interface ModelPolicy {
+  capability: string
+  provider: string | null
+  model: string
+  temperature: number
+  fallback_enabled: boolean
+}
+
 export interface AgentDefinition {
   name: string
   purpose: string
@@ -207,6 +262,21 @@ export interface AgentDefinition {
   tools_systems_needed: string[]
   human_checkpoint: HumanCheckpoint
   model: string
+  tool_contracts: ToolContract[]
+  permissions: ResourcePermission[]
+  guardrails: RuntimeGuardrails
+  escalation_policy: EscalationPolicy
+  knowledge_sources: KnowledgeSourceRef[]
+  model_policy: ModelPolicy | null
+}
+
+export interface AgentGovernanceUpdate {
+  permissions?: ResourcePermission[]
+  guardrails?: RuntimeGuardrails
+  escalation_policy?: EscalationPolicy
+  tool_contracts?: ToolContract[]
+  knowledge_sources?: KnowledgeSourceRef[]
+  model_policy?: ModelPolicy
 }
 
 export interface AgentArtifact {
@@ -384,6 +454,88 @@ export interface TwinSummary {
 export interface RegistrySearchResult {
   entries: RegistryEntry[]
   registry_errors: Record<string, string>
+}
+
+// Epic 16: process-level orchestration rehearsal -- runs every automatable
+// node's agent together along the real process graph. Builds on the Epic 14
+// types above (TwinSystemStub, TwinHumanCheckpointConfig, TwinTraceStep,
+// TwinDeviation) rather than redefining them.
+export type OrchestrationRunStatus = 'running' | 'passed' | 'failed' | 'error'
+export type NodeRunStatus = 'passed' | 'error'
+export type NodeRunKind = 'agent' | 'manual' | 'gateway' | 'start_event' | 'end_event'
+export type ManualNodeMode = 'human_checkpoint' | 'fixed_stub'
+export type DataMappingMode = 'llm_adapter' | 'exact_field_contract'
+
+export interface ManualNodeConfig {
+  mode: ManualNodeMode
+  human_checkpoint_config: TwinHumanCheckpointConfig
+  fixed_output: Record<string, unknown>
+}
+
+export interface GatewayDecision {
+  to_node_id: string
+}
+
+export interface OrchestrationScenarioCreate {
+  name: string
+  inputs: Record<string, unknown>
+  gateway_decisions: Record<string, GatewayDecision>
+  manual_node_config: Record<string, ManualNodeConfig>
+  system_stubs: Record<string, Record<string, TwinSystemStub>>
+  human_checkpoint_config: Record<string, TwinHumanCheckpointConfig>
+  data_mapping_mode: Record<string, DataMappingMode>
+  expected_path: string[]
+  expected_final_output: Record<string, unknown>
+}
+
+export interface OrchestrationScenario extends OrchestrationScenarioCreate {
+  id: string
+  process_id: string
+  baseline_version_id: string
+  created_at: string
+  created_by: string | null
+  created_by_name: string | null
+}
+
+export interface DataHandoff {
+  from_node_id: string | null
+  to_node_id: string
+  mode: DataMappingMode
+  input_before: Record<string, unknown>
+  input_after: Record<string, unknown>
+}
+
+export interface NodeRun {
+  node_id: string
+  node_label: string
+  kind: NodeRunKind
+  status: NodeRunStatus
+  agent_artifact_id: string | null
+  trace: TwinTraceStep[]
+  output: Record<string, unknown> | null
+  error_message: string | null
+  total_cost_usd: number | null
+  total_tokens: number
+  started_at: string
+  completed_at: string | null
+}
+
+export interface OrchestrationRun {
+  id: string
+  scenario_id: string
+  process_id: string
+  status: OrchestrationRunStatus
+  node_runs: NodeRun[]
+  handoffs: DataHandoff[]
+  visited_path: string[]
+  final_output: Record<string, unknown> | null
+  deviations: TwinDeviation[]
+  total_cost_usd: number | null
+  total_tokens: number
+  started_at: string
+  completed_at: string | null
+  run_by: string | null
+  run_by_name: string | null
 }
 
 // Epic 15

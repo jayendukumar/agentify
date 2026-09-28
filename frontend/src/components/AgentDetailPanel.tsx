@@ -1,7 +1,49 @@
+import type { AgentDefinition } from '../api/types'
 import type { AgentGroup } from '../lib/blueprintLabels'
 import { GOVERNANCE_DESCRIPTIONS, STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
 import AgentArtifactActions from './AgentArtifactActions'
 import PublishPanel from './PublishPanel'
+
+// Epic 20: read-only summary of an already-generated artifact's declared
+// governance -- permissions/guardrails/escalation/model policy are
+// editable via the AgentGovernanceUpdate API (app/api/agents.py's PATCH
+// .../governance endpoint), but this first slice doesn't yet build the
+// edit form for that -- see planning/epics/20-agent-definition-governance.md.
+function GovernanceDetails({ definition }: { definition: AgentDefinition }) {
+  const grantedActions = definition.permissions.flatMap((p) =>
+    Object.entries(p.actions)
+      .filter(([, allowed]) => allowed)
+      .map(([action]) => `${p.resource}.${action}`),
+  )
+  const g = definition.guardrails
+
+  return (
+    <div className="agent-governance-details">
+      <p className="element-meta">
+        <strong>Permissions granted:</strong>{' '}
+        {grantedActions.length > 0 ? grantedActions.join(', ') : 'none (all resource actions denied by default)'}
+      </p>
+      <p className="element-meta">
+        <strong>Guardrails:</strong> max {g.max_steps} steps, {g.max_tool_calls} tool calls,{' '}
+        {g.max_runtime_seconds}s runtime, {g.max_tokens.toLocaleString()} tokens, ${g.max_cost_usd.toFixed(2)} per
+        run{g.loop_detection_enabled ? ', loop detection on' : ''}.
+      </p>
+      {definition.escalation_policy.escalate_when.length > 0 && (
+        <p className="element-meta">
+          <strong>Escalates to {definition.escalation_policy.escalation_target?.role ?? 'a human'} when:</strong>{' '}
+          {definition.escalation_policy.escalate_when.join(', ')}.
+        </p>
+      )}
+      {definition.model_policy && (
+        <p className="element-meta">
+          <strong>Model policy:</strong> {definition.model_policy.capability} ({definition.model_policy.model}),
+          temperature {definition.model_policy.temperature}
+          {definition.model_policy.fallback_enabled ? ', fallback enabled' : ''}.
+        </p>
+      )}
+    </div>
+  )
+}
 
 // Epic 8 follow-up: the "Agents" tab's card-click detail view. Answers the
 // five questions the user asked for explicitly -- what is this agent, how
@@ -101,6 +143,7 @@ export default function AgentDetailPanel({
         <section className="agent-detail-section">
           <h4>What governance would it need?</h4>
           <p className="element-meta">{GOVERNANCE_DESCRIPTIONS[agent.human_checkpoint]}</p>
+          {artifact && <GovernanceDetails definition={artifact.definition} />}
         </section>
 
         <AgentArtifactActions

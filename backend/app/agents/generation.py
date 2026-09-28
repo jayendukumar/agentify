@@ -11,7 +11,15 @@ this trivially unit-testable without mocking an LLM call.
 from __future__ import annotations
 
 from app.config import get_settings
-from app.schemas.agents import AgentDefinition
+from app.schemas.agents import (
+    AgentDefinition,
+    EscalationPolicy,
+    EscalationTarget,
+    ModelPolicy,
+    ResourcePermission,
+    RuntimeGuardrails,
+    ToolContract,
+)
 from app.schemas.blueprint import BlueprintNodeResult
 
 _HUMAN_CHECKPOINT_INSTRUCTIONS = {
@@ -76,6 +84,10 @@ def build_agent_definition(nodes: list[BlueprintNodeResult], *, primary_node_id:
         raise AgentGenerationError(f"Node '{primary_node_id}' has no agent spec to generate from")
 
     spec = primary.agent_spec
+    # US12's own scope note: default to the product's current LLM call
+    # model rather than building a per-task model-selection engine, which
+    # is speculative scope beyond what Epic 12 asks for.
+    model = get_settings().llm_model
     return AgentDefinition(
         name=spec.name,
         purpose=spec.purpose,
@@ -85,10 +97,49 @@ def build_agent_definition(nodes: list[BlueprintNodeResult], *, primary_node_id:
         output_schema=spec.expected_outputs,
         tools_systems_needed=spec.tools_systems_needed,
         human_checkpoint=spec.human_checkpoint,
-        # US12's own scope note: default to the product's current LLM call
-        # model rather than building a per-task model-selection engine,
-        # which is speculative scope beyond what Epic 12 asks for.
-        model=get_settings().llm_model,
+        model=model,
+        tool_contracts=_build_tool_contracts(spec.tools_systems_needed),
+        permissions=_build_default_permissions(spec.tools_systems_needed),
+        guardrails=RuntimeGuardrails(),
+        escalation_policy=_default_escalation_policy(),
+        model_policy=ModelPolicy(model=model),
+    )
+
+
+def _build_tool_contracts(tool_names: list[str]) -> list[ToolContract]:
+    """Epic 20, US20.1/US20.4 default: one read-only contract per declared
+    tool, resource keyed 1:1 to the tool name since the current process
+    schema (Epics 1/2) has no separate notion of a "business resource" a
+    tool belongs to -- an Automation Architect can widen a contract's
+    action or regroup resources later via the governance-update endpoint
+    (AgentGovernanceUpdate)."""
+    return [
+        ToolContract(system_name=name, description=f"Access to {name}.", resource=name, action="read")
+        for name in tool_names
+    ]
+
+
+def _build_default_permissions(tool_names: list[str]) -> list[ResourcePermission]:
+    """Epic 20, US20.1 default: grants exactly what the artifact was
+    already allowed to do before this epic (call every declared tool) and
+    nothing more -- update/initiate/override start denied until an
+    Automation Architect explicitly grants them, per FR-AG-05's
+    fail-closed intent."""
+    return [
+        ResourcePermission(resource=name, actions={"read": True, "update": False, "initiate": False, "override": False})
+        for name in tool_names
+    ]
+
+
+def _default_escalation_policy() -> EscalationPolicy:
+    """Epic 20, US20.3 default: every generated agent gets the same
+    starting escalate_when set -- deliberately conservative rather than
+    inferring anything process-specific, since nothing in the current
+    schema (Epics 1/2/7) captures confidence thresholds or failure-
+    tolerance per step."""
+    return EscalationPolicy(
+        escalate_when=["repeated_tool_failure", "confidence_below_threshold"],
+        escalation_target=EscalationTarget(type="human", role="Operations Specialist"),
     )
 
 

@@ -1,5 +1,6 @@
 import type {
   AgentArtifact,
+  AgentGovernanceUpdate,
   AgentPublication,
   AgentPublishStatus,
   ApiErrorBody,
@@ -10,6 +11,9 @@ import type {
   DocumentSummary,
   GapFinding,
   GapFindingStatus,
+  OrchestrationRun,
+  OrchestrationScenario,
+  OrchestrationScenarioCreate,
   ProcessDetail,
   ProcessSummary,
   RegistryEntry,
@@ -175,6 +179,18 @@ export function generateAgentArtifact(processId: string, nodeId: string): Promis
 
 export function listAgentArtifacts(processId: string): Promise<AgentArtifact[]> {
   return request(`/api/processes/${processId}/blueprint/agent-artifacts`)
+}
+
+// Epic 20
+export function updateAgentGovernance(
+  processId: string,
+  artifactId: string,
+  update: AgentGovernanceUpdate,
+): Promise<AgentArtifact> {
+  return request(`/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/governance`, {
+    method: 'PATCH',
+    body: JSON.stringify(update),
+  })
 }
 
 // Not JSON (returns text/markdown), so this bypasses the request() helper.
@@ -366,6 +382,38 @@ export function setTwinBaseline(
 
 export function deleteTwinBaseline(processId: string, artifactId: string): Promise<void> {
   return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/baseline`, { method: 'DELETE' })
+}
+
+// Epic 16
+export function listOrchestrationScenarios(processId: string): Promise<OrchestrationScenario[]> {
+  return request(`/api/processes/${processId}/orchestration/scenarios`)
+}
+
+export function createOrchestrationScenario(
+  processId: string,
+  body: OrchestrationScenarioCreate,
+): Promise<OrchestrationScenario> {
+  return request(`/api/processes/${processId}/orchestration/scenarios`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteOrchestrationScenario(processId: string, scenarioId: string): Promise<void> {
+  return request(`/api/processes/${processId}/orchestration/scenarios/${scenarioId}`, { method: 'DELETE' })
+}
+
+export function startOrchestrationRun(processId: string, scenarioId: string): Promise<OrchestrationRun> {
+  return request(`/api/processes/${processId}/orchestration/scenarios/${scenarioId}/run`, { method: 'POST' })
+}
+
+export function getOrchestrationRun(processId: string, runId: string): Promise<OrchestrationRun> {
+  return request(`/api/processes/${processId}/orchestration/runs/${runId}`)
+}
+
+export function listOrchestrationRuns(processId: string, scenarioId?: string): Promise<OrchestrationRun[]> {
+  const query = scenarioId ? `?scenario_id=${encodeURIComponent(scenarioId)}` : ''
+  return request(`/api/processes/${processId}/orchestration/runs${query}`)
 }
 
 // Epic 15

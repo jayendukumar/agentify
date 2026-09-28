@@ -1695,3 +1695,238 @@ check the *served* Cache-Control headers before re-diagnosing the
 application logic again -- an unset header on `index.html` in an nginx-
 served Vite SPA is a much more common cause than it looks like from the
 symptom alone.
+
+## 2026-09-28 -- Epic 16, Orchestration Rehearsal
+
+Implemented US16.1-16.7: a process-level rehearsal that walks the real
+finalized-diagram flow graph (`app/bpmn/nodes.py:extract_flow_nodes`,
+reused as-is from Epic 7), running every automatable node's generated
+agent via Epic 14's `run_scenario` in sequence, simulating gateways and
+non-automatable nodes along the way. See
+`planning/epics/16-orchestration-rehearsal.md` for the full design; three
+decisions were made up front (not discovered mid-build) and are recorded
+there in full -- summarized here only where useful:
+
+### Manual-node default is human-checkpoint simulation, not a bare stub
+
+Most manual steps in a real process are a decision gate, so
+`ManualNodeConfig.mode` defaults to reusing Epic 14's approve/reject
+simulation (`resolve_human_decision`) rather than inventing a second
+simulation concept. `fixed_stub` is the explicit opt-out for a manual step
+that's really just a data-producing action.
+
+### Cross-agent data handoff defaults to an LLM adapter call, not a strict field-name contract
+
+Agent I/O schemas are independently generated per blueprint node and won't
+reliably share field names -- requiring an exact contract everywhere would
+make most rehearsals fail on naming alone before ever exercising real
+agent behavior. `exact_field_contract` exists as an explicit per-handoff
+opt-in (raises immediately on any missing field, no LLM call) for a pair
+of agents an architect has actually locked down.
+
+### Live-verified against the real LLM (OpenRouter -> Qwen3.7 Flash), not just the fake client
+
+`run_scenario`'s own LLM calls were already live-verified by Epic 14; the
+one genuinely new LLM call site this epic adds is the `llm_adapter` data-
+reshaping call (`app/twin/orchestrator.py:_adapt_data`,
+`operation="orchestration_data_adapter"`). Ran a hand-built two-node graph
+(start -> task -> end) with a deliberately mismatched field name between
+the scenario's start-event input (`customer_identifier`) and the agent's
+declared `input_schema` (`customer_id`) against the real API, no mocking.
+The adapter correctly reshaped `{"customer_identifier": "CUST-42"}` into
+`{"customer_id": "CUST-42"}`, the agent then produced a real summary, and
+the run completed `status="passed"` with real cost/token accounting
+(~$0.00009, 887 tokens) -- no defect found, first run succeeded.
+
+### Defect found only by rehearsing a real, previously-finalized process: not every diagram has a start/end event
+
+Ran a rehearsal against `HROnboarding` (a real process finalized earlier
+in this project, 18 steps, 2 exclusive + 2 parallel gateways) through the
+actual UI, not a synthetic fixture. First attempt failed immediately:
+"Process diagram has no start event to begin an orchestration run from."
+Root cause: `app/api/versions.py`'s Finalize only runs
+`validate_bpmn_integrity` (XML well-formedness, dangling refs, duplicate
+ids) -- the separate `validate_bpmn` structural check that would flag a
+missing start/end event is deliberately *not* a finalize-time block (see
+that module's own docstring; Epic 11 owns that gap as an advisory
+finding, not a hard stop). `HROnboarding`'s finalized XML legitimately has
+zero `<bpmn:startEvent>`/`<bpmn:endEvent>` elements -- just plain
+`userTask`/gateway nodes -- and was valid enough to reach Finalize months
+before this epic existed. `run_orchestration`'s entry-point/end-of-walk
+logic had silently assumed every finalized diagram uses explicit event
+nodes, a case none of Epic 7's or this epic's own fixtures (which all use
+`_valid_xml()`'s clean start/task/end diagram) happened to exercise.
+Fixed in `app/twin/orchestrator.py`: entry point falls back to whichever
+node has no incoming flow when no `startEvent` exists (erroring clearly if
+that's ambiguous -- zero or multiple candidates); a node with no outgoing
+flow is now always a clean end of the walk rather than only when it's
+literally tagged `endEvent`. Re-ran against the same real process after
+the fix: the walk correctly started, ran four real manual-node
+simulations, passed through a single-successor gateway, then correctly
+and deliberately rejected the diagram's actual parallel gateway as
+unsupported (this epic's own documented scope boundary) -- confirming
+both the fix and the pre-existing guard against real, previously-authored
+production data, not a synthetic test case. Added regression tests for
+the no-explicit-events fallback and the ambiguous-multiple-entry-points
+error in `tests/test_orchestrator.py`.
+
+### Persistence deliberately mutates a run row while `status == "running"`
+
+Every other "run" record in this codebase (`TwinRunModel`, `VersionModel`)
+is written once and never touched again -- immutable evidence of what
+happened. `OrchestrationRunModel` is the one deliberate exception:
+`node_runs`/`visited_path` are appended to and committed after every node
+while the walk is in progress, specifically so a concurrent `GET` on the
+run id shows live progress (US16.7). This reuses the exact
+background-task-with-its-own-DB-session pattern `app/ingestion/
+pipeline.py` already established for Epic 1's document processing status,
+rather than introducing websockets/SSE for what's fundamentally the same
+"poll a status field" problem -- confirmed working end-to-end (background
+task start -> incremental commits -> polling `GET` reaching a terminal
+status) in `tests/test_api_orchestration.py::test_run_starts_and_eventually_completes`,
+run against a real Postgres test database, not mocked.
+
+### Groomed the "Digital Twin Agent Simulation" requirements doc into seven follow-on epics rather than reopening Epic 14/16
+
+A separate, much more detailed requirements document describing a full
+"Digital Twin Agent Simulation" capability (run lifecycle states, typed
+execution steps, three synchronized observability views with replay,
+multi-dimensional evaluation, regression suites, version comparison, a
+Tool Gateway/Policy Engine enforcing declared permissions and guardrails,
+named/versioned twin environments with a broad fault-injection catalog,
+execution-config reproducibility snapshots, and a checklist-gated
+release lifecycle) was reviewed against the current implementation before
+writing anything. Epics 12/14/16 already ship a real, working first slice
+of "digital twin" (artifact generation, sandboxed scenario execution with
+grading, multi-agent process rehearsal) -- the requirements doc describes
+substantially more than that slice, not a different thing entirely, so the
+call was to groom it as new, dependent epics (17-23) rather than reopen or
+rewrite 12/14/15/16.
+
+Concrete gaps confirmed by reading the actual code, not assumed from the
+epic docs' "implemented" status: `app/twin/engine.py` enforces exactly one
+runtime limit (`max_turns`) against the requirements' nine-field
+guardrails list; `TwinTraceStep`/`TwinRun.status` (`app/schemas/twin.py`)
+only distinguish `tool_call`/`human_checkpoint` steps and
+`passed/failed/error`, nothing like the requirements' fifteen-value step
+taxonomy or `WAITING_FOR_*` states; twin runs execute synchronously inside
+one request while orchestration runs already use the background-task/poll
+pattern; `AgentArtifact.tools_systems_needed` (Epic 12) is still plain
+strings with no permissions, limits, or contract/adapter split attached;
+and neither `DigitalTwinPanel.tsx` nor `OrchestrationPanel.tsx` (816 lines
+combined) implement anything close to the requirements' three-pane
+synchronized-view/replay/inspector UI.
+
+Sequencing decision: Epic 20 (agent definition governance -- permissions,
+guardrails, escalation, knowledge versions, tool contracts) first, since
+Epic 17's `POLICY_CHECK` step type and Epic 23's validation checklist both
+assume its fields exist; Epic 17 (unified run/step model) next, since 18,
+19, and 21 all read it; then 18/19/21 roughly in parallel; then 22
+(reproducibility snapshots) last, since it snapshots versions the others
+introduce; then 23 (quality-gate lifecycle) last of all, since it needs a
+real design decision (US23.1) reconciling three lifecycle fields that
+would otherwise exist on the same artifact (Epic 12's
+`draft/generated/stale`, Epic 15's `draft/generated/published/deployed`,
+and the requirements' new `DRAFT...DEPLOYED` chain) -- deliberately not
+resolved in the epic itself, flagged as needing its own decision-log entry
+once that design pass happens, the same way Epic 14 began as a discovery
+spike rather than a committed design.
+
+The requirements doc's Section 12 ("automated agent improvement loop") was
+deliberately *not* groomed as its own epic -- the source document itself
+frames it as forward-looking ("should support future..."), and Epic 19's
+version-comparison/regression-suite stories are exactly the prerequisites
+that loop would need, so it's noted as a future revisit in Epic 19's Notes
+rather than scoped now.
+
+## 2026-09-29 -- Epic 20, Agent Definition Governance (partial: US20.1/US20.2)
+
+### Governance enforcement is opt-in per artifact, not fail-closed by default
+
+The requirements doc's FR-AG-05 implies permissions should be explicit and
+checked, which could be read as "deny any tool call without an explicit
+grant." Rejected that as the default: every artifact generated before this
+epic, and every existing test fixture across `test_twin_engine.py`/
+`test_orchestrator.py`/`test_api_*` that hand-builds an `AgentDefinition`
+without the new fields, would have immediately failed its very first tool
+call under a fail-closed default -- not a targeted regression, a blanket
+one across ~280 pre-existing tests and every already-generated artifact in
+any existing deployment. Chose instead: an artifact with an empty
+`tool_contracts` list (checked in `app/twin/gateway.py::check_tool_permission`)
+falls back to Epic 14's original unrestricted behavior; only once an
+artifact actually declares at least one tool contract does permission
+checking start applying. `app/agents/generation.py::build_agent_definition`
+was updated to *always* populate a tool contract + matching read-only
+permission for every tool a blueprint spec names, so every newly generated
+artifact opts in automatically -- the opt-out only matters for artifacts
+that already existed before this epic shipped, or hand-built test
+fixtures that don't care about governance. Confirmed via the full existing
+backend suite (283 pre-existing tests) passing unchanged after the schema
+and engine.py changes landed, before any new Epic 20 tests were added.
+
+### A denied tool call fails the run but doesn't abort it
+
+Considered raising a hard exception on a denied call (mirroring how
+`app/twin/engine.py` already raises `TwinServiceError` for a genuinely
+unknown tool name). Rejected: a real unauthorized API call returns a 403
+the caller can react to, not a connection reset -- so a policy denial is
+fed back to the model as a normal tool observation
+(`{"error": "permission_denied", "reason": ...}`), letting the agent
+adapt (retry a different approach, escalate, give up cleanly) exactly like
+a live system would let it. The denial is still guaranteed visible
+regardless of how the agent reacts: `TwinTraceStep.denied` is set, and a
+`TwinDeviation` is appended unconditionally, which downgrades an otherwise
+grading-correct run from "passed" to "failed" -- so "the agent tried
+something outside its permissions" is never silently absorbed into a
+passing result even when the agent recovers gracefully.
+
+### Bug found while testing: `BaseModel.model_copy(update=...)` doesn't re-validate
+
+The first version of `repository.update_agent_governance` built the
+updated `AgentDefinition` via `definition.model_copy(update=updated_fields)`,
+where `updated_fields` came from `AgentGovernanceUpdate.model_dump(exclude_unset=True)`
+-- i.e. plain dicts, not `ResourcePermission`/`RuntimeGuardrails` instances.
+`model_copy(update=...)` assigns those raw dicts directly without running
+them back through pydantic's validators, which surfaced as a
+`PydanticSerializationUnexpectedValue` warning the moment the updated
+artifact was serialized back out over the API (nested fields were dicts
+where `AgentArtifact`'s schema expects model instances). Not caught by
+type-checking since `model_copy`'s `update` parameter is typed
+permissively; only surfaced by actually exercising the PATCH endpoint
+through `test_api_agents.py`'s new tests against a real Postgres-backed
+`TestClient`. Fixed by re-validating through
+`AgentDefinition.model_validate({**artifact.definition, **updated_fields})`
+instead, which re-runs every nested model's validators.
+
+### Bug found while testing: `AgentArtifactModel.generated_at`'s `onupdate` fires on any row update
+
+Wrote a test asserting a governance PATCH leaves `generated_at` unchanged
+(reasoning: it's not a regenerate). It failed -- `generated_at` had
+advanced. Root cause: `onupdate=func.now()` on that column (`app/db/
+models.py`) is a SQLAlchemy/DB-level "this row was touched" timestamp,
+identical to the convention already used by `DraftBpmnModel`,
+`BlueprintOverlayModel`, and this same model's own regenerate path --
+it fires on *any* UPDATE to the row, not conditionally on which column
+changed. The assumption that assigning `artifact.definition` alone
+without touching `generated_at` would leave it untouched was simply wrong
+given how that column is declared. Fixed by changing the test's
+expectation (assert `generated_by` -- a plain column this code path never
+touches -- stays the same instead) and correcting `update_agent_governance`'s
+docstring, rather than fighting the ORM to suppress `onupdate` for this
+one call path.
+
+### Test-authoring bug (not a product bug) while writing gateway coverage: `grade_run`'s empty `expected_steps` means "expect zero steps", not "don't check"
+
+A new `run_scenario` test asserted `status == "passed"` after a permitted
+tool call, using a scenario with no `expected_steps` set (assumed empty
+meant "skip trace grading"). It failed with `status == "failed"` and a
+deviation "Unexpected extra step at index 0" -- `grade_run` (`app/twin/
+engine.py`, pre-existing, US14.3) compares the trace pairwise against
+`expected_steps` and reports anything not explicitly expected as an extra
+step; an empty list means the scenario expects a no-op run, not "don't
+grade." The pre-existing `test_run_scenario_end_to_end_pass` already
+relies on this (its scenario sets matching `expected_steps` explicitly)
+-- this session's new tests just hadn't followed that same convention
+yet. Fixed by adding matching `expected_steps` to the new tests, isolating
+each assertion to the specific behavior (permission grant/denial) it's
+meant to test rather than an incidental grading mismatch.
