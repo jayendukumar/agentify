@@ -7,12 +7,14 @@ import {
   getTwinRun,
   getTwinSummary,
   listScenarios,
+  listTwinEnvironments,
   listTwinRuns,
   setTwinBaseline,
   startTwinRun,
 } from '../api/client'
 import type {
   AgentArtifact,
+  TwinEnvironment,
   TwinExpectedStep,
   TwinHumanCheckpointConfig,
   TwinRun,
@@ -26,6 +28,7 @@ import { handleTabKeyDown } from '../lib/tabKeyboard'
 import RegressionSuitePanel from './RegressionSuitePanel'
 import RunComparisonView from './RunComparisonView'
 import RunDetailView from './RunDetailView'
+import TwinEnvironmentPanel from './TwinEnvironmentPanel'
 
 const DEFAULT_HUMAN_CHECKPOINT_CONFIG = '{"mode": "probability", "approve_probability": 1.0}'
 
@@ -71,8 +74,16 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
   const [checkpointJson, setCheckpointJson] = useState(DEFAULT_HUMAN_CHECKPOINT_CONFIG)
   const [expectedStepsJson, setExpectedStepsJson] = useState('[]')
   const [expectedOutputsJson, setExpectedOutputsJson] = useState('{}')
+  const [environmentId, setEnvironmentId] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+
+  // Epic 21: environments are process-scoped, not per-artifact -- fetched
+  // once regardless of which artifact tab is selected.
+  const [environments, setEnvironments] = useState<TwinEnvironment[]>([])
+  useEffect(() => {
+    listTwinEnvironments(processId).then(setEnvironments).catch(() => {})
+  }, [processId])
 
   const [baselineTimeInput, setBaselineTimeInput] = useState('')
   const [baselineErrorPercentInput, setBaselineErrorPercentInput] = useState('')
@@ -168,11 +179,13 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
         human_checkpoint_config: parseJsonField<TwinHumanCheckpointConfig>(checkpointJson, 'Human checkpoint config'),
         expected_steps: parseJsonField<TwinExpectedStep[]>(expectedStepsJson, 'Expected steps'),
         expected_outputs: parseJsonField<Record<string, unknown>>(expectedOutputsJson, 'Expected outputs'),
+        environment_id: environmentId || null,
       }
       setCreating(true)
       const scenario = await createScenario(processId, selectedArtifactId, body)
       setScenarios((prev) => [...prev, scenario])
       setName('')
+      setEnvironmentId('')
     } catch (err) {
       setCreateError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to create scenario')
     } finally {
@@ -475,11 +488,24 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
           Expected outputs (JSON)
           <textarea value={expectedOutputsJson} onChange={(e) => setExpectedOutputsJson(e.target.value)} rows={2} />
         </label>
+        <label>
+          Environment (optional -- its fault catalog intercepts calls before the system stubs above)
+          <select value={environmentId} onChange={(e) => setEnvironmentId(e.target.value)}>
+            <option value="">None</option>
+            {environments.map((env) => (
+              <option key={env.id} value={env.id}>
+                {env.name} (v{env.version})
+              </option>
+            ))}
+          </select>
+        </label>
         <button type="submit" disabled={creating}>
           {creating ? 'Creating...' : 'Add scenario'}
         </button>
         {createError && <p className="error" role="alert">{createError}</p>}
       </form>
+
+      <TwinEnvironmentPanel processId={processId} />
       </div>
     </div>
   )

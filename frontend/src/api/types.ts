@@ -474,6 +474,48 @@ export interface RunComparison {
   differences: string[]
 }
 
+// Epic 21: named, versioned Digital Twin Environments (US21.1/US21.4) and
+// their fault-injection catalog (US21.2) -- see backend/app/schemas/
+// environment.py. A fault intercepts a call before Epic 14's Proxy/Static
+// system_stubs resolution ever runs; everything else here is descriptive
+// reference data with no other functional wiring in this pass.
+export type FaultType =
+  | 'timeout'
+  | 'http_500'
+  | 'http_429'
+  | 'invalid_response'
+  | 'slow_response'
+  | 'missing_data'
+  | 'duplicate_event'
+  | 'out_of_order_event'
+  | 'permission_denied'
+  | 'dependency_unavailable'
+
+export interface FaultConfig {
+  type: FaultType
+  probability: number
+  config: Record<string, unknown>
+}
+
+export interface TwinEnvironmentCreate {
+  name: string
+  systems: string[]
+  datasets: Record<string, unknown>
+  personas: Record<string, unknown>
+  events: Record<string, unknown>[]
+  faults: Record<string, FaultConfig[]>
+}
+
+export interface TwinEnvironment extends TwinEnvironmentCreate {
+  id: string
+  process_id: string
+  version: number
+  created_at: string
+  created_by: string | null
+  created_by_name: string | null
+  updated_at: string
+}
+
 // Epic 14 (core slice)
 export type TwinSystemStubMode = 'proxy' | 'static'
 export type TwinHumanCheckpointMode = 'probability' | 'rule' | 'manual'
@@ -524,6 +566,11 @@ export interface TwinScenario {
   human_checkpoint_config: TwinHumanCheckpointConfig
   expected_steps: TwinExpectedStep[]
   expected_outputs: Record<string, unknown>
+  // Epic 21, US21.3: optionally pins this scenario to a reusable
+  // TwinEnvironment's fault catalog -- null for a scenario with no
+  // environment reference (every scenario created before this epic).
+  environment_id: string | null
+  environment_version: number | null
   created_at: string
   created_by: string | null
   created_by_name: string | null
@@ -619,6 +666,12 @@ export interface OrchestrationScenarioCreate {
   data_mapping_mode: Record<string, DataMappingMode>
   expected_path: string[]
   expected_final_output: Record<string, unknown>
+  // Optional: the server always derives environment_version from
+  // environment_id -- a caller creating a scenario never supplies it
+  // directly, though a fetched OrchestrationScenario (which extends this)
+  // always has both populated.
+  environment_id?: string | null
+  environment_version?: number | null
 }
 
 export interface OrchestrationScenario extends OrchestrationScenarioCreate {

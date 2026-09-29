@@ -12,7 +12,8 @@ Epic 16's orchestration rehearsal scenarios/runs (OrchestrationScenarioModel/
 OrchestrationRunModel), Epic 17's unified run store (SimulationRunModel --
 additive, see its own docstring; TwinRunModel/OrchestrationRunModel are
 kept for historical rows), Epic 19's regression suites
-(RegressionSuiteModel/RegressionSuiteRunModel), and Epic 9/10's users/
+(RegressionSuiteModel/RegressionSuiteRunModel), Epic 21's digital twin
+environments (TwinEnvironmentModel), and Epic 9/10's users/
 sessions (UserModel/SessionModel), each promoted out of
 the in-memory store (app/store.py) once its own epic made the data real.
 app/store.py now only defines NotFoundError -- nothing left to hold in
@@ -470,13 +471,40 @@ class TwinBaselineModel(Base):
     recorded_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+class TwinEnvironmentModel(Base):
+    """Epic 21, US21.1/US21.4: a named, versioned, reusable bundle of
+    systems/datasets/personas/events for a process, plus its own typed
+    fault-injection catalog per system (US21.2, `faults`). One row per
+    environment, version bumped in place on update (see the schema's own
+    docstring for why this doesn't keep full row history)."""
+
+    __tablename__ = "twin_environments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    version: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    systems: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    datasets: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    personas: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    events: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    faults: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 class TwinScenarioModel(Base):
     """Epic 14 (core slice), US14.1: one defined test scenario for an
     agent artifact -- start-event `inputs`, per-system simulation
     overrides (`system_stubs`), how to resolve the agent's human
     checkpoint if it has one (`human_checkpoint_config`), and the expected
     tool-call/checkpoint path plus expected final output used to grade a
-    run (US14.3)."""
+    run (US14.3). Epic 21, US21.3: `environment_id`/`environment_version`
+    optionally pin this scenario to a reusable TwinEnvironmentModel whose
+    fault catalog intercepts calls before `system_stubs` resolution --
+    additive and nullable, so every scenario created before this epic
+    keeps working unchanged."""
 
     __tablename__ = "twin_scenarios"
 
@@ -490,6 +518,10 @@ class TwinScenarioModel(Base):
     human_checkpoint_config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     expected_steps: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     expected_outputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    environment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("twin_environments.id", ondelete="SET NULL"), nullable=True
+    )
+    environment_version: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -587,6 +619,13 @@ class OrchestrationScenarioModel(Base):
     data_mapping_mode: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     expected_path: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     expected_final_output: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Epic 21, US21.3: one environment (its fault catalog) applies across
+    # the whole rehearsal walk, not per-node -- see TwinScenarioModel's
+    # docstring for the same additive/nullable reasoning.
+    environment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("twin_environments.id", ondelete="SET NULL"), nullable=True
+    )
+    environment_version: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 

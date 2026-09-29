@@ -6,6 +6,7 @@ import pytest
 
 from app.llm.types import ChatCompletionResult, ToolCall, Usage
 from app.schemas.agents import AgentDefinition, EscalationPolicy, ResourcePermission, RuntimeGuardrails, ToolContract
+from app.schemas.environment import FaultConfig, TwinEnvironment
 from app.schemas.run import RunStep
 from app.schemas.twin import (
     HumanDecisionRule,
@@ -45,6 +46,15 @@ def _scenario(**overrides) -> TwinScenario:
     )
     defaults.update(overrides)
     return TwinScenario(**defaults)
+
+
+def _environment(**overrides) -> TwinEnvironment:
+    defaults = dict(
+        id="twinenv_1", process_id="proc_1", name="Test env", version=1, systems=[], datasets={}, personas={},
+        events=[], faults={}, created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+    )
+    defaults.update(overrides)
+    return TwinEnvironment(**defaults)
 
 
 def _llm_result(*, tool_calls=None, text=None) -> ChatCompletionResult:
@@ -291,6 +301,65 @@ async def test_run_scenario_proxy_mode_tool_call_carries_step_usage():
     tool_step = next(s for s in outcome.steps if s.type == "TOOL_EXECUTED")
     assert tool_step.tokens == 2
     assert tool_step.static_fallback is False
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_environment_fault_short_circuits_tool_resolution():
+    """Epic 21, US21.2: a triggered fault intercepts the call before Epic
+    14's Proxy/Static resolution ever runs -- the mocked LLM never gets a
+    second `complete` call to fabricate a Proxy-mode response, proving the
+    real simulation path was skipped, not just that the result looks like
+    an error."""
+    artifact = AgentDefinition(
+        name="Refund Agent", purpose="x", trigger="x", system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"], model="test-model",
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(system_stubs={"CRM system": TwinSystemStub(mode="proxy")})
+    environment = _environment(faults={"CRM system": [FaultConfig(type="http_500", probability=1.0)]})
+
+    llm = AsyncMock()
+    llm.complete.side_effect = [
+        _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "123"})]),
+        _llm_result(text='{"confirmation": "handled the error"}'),
+    ]
+
+    outcome = await run_scenario(
+        llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, environment=environment, max_turns=5
+    )
+
+    tool_step = next(s for s in outcome.steps if s.type == "TOOL_FAILED")
+    assert tool_step.reason == "Simulated fault: http_500"
+    assert tool_step.result == {"error": "http_500", "message": "Simulated fault: this system returned an internal server error (500)."}
+    assert llm.complete.call_count == 2  # the agent's two turns only -- no Proxy-mode simulation call in between
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_environment_non_error_fault_does_not_fail_the_step():
+    artifact = AgentDefinition(
+        name="Refund Agent", purpose="x", trigger="x", system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"], model="test-model",
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(system_stubs={"CRM system": TwinSystemStub(mode="proxy")})
+    environment = _environment(
+        faults={"CRM system": [FaultConfig(type="missing_data", probability=1.0, config={"response": {}})]}
+    )
+
+    llm = AsyncMock()
+    llm.complete.side_effect = [
+        _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "123"})]),
+        _llm_result(text='{"confirmation": "handled the missing data"}'),
+    ]
+
+    outcome = await run_scenario(
+        llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, environment=environment, max_turns=5
+    )
+
+    tool_step = next(s for s in outcome.steps if s.type == "TOOL_EXECUTED")
+    assert tool_step.reason == "Simulated fault: missing_data"
+    assert tool_step.result == {}
+    assert outcome.status == "COMPLETED"
 
 
 @pytest.mark.asyncio

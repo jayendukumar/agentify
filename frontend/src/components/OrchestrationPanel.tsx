@@ -8,6 +8,7 @@ import {
   getVersion,
   listOrchestrationRuns,
   listOrchestrationScenarios,
+  listTwinEnvironments,
   resumeOrchestrationRun,
   startOrchestrationRun,
 } from '../api/client'
@@ -18,6 +19,7 @@ import type {
   NodeRun,
   OrchestrationRun,
   OrchestrationScenario,
+  TwinEnvironment,
   TwinHumanCheckpointConfig,
   TwinSystemStub,
 } from '../api/types'
@@ -65,8 +67,16 @@ export default function OrchestrationPanel({ processId }: { processId: string })
   const [dataMappingModeJson, setDataMappingModeJson] = useState('{}')
   const [expectedPathJson, setExpectedPathJson] = useState('[]')
   const [expectedFinalOutputJson, setExpectedFinalOutputJson] = useState('{}')
+  const [environmentId, setEnvironmentId] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+
+  // Epic 21: environments are process-scoped -- shared with DigitalTwinPanel's
+  // own fetch of the same list.
+  const [environments, setEnvironments] = useState<TwinEnvironment[]>([])
+  useEffect(() => {
+    listTwinEnvironments(processId).then(setEnvironments).catch(() => {})
+  }, [processId])
 
   const [viewingScenarioId, setViewingScenarioId] = useState<string | null>(null)
   const [versionXmlById, setVersionXmlById] = useState<Record<string, string>>({})
@@ -164,11 +174,13 @@ export default function OrchestrationPanel({ processId }: { processId: string })
           expectedFinalOutputJson,
           'Expected final output',
         ),
+        environment_id: environmentId || null,
       }
       setCreating(true)
       const scenario = await createOrchestrationScenario(processId, body)
       setScenarios((prev) => [...prev, scenario])
       setName('')
+      setEnvironmentId('')
     } catch (err) {
       setCreateError(
         err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to create scenario',
@@ -443,6 +455,17 @@ export default function OrchestrationPanel({ processId }: { processId: string })
             onChange={(e) => setExpectedFinalOutputJson(e.target.value)}
             rows={2}
           />
+        </label>
+        <label>
+          Environment (optional -- its fault catalog intercepts calls before the system stubs above)
+          <select value={environmentId} onChange={(e) => setEnvironmentId(e.target.value)}>
+            <option value="">None</option>
+            {environments.map((env) => (
+              <option key={env.id} value={env.id}>
+                {env.name} (v{env.version})
+              </option>
+            ))}
+          </select>
         </label>
         <button type="submit" disabled={creating}>
           {creating ? 'Creating...' : 'Add scenario'}

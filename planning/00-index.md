@@ -107,9 +107,9 @@ first slice doesn't yet have, rather than a from-scratch rebuild of
 Suggested order: Epic 20 first (17, 21, and 23 all assume its fields
 exist) -- **done**, then Epic 17 (unified run/step model) -- **done**,
 then 18/19/21 roughly in parallel (each depends on 17 but not on each
-other) -- **18 done, 19 done**, then 22 last (it snapshots versions the
-others introduce), then 23 (depends on 20, 19, and reconciling with
-12/15).
+other) -- **18 done, 19 done, 21 done**, then 22 last (it snapshots
+versions the others introduce), then 23 (depends on 20, 19, and
+reconciling with 12/15).
 Epic 19's Notes section explicitly declines to scope the requirements
 doc's "automated agent improvement loop" (its Section 12) as a committed
 epic -- the source document itself frames that as future-looking, not

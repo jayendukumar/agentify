@@ -1,9 +1,36 @@
 # Epic 21 -- Digital Twin Environments & Fault Injection Catalog
 
-**Status: not started.** Groomed 2026-09-28 from the "Digital Twin Agent
-Simulation" requirements doc (Section 4, FR-DT-01 through FR-DT-04)
+**Status: fully implemented.** Groomed 2026-09-28 from the "Digital Twin
+Agent Simulation" requirements doc (Section 4, FR-DT-01 through FR-DT-04)
 against the current codebase -- see `planning/decision-log.md`'s
-2026-09-28 entry.
+2026-09-28 entry. Built 2026-09-29 -- `app/schemas/environment.py` (new --
+`FaultType`, `FaultConfig`, `TwinEnvironment*`), `app/db/models.py`
+(`TwinEnvironmentModel`; additive nullable `environment_id`/
+`environment_version` on `TwinScenarioModel`/`OrchestrationScenarioModel`),
+`app/twin/environments.py` (new -- `roll_fault`, the ten-fault-type
+resolver), `app/twin/engine.py` (a fault intercepts a tool call before
+Epic 14's Proxy/Static resolution), `app/twin/orchestrator.py` (threads
+one environment through the whole rehearsal walk), `app/db/repository.py`
+(environment CRUD, version-pinning on scenario creation, environment
+resolution in both background-execution entry points), `app/api/
+environments.py` (new router), and frontend `TwinEnvironmentPanel.tsx`
+(new) plus an "Environment" selector on both `DigitalTwinPanel.tsx`'s and
+`OrchestrationPanel.tsx`'s scenario forms. Live-verified: 336 backend
+tests (324 existing + 12 new, across `tests/test_environments.py`,
+`tests/test_api_environments.py`, and two new cases in
+`tests/test_twin_engine.py`) against a real Postgres test DB, plus a clean
+`tsc -b` + `vite build` + 104-test `vitest` pass on the frontend -- see
+`planning/decision-log.md`'s 2026-09-29 entry.
+
+**Scope cut from the original grooming, recorded as a real decision (see
+decision-log):** there is no separate "named fault set" overlay distinct
+from an environment's own `faults` field -- a scenario's `environment_id`
+pulls in that environment's fault catalog wholesale. The epic's own Notes
+flagged this as undecided ("needs either a migration or an additive
+compatibility path; not decided here"); the simpler, fully additive shape
+(new nullable columns, no schema migration of existing inline
+`system_stubs`) was chosen over building a second override mechanism with
+no concrete demand yet.
 
 Goal: Promote "digital twin environment" and "fault" from configuration
 embedded inline in a single scenario into named, versioned, reusable

@@ -27,6 +27,7 @@ from app.schemas.blueprint import BlueprintNodeResult, BlueprintOverlay
 from app.schemas.chat import ChatMessageResult
 from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema, SourceRef
 from app.schemas.documents import IngestionStatus
+from app.schemas.environment import TwinEnvironment, TwinEnvironmentCreate, TwinEnvironmentUpdate
 from app.schemas.evaluation import (
     EvaluationResult,
     RegressionSuite,
@@ -85,6 +86,7 @@ from .models import (
     SimulationRunModel,
     SourceRefModel,
     TwinBaselineModel,
+    TwinEnvironmentModel,
     TwinRunModel,
     TwinScenarioModel,
     TwinToolSchemaModel,
@@ -694,6 +696,91 @@ def update_agent_governance(
     )
 
 
+# -- digital twin environments & fault injection (Epic 21) --------------------
+
+
+def _to_pydantic_twin_environment(session: Session, environment: TwinEnvironmentModel) -> TwinEnvironment:
+    return TwinEnvironment(
+        id=environment.id,
+        process_id=environment.process_id,
+        name=environment.name,
+        version=environment.version,
+        systems=environment.systems,
+        datasets=environment.datasets,
+        personas=environment.personas,
+        events=environment.events,
+        faults=environment.faults,
+        created_at=environment.created_at,
+        created_by=environment.created_by,
+        created_by_name=_resolve_user_name(session, environment.created_by),
+        updated_at=environment.updated_at,
+    )
+
+
+def create_twin_environment(
+    session: Session, process_id: str, data: TwinEnvironmentCreate, *, created_by: str | None = None
+) -> TwinEnvironment:
+    get_process(session, process_id)  # 404s if missing
+    environment = TwinEnvironmentModel(
+        id=new_id("twinenv"),
+        process_id=process_id,
+        name=data.name,
+        systems=list(data.systems),
+        datasets=data.datasets,
+        personas=data.personas,
+        events=data.events,
+        faults={name: [f.model_dump() for f in faults] for name, faults in data.faults.items()},
+        created_by=created_by,
+    )
+    session.add(environment)
+    session.flush()
+    return _to_pydantic_twin_environment(session, environment)
+
+
+def list_twin_environments(session: Session, process_id: str) -> list[TwinEnvironment]:
+    get_process(session, process_id)  # 404s if missing
+    environments = session.scalars(
+        select(TwinEnvironmentModel)
+        .where(TwinEnvironmentModel.process_id == process_id)
+        .order_by(TwinEnvironmentModel.created_at)
+    )
+    return [_to_pydantic_twin_environment(session, environment) for environment in environments]
+
+
+def get_twin_environment_model(session: Session, process_id: str, environment_id: str) -> TwinEnvironmentModel:
+    environment = session.get(TwinEnvironmentModel, environment_id)
+    if environment is None or environment.process_id != process_id:
+        raise NotFoundError("twin environment", environment_id)
+    return environment
+
+
+def update_twin_environment(
+    session: Session, process_id: str, environment_id: str, data: TwinEnvironmentUpdate
+) -> TwinEnvironment:
+    """US21.1: replaces the environment's fields in place and bumps
+    `version` -- same convention as `generate_agent_artifact`'s version
+    bump (Epic 19, US19.5). Scenarios that already pinned an earlier
+    `environment_version` keep reading their own snapshot at run time
+    (Epic 22 records it); this only affects new scenarios/runs created
+    after the update."""
+    environment = get_twin_environment_model(session, process_id, environment_id)
+    environment.name = data.name
+    environment.systems = list(data.systems)
+    environment.datasets = data.datasets
+    environment.personas = data.personas
+    environment.events = data.events
+    environment.faults = {name: [f.model_dump() for f in faults] for name, faults in data.faults.items()}
+    environment.version += 1
+    session.flush()
+    return _to_pydantic_twin_environment(session, environment)
+
+
+def delete_twin_environment(session: Session, process_id: str, environment_id: str) -> None:
+    environment = get_twin_environment_model(session, process_id, environment_id)
+    session.delete(environment)
+    session.flush()
+
+
 # -- digital twin (Epic 14, core slice: US14.1-14.4) ---------------------------
 
 
@@ -707,6 +794,8 @@ def _to_pydantic_twin_scenario(session: Session, scenario: TwinScenarioModel) ->
         human_checkpoint_config=scenario.human_checkpoint_config,
         expected_steps=scenario.expected_steps,
         expected_outputs=scenario.expected_outputs,
+        environment_id=scenario.environment_id,
+        environment_version=scenario.environment_version,
         created_at=scenario.created_at,
         created_by=scenario.created_by,
         created_by_name=_resolve_user_name(session, scenario.created_by),
@@ -809,6 +898,13 @@ def create_twin_scenario(
 ) -> TwinScenario:
     get_process(session, process_id)  # 404s if missing
     artifact = get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
+    # Epic 21, US21.3: pinned to the environment's current version at
+    # creation time, same reasoning as source_baseline_version_id -- a
+    # scenario shouldn't silently start reading a different environment
+    # revision just because the environment was edited later.
+    environment_version = None
+    if data.environment_id is not None:
+        environment_version = get_twin_environment_model(session, process_id, data.environment_id).version
     scenario = TwinScenarioModel(
         id=new_id("twinsc"),
         agent_artifact_id=artifact.id,
@@ -818,6 +914,8 @@ def create_twin_scenario(
         human_checkpoint_config=data.human_checkpoint_config.model_dump(),
         expected_steps=[step.model_dump() for step in data.expected_steps],
         expected_outputs=data.expected_outputs,
+        environment_id=data.environment_id,
+        environment_version=environment_version,
         created_by=created_by,
     )
     session.add(scenario)
@@ -938,6 +1036,16 @@ async def execute_twin_run_background(
             session.commit()
             return
         scenario = _to_pydantic_twin_scenario(session, scenario_model)
+        # Epic 21, US21.3: resolved at execution time (not pinned to the
+        # scenario's own environment_version) -- the environment's own
+        # fields are already "current state, version bumped in place"
+        # (see TwinEnvironmentModel's docstring), so a run reads whatever
+        # the environment looks like right now, exactly like an agent
+        # artifact's own definition is always read fresh, not pinned.
+        environment_model = (
+            session.get(TwinEnvironmentModel, scenario_model.environment_id) if scenario_model.environment_id else None
+        )
+        environment = _to_pydantic_twin_environment(session, environment_model) if environment_model is not None else None
         resume_state = run_model.resume_state
         run_model.resume_state = None
         run_model.status = "RUNNING"
@@ -960,6 +1068,7 @@ async def execute_twin_run_background(
             tool_schemas=tool_schemas,
             scenario=scenario,
             max_turns=settings.twin_max_loop_turns,
+            environment=environment,
             resume_state=resume_state,
             human_decision=human_decision,
             on_step=on_step,
@@ -1207,6 +1316,8 @@ def _to_pydantic_orchestration_scenario(session: Session, scenario: Orchestratio
         data_mapping_mode=scenario.data_mapping_mode,
         expected_path=scenario.expected_path,
         expected_final_output=scenario.expected_final_output,
+        environment_id=scenario.environment_id,
+        environment_version=scenario.environment_version,
         created_at=scenario.created_at,
         created_by=scenario.created_by,
         created_by_name=_resolve_user_name(session, scenario.created_by),
@@ -1242,6 +1353,12 @@ def create_orchestration_scenario(
         data_mapping_mode=dict(data.data_mapping_mode),
         expected_path=list(data.expected_path),
         expected_final_output=data.expected_final_output,
+        environment_id=data.environment_id,
+        environment_version=(
+            get_twin_environment_model(session, process_id, data.environment_id).version
+            if data.environment_id is not None
+            else None
+        ),
         created_by=created_by,
     )
     session.add(scenario)
@@ -1462,6 +1579,14 @@ async def execute_orchestration_run_background(
             version = get_version(session, run_model.process_id, scenario_model.baseline_version_id)
             flow_nodes = extract_flow_nodes(version.xml)
             scenario = _to_pydantic_orchestration_scenario(session, scenario_model)
+            environment_model = (
+                session.get(TwinEnvironmentModel, scenario_model.environment_id)
+                if scenario_model.environment_id
+                else None
+            )
+            environment = (
+                _to_pydantic_twin_environment(session, environment_model) if environment_model is not None else None
+            )
             node_artifacts = await _build_node_artifacts(llm, session, run_model.process_id, flow_nodes)
 
             async def on_node_run(node_run: NodeRun) -> None:
@@ -1487,6 +1612,7 @@ async def execute_orchestration_run_background(
                 scenario=scenario,
                 max_turns_per_node=settings.twin_max_loop_turns,
                 max_total_steps=settings.orchestration_max_total_steps,
+                environment=environment,
                 resume_state=resume_state,
                 human_decision=human_decision,
                 on_node_run=on_node_run,

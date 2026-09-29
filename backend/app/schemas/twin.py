@@ -89,6 +89,11 @@ class TwinScenarioCreate(BaseModel):
     human_checkpoint_config: TwinHumanCheckpointConfig = TwinHumanCheckpointConfig()
     expected_steps: list[TwinExpectedStep] = []
     expected_outputs: dict[str, Any] = {}
+    # Epic 21, US21.3: optionally pins this scenario to a reusable
+    # TwinEnvironment whose fault catalog intercepts calls before
+    # `system_stubs` resolution -- see app/schemas/environment.py.
+    environment_id: str | None = None
+    environment_version: int | None = None
 
 
 class TwinScenario(TwinScenarioCreate):

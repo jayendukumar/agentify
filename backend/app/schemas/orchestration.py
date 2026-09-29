@@ -69,6 +69,10 @@ class OrchestrationScenarioCreate(BaseModel):
     data_mapping_mode: dict[str, DataMappingMode] = {}
     expected_path: list[str] = []
     expected_final_output: dict[str, Any] = {}
+    # Epic 21, US21.3: one environment's fault catalog applies across the
+    # whole rehearsal walk -- see TwinScenarioCreate's equivalent field.
+    environment_id: str | None = None
+    environment_version: int | None = None
 
 
 class OrchestrationScenario(OrchestrationScenarioCreate):

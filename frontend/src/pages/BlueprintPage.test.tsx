@@ -59,6 +59,10 @@ const deleteRegressionSuite = vi.fn()
 const startRegressionSuiteRun = vi.fn()
 const getRegressionSuiteRun = vi.fn()
 const compareRuns = vi.fn()
+const listTwinEnvironments = vi.fn()
+const createTwinEnvironment = vi.fn()
+const updateTwinEnvironment = vi.fn()
+const deleteTwinEnvironment = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -96,6 +100,10 @@ vi.mock('../api/client', () => ({
   startRegressionSuiteRun: (...args: unknown[]) => startRegressionSuiteRun(...args),
   getRegressionSuiteRun: (...args: unknown[]) => getRegressionSuiteRun(...args),
   compareRuns: (...args: unknown[]) => compareRuns(...args),
+  listTwinEnvironments: (...args: unknown[]) => listTwinEnvironments(...args),
+  createTwinEnvironment: (...args: unknown[]) => createTwinEnvironment(...args),
+  updateTwinEnvironment: (...args: unknown[]) => updateTwinEnvironment(...args),
+  deleteTwinEnvironment: (...args: unknown[]) => deleteTwinEnvironment(...args),
 }))
 
 // BlueprintCanvas depends on real bpmn-js/SVG layout -- stubbed here so
@@ -196,6 +204,7 @@ describe('BlueprintPage', () => {
     listAgentArtifacts.mockResolvedValue([])
     listRegistries.mockResolvedValue([])
     listRegressionSuites.mockResolvedValue([])
+    listTwinEnvironments.mockResolvedValue([])
     getPublishStatus.mockResolvedValue({
       agent_artifact_id: 'agent-1',
       lifecycle_status: 'generated',
@@ -593,6 +602,8 @@ describe('BlueprintPage', () => {
       id: 'twinsc-1',
       agent_artifact_id: 'agent-1',
       name: 'Happy path',
+      environment_id: null,
+      environment_version: null,
       inputs: {},
       system_stubs: {},
       human_checkpoint_config: { mode: 'probability', approve_probability: 1, seed: null, rule: null },

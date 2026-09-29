@@ -25,6 +25,8 @@ import type {
   Role,
   RunComparison,
   TwinBaseline,
+  TwinEnvironment,
+  TwinEnvironmentCreate,
   TwinExpectedStep,
   TwinHumanCheckpointConfig,
   TwinRun,
@@ -349,6 +351,7 @@ export function createScenario(
     human_checkpoint_config?: TwinHumanCheckpointConfig
     expected_steps?: TwinExpectedStep[]
     expected_outputs?: Record<string, unknown>
+    environment_id?: string | null
   },
 ): Promise<TwinScenario> {
   return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/scenarios`, {
@@ -505,4 +508,28 @@ export function compareRuns(processId: string, runAId: string, runBId: string): 
   return request(
     `/api/processes/${processId}/runs/compare?run_a=${encodeURIComponent(runAId)}&run_b=${encodeURIComponent(runBId)}`,
   )
+}
+
+// Epic 21: Digital Twin Environments and their fault-injection catalog
+export function listTwinEnvironments(processId: string): Promise<TwinEnvironment[]> {
+  return request(`/api/processes/${processId}/twin-environments`)
+}
+
+export function createTwinEnvironment(processId: string, body: TwinEnvironmentCreate): Promise<TwinEnvironment> {
+  return request(`/api/processes/${processId}/twin-environments`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function updateTwinEnvironment(
+  processId: string,
+  environmentId: string,
+  body: TwinEnvironmentCreate,
+): Promise<TwinEnvironment> {
+  return request(`/api/processes/${processId}/twin-environments/${environmentId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteTwinEnvironment(processId: string, environmentId: string): Promise<void> {
+  return request(`/api/processes/${processId}/twin-environments/${environmentId}`, { method: 'DELETE' })
 }

@@ -22,6 +22,12 @@ response, and the whole run is bounded by the artifact's RuntimeGuardrails
 (steps, tool calls, wall-clock time, model calls, tokens, cost, loop
 detection) via gateway.py's GuardrailTracker.
 
+Epic 21: when the scenario references a TwinEnvironment, every tool call is
+first offered to that environment's fault catalog (app/twin/
+environments.py's `roll_fault`) -- a triggered fault short-circuits the
+normal Proxy/Static resolution below with a simulated timeout/error/
+malformed response instead.
+
 Epic 17: replaces the old three-way `passed|failed|error` TwinRunStatus and
 two-kind TwinTraceStep with the unified RunStatus/RunStep taxonomy
 (app/schemas/run.py) shared with app/twin/orchestrator.py, and adds three
@@ -45,9 +51,11 @@ from typing import Any, Awaitable, Callable, Literal
 from app.ids import utcnow
 from app.llm import ChatMessage, LLMClient, ToolCall, ToolDefinition, Usage, estimate_cost_usd
 from app.schemas.agents import AgentDefinition
+from app.schemas.environment import TwinEnvironment
 from app.schemas.run import RunStatus, RunStep, StepType, TwinDeviation
 from app.schemas.twin import InferredToolSchema, TwinScenario, TwinSystemStub
 
+from .environments import roll_fault
 from .errors import TwinServiceError
 from .gateway import GuardrailExceeded, GuardrailTracker, check_tool_permission
 from .simulators import resolve_human_decision, resolve_tool_call
@@ -209,6 +217,7 @@ async def run_scenario(
     tool_schemas: dict[str, InferredToolSchema],
     scenario: TwinScenario,
     max_turns: int,
+    environment: TwinEnvironment | None = None,
     resume_state: dict[str, Any] | None = None,
     human_decision: Literal["approve", "reject"] | None = None,
     node_id: str | None = None,
@@ -336,27 +345,40 @@ async def run_scenario(
                     )
                     tool_response = {"error": "permission_denied", "reason": decision_check.reason}
                 else:
-                    schema = tool_schemas[system_name]
-                    stub = scenario.system_stubs.get(system_name) or TwinSystemStub()
-                    try:
-                        tool_response, static_fallback, llm_call = await resolve_tool_call(
-                            llm, system_name=system_name, call_arguments=call.arguments, schema=schema, stub=stub
+                    # Epic 21, US21.2: a fault intercepts the call before
+                    # Epic 14's Proxy/Static resolution ever runs -- the
+                    # environment's fault catalog is a layer in front of
+                    # that mechanism, not a replacement for it.
+                    fault = roll_fault(environment, system_name, rng) if environment is not None else None
+                    if fault is not None:
+                        tool_response = fault.result
+                        await emit(
+                            "TOOL_FAILED" if fault.is_error else "TOOL_EXECUTED",
+                            target=system_name, arguments=call.arguments, result=tool_response,
+                            reason=f"Simulated fault: {fault.type}",
                         )
-                    except TwinServiceError as exc:
-                        await emit("TOOL_FAILED", target=system_name, arguments=call.arguments, reason=str(exc))
-                        raise
-                    step_tokens: int | None = None
-                    step_cost: float | None = None
-                    if llm_call is not None:
-                        usage, model = llm_call
-                        account(model, usage)
-                        step_tokens = usage.total_tokens
-                        step_cost = estimate_cost_usd(model, usage)
-                        tracker.record_usage(usage.total_tokens, step_cost)
-                    await emit(
-                        "TOOL_EXECUTED", target=system_name, arguments=call.arguments, result=tool_response,
-                        static_fallback=static_fallback, tokens=step_tokens, cost_usd=step_cost,
-                    )
+                    else:
+                        schema = tool_schemas[system_name]
+                        stub = scenario.system_stubs.get(system_name) or TwinSystemStub()
+                        try:
+                            tool_response, static_fallback, llm_call = await resolve_tool_call(
+                                llm, system_name=system_name, call_arguments=call.arguments, schema=schema, stub=stub
+                            )
+                        except TwinServiceError as exc:
+                            await emit("TOOL_FAILED", target=system_name, arguments=call.arguments, reason=str(exc))
+                            raise
+                        step_tokens: int | None = None
+                        step_cost: float | None = None
+                        if llm_call is not None:
+                            usage, model = llm_call
+                            account(model, usage)
+                            step_tokens = usage.total_tokens
+                            step_cost = estimate_cost_usd(model, usage)
+                            tracker.record_usage(usage.total_tokens, step_cost)
+                        await emit(
+                            "TOOL_EXECUTED", target=system_name, arguments=call.arguments, result=tool_response,
+                            static_fallback=static_fallback, tokens=step_tokens, cost_usd=step_cost,
+                        )
             tool_messages.append(ChatMessage(role="tool", tool_call_id=call.id, name=call.name, content=json.dumps(tool_response)))
         return tool_messages, None
 

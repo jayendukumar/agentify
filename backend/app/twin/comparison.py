@@ -54,7 +54,12 @@ def compare_runs(run_a: RunBase, run_b: RunBase) -> RunComparison:
         differences.append(f"Escalation decisions differ: run A escalated {esc_a} time(s), run B escalated {esc_b} time(s).")
 
     duration_a, duration_b = _duration_seconds(run_a), _duration_seconds(run_b)
-    if duration_a is not None and duration_b is not None and abs(duration_a - duration_b) > 0.01:
+    # A half-second absolute threshold, not a tight one -- two runs against
+    # a fake/instant LLM in tests routinely differ by a few milliseconds of
+    # pure scheduling noise, which isn't a "behavioral" difference worth
+    # surfacing (found via a real flaky test: two identical happy-path runs
+    # occasionally rounded to different tenths of a second).
+    if duration_a is not None and duration_b is not None and abs(duration_a - duration_b) > 0.5:
         differences.append(f"Duration differs: run A took {duration_a:.1f}s, run B took {duration_b:.1f}s.")
 
     cost_a, cost_b = run_a.total_cost_usd, run_b.total_cost_usd

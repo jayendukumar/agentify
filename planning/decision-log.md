@@ -2198,3 +2198,58 @@ from reading the code. Fixed in `app/twin/evaluation.py`'s `_latency` by
 normalizing both sides to naive before subtracting, rather than changing
 either column's declared type (a wider change with no other epic asking
 for it).
+
+## 2026-09-29 -- Epic 21, Digital Twin Environments & Fault Injection Catalog
+
+Implemented all four user stories: named/versioned environments (US21.1,
+`TwinEnvironmentModel` -- single mutable row, `version` bumped on `PUT`,
+same convention as `AgentArtifactModel`), the ten-type fault catalog
+(US21.2, `app/twin/environments.py::roll_fault`), scenarios referencing an
+environment instead of inline config (US21.3, additive nullable
+`environment_id`/`environment_version` on both scenario tables), and
+datasets/personas/events as environment-scoped fields (US21.4). 336
+backend tests (324 existing + 12 new) pass against the real Postgres test
+DB; frontend `tsc -b`, `vite build`, and 104 `vitest` tests all green.
+
+### Scope cut: no separate "named fault set" overlay
+
+The epic's own Notes flagged this as an open question ("needs either a
+migration or an additive compatibility path; not decided here"). Resolved
+by *not* building a second override mechanism: a scenario's
+`environment_id` pulls in that environment's `faults` dict wholesale, and
+a scenario's own `system_stubs` remain exactly what they were before this
+epic (unaffected by the environment) -- faults intercept a call *before*
+Proxy/Static resolution; `system_stubs` control that resolution once no
+fault triggers. These are orthogonal concerns, not two things that need
+merging, which is what made the "override" question moot rather than
+something deferred. If a future need arises for one scenario to reuse an
+environment's systems/datasets while overriding just its fault set, that's
+a real feature to design then, not implied by anything built here.
+
+### Environments are read fresh at run time, not reconstructed from the pinned version
+
+`environment_version` is recorded on the scenario at creation time (an
+audit fact: "this is what version was current when the scenario was
+authored"), but `execute_twin_run_background`/
+`execute_orchestration_run_background` resolve the environment's *current*
+row at run time, same as how an agent artifact's own definition is always
+read fresh, never pinned. This is a real, stated limitation, not an
+oversight: `TwinEnvironmentModel` keeps no row history (mutate-in-place +
+version counter, not a versioned table), so there is no historical
+revision N to actually reconstruct once the row has moved to version N+1.
+Epic 22's per-run snapshot will record whatever the environment looked
+like *at that run*, which is the honest ceiling this data model supports --
+not "replay against exactly version N," which nothing here can promise.
+
+### Real defect avoided by a call-count assertion, not found by one
+
+While writing `test_run_scenario_environment_fault_short_circuits_tool_resolution`,
+asserting `llm.complete.call_count == 2` (not 3) is what actually proves a
+triggered fault skips Proxy mode's own LLM call to fabricate a response --
+a looser assertion (just checking the step's `result` dict) would have
+passed even if the fault check were wired *after* `resolve_tool_call`
+instead of before it, silently paying for an unnecessary simulated LLM
+call on every faulted request. Worth naming as a testing decision: this
+epic's fault-injection tests assert call counts specifically to catch that
+class of "does the fault check actually short-circuit" bug, not just "does
+the final result look right."

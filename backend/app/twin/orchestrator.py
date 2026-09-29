@@ -33,6 +33,7 @@ from app.bpmn.nodes import FlowNodeInfo
 from app.ids import utcnow
 from app.llm import ChatMessage, LLMClient, Usage, estimate_cost_usd
 from app.schemas.agents import AgentDefinition
+from app.schemas.environment import TwinEnvironment
 from app.schemas.orchestration import (
     DataMappingMode,
     ManualNodeConfig,
@@ -173,6 +174,7 @@ async def run_orchestration(
     scenario: OrchestrationScenario,
     max_turns_per_node: int,
     max_total_steps: int = 50,
+    environment: TwinEnvironment | None = None,
     resume_state: dict[str, Any] | None = None,
     human_decision: Literal["approve", "reject"] | None = None,
     on_node_run: Callable[[NodeRun], Awaitable[None]] | None = None,
@@ -265,8 +267,8 @@ async def run_orchestration(
                         human_checkpoint_config=scenario.human_checkpoint_config.get(node.id, TwinHumanCheckpointConfig()),
                         expected_steps=[], expected_outputs={}, created_at=utcnow(),
                     ),
-                    max_turns=max_turns_per_node, resume_state=node_resume_state, human_decision=human_decision,
-                    node_id=node.id, on_step=on_step, on_phase=on_phase,
+                    max_turns=max_turns_per_node, environment=environment, resume_state=node_resume_state,
+                    human_decision=human_decision, node_id=node.id, on_step=on_step, on_phase=on_phase,
                 )
             else:
                 mapping_mode = scenario.data_mapping_mode.get(node.id, "llm_adapter")
@@ -294,7 +296,8 @@ async def run_orchestration(
                 )
                 outcome = await run_scenario(
                     llm, artifact=artifact.definition, tool_schemas=artifact.tool_schemas, scenario=node_scenario,
-                    max_turns=max_turns_per_node, node_id=node.id, on_step=on_step, on_phase=on_phase,
+                    max_turns=max_turns_per_node, environment=environment, node_id=node.id,
+                    on_step=on_step, on_phase=on_phase,
                 )
 
             account_outcome(outcome.total_cost_usd, outcome.total_tokens)
