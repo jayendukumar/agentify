@@ -132,6 +132,63 @@ class AgentDefinition(BaseModel):
     knowledge_sources: list[KnowledgeSourceRef] = []
     model_policy: ModelPolicy | None = None
 
+    # Epic 23, US23.2: two of the validation checklist's items that had no
+    # existing home on the definition -- populated with a real,
+    # non-placeholder default in app/agents/generation.py (same "real
+    # defaults, not empty placeholders" precedent Epic 20 set for
+    # guardrails/escalation_policy), editable via AgentGovernanceUpdate.
+    success_criteria: str = ""
+    completion_conditions: str = ""
+
+
+# Epic 23, US23.1: a third, *computed* status layered on top of the two
+# that already exist on an artifact -- AgentArtifactStatus above
+# (generated/stale: whether the definition itself needs regenerating) and
+# AgentPublicationModel's own draft/generated/published/deployed (Epic 15:
+# the publish-event history). This one describes readiness to simulate and
+# release, and is never stored directly except for the two states that are
+# explicit human actions (RELEASE_CANDIDATE, APPROVED) -- see
+# `repository._to_pydantic_agent_artifact` and the 2026-09-29 decision-log
+# entry for exactly how each state is derived.
+LifecycleStatus = Literal[
+    "DRAFT",
+    "VALIDATED",
+    "SIMULATION_READY",
+    "SIMULATING",
+    "EVALUATED",
+    "RELEASE_CANDIDATE",
+    "APPROVED",
+    "DEPLOYED",
+]
+
+# US23.2: a superset of a mandatory validation checklist item's possible
+# keys -- computed by app/agents/validation.py::compute_checklist.
+ChecklistItemKey = Literal[
+    "purpose_and_trigger",
+    "bounded_responsibility",
+    "typed_input_output",
+    "success_criteria",
+    "completion_conditions",
+    "tool_contracts",
+    "permissions",
+    "guardrails",
+    "retry_policy",
+    "escalation_rules",
+    "human_approval_policy",
+    "knowledge_sources",
+    "model_policy",
+    "runtime_limits",
+    "audit_configuration",
+    "test_scenarios",
+]
+
+
+class ChecklistItem(BaseModel):
+    key: ChecklistItemKey
+    label: str
+    satisfied: bool
+    detail: str = ""
+
 
 class AgentArtifact(BaseModel):
     id: str
@@ -150,6 +207,13 @@ class AgentArtifact(BaseModel):
     version: int = 1
     definition: AgentDefinition
     baseline_version_id: str
+    # Epic 23, US23.1/US23.2: computed on every read, never stored.
+    lifecycle_status: LifecycleStatus = "DRAFT"
+    checklist: list[ChecklistItem] = []
+    marked_release_candidate_at: datetime | None = None
+    approved_at: datetime | None = None
+    approved_by: str | None = None
+    approved_by_name: str | None = None
     generated_at: datetime
     generated_by: str | None = None
     generated_by_name: str | None = None
@@ -168,3 +232,5 @@ class AgentGovernanceUpdate(BaseModel):
     tool_contracts: list[ToolContract] | None = None
     knowledge_sources: list[KnowledgeSourceRef] | None = None
     model_policy: ModelPolicy | None = None
+    success_criteria: str | None = None
+    completion_conditions: str | None = None

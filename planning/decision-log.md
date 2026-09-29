@@ -2294,3 +2294,74 @@ to a later version. This is stated plainly in code comments
 history for two more tables was out of scope for what this epic actually
 asked for (a snapshot of what was used, not a full audit-log rebuild of
 every prior state).
+
+## 2026-09-30 -- Epic 23, Agent Definition Quality Gate & Unified Release Lifecycle
+
+Implemented all four user stories. 347 backend tests (341 existing + 6
+new in `tests/test_api_agent_lifecycle.py`) pass against the real Postgres
+test DB; frontend `tsc -b`, `vite build`, and 104 `vitest` tests all green.
+
+### US23.1's required design decision: extend, don't add a third field
+
+Recorded per the epic's own Notes, which explicitly required this be a
+stated choice before implementation. Chosen: **`AgentArtifactModel` gets
+two new nullable timestamps (`marked_release_candidate_at`, `approved_at`
++ `approved_by`) for the only two lifecycle states that are genuinely
+irreducible human actions; every other state in the DRAFT..DEPLOYED
+lifecycle is computed on read** (`repository._compute_agent_lifecycle_status`),
+the same "derive, don't duplicate and hope it stays in sync" convention
+`_is_agent_artifact_stale` already established for US12.4. `AgentArtifact.
+lifecycle_status` sits as a third, independent, read-only field alongside
+Epic 12's `status` (`generated`/`stale` -- is the *definition* stale) and
+Epic 15's `AgentPublishStatus.lifecycle_status` (`generated`/`published`/
+`deployed` -- the *publish-event* history) rather than replacing either --
+they answer different questions and collapsing them would have lost
+information Epic 12/15 already depend on. `DEPLOYED` specifically is
+*not* re-derived independently -- it reads the same "any publication ever
+marked deployed" fact `get_agent_publish_status` already computes
+(`_list_agent_publication_models`), so the two lifecycles can never
+disagree about whether something has been deployed.
+
+### `VALIDATED` collapses into `SIMULATION_READY` -- a named scope cut, not an oversight
+
+The requirements' `DRAFT -> VALIDATED -> SIMULATION_READY -> ...` implies
+two distinguishable states between "just generated" and "ready to run."
+This implementation has no signal that separates them -- both are exactly
+"the checklist is satisfied," computed identically. Rather than invent an
+arbitrary distinguishing condition with no real meaning (which would be
+worse than not having the state at all -- a fabricated distinction nobody
+could explain), `_compute_agent_lifecycle_status` only ever returns
+`SIMULATION_READY` for that condition; `VALIDATED` stays a valid enum
+value (for forward extensibility, e.g. if a real intermediate validation
+step is added later) but is never actually emitted today. Documented in
+the function's own docstring, not left to be discovered by a confused
+future reader wondering why `VALIDATED` never appears.
+
+### The checklist's `test_scenarios` item is the one that actually gates freshly generated artifacts
+
+Every other checklist item is satisfied by generation.py's real defaults
+(Epic 20's guardrails/escalation_policy/model_policy precedent, extended
+here to `success_criteria`/`completion_conditions`) the moment an artifact
+is generated -- confirmed by a test that initially assumed a fresh
+artifact would already be `SIMULATION_READY` and had to be corrected once
+the real checklist output showed `test_scenarios` as the sole unmet item
+(no scenario exists yet at generation time, correctly). Worth naming
+because it means the practical gate US23.3 enforces, in this codebase as
+built, is almost entirely "has at least one twin scenario been defined,"
+not the fuller governance-completeness story the checklist's other fifteen
+items suggest -- those other items just don't have much room to be false
+given how thoroughly Epic 20 already populates them.
+
+### A real gap found while wiring US23.3: two run-start endpoints had no `TwinServiceError` -> 400 mapping
+
+`app/api/twin.py`'s `start_run` and `app/api/evaluation.py`'s
+`start_regression_suite_run` both called into repository functions that,
+before this epic, could only raise `NotFoundError` (already mapped to 404
+globally) -- so neither endpoint had ever needed its own
+`try/except TwinServiceError`. Adding `_require_simulation_ready` (which
+raises `TwinServiceError`) surfaced this immediately as an unhandled
+500 in a live test run, not a 400 -- fixed by adding the same
+`try/except -> HTTPException(400)` pattern `app/api/twin.py`'s own
+`resume_run` and `app/api/orchestration.py`'s `start_run`/`resume_run`
+already used elsewhere in the same file, rather than inventing a new
+error-handling shape.

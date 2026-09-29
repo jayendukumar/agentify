@@ -34,3 +34,17 @@ def update_agent_governance(
     del user
     repository.get_process(db, process_id)  # 404s if missing
     return repository.update_agent_governance(db, process_id, artifact_id, update)
+
+
+@router.post("/agent-artifacts/{artifact_id}/mark-release-candidate", response_model=AgentArtifact)
+def mark_agent_release_candidate(process_id: str, artifact_id: str, db: DbDep, user: EditorDep) -> AgentArtifact:
+    """Epic 23, US23.4: editor-only, same tier as governance/publish."""
+    del user
+    repository.get_process(db, process_id)  # 404s if missing
+    return repository.mark_agent_release_candidate(db, process_id, artifact_id)
+
+
+@router.post("/agent-artifacts/{artifact_id}/approve", response_model=AgentArtifact)
+def approve_agent_artifact(process_id: str, artifact_id: str, db: DbDep, user: EditorDep) -> AgentArtifact:
+    repository.get_process(db, process_id)  # 404s if missing
+    return repository.approve_agent_artifact(db, process_id, artifact_id, approved_by=user.id)

@@ -20,7 +20,7 @@ from app.schemas.agents import (
     RuntimeGuardrails,
     ToolContract,
 )
-from app.schemas.blueprint import BlueprintNodeResult
+from app.schemas.blueprint import AgentSpec, BlueprintNodeResult
 
 _HUMAN_CHECKPOINT_INSTRUCTIONS = {
     "none": "Complete the task end-to-end without requiring human review.",
@@ -103,6 +103,8 @@ def build_agent_definition(nodes: list[BlueprintNodeResult], *, primary_node_id:
         guardrails=RuntimeGuardrails(),
         escalation_policy=_default_escalation_policy(),
         model_policy=ModelPolicy(model=model),
+        success_criteria=_default_success_criteria(spec),
+        completion_conditions=_default_completion_conditions(spec),
     )
 
 
@@ -129,6 +131,25 @@ def _build_default_permissions(tool_names: list[str]) -> list[ResourcePermission
         ResourcePermission(resource=name, actions={"read": True, "update": False, "initiate": False, "override": False})
         for name in tool_names
     ]
+
+
+def _default_success_criteria(spec: AgentSpec) -> str:
+    """Epic 23, US23.2 default: derived from the spec's own expected
+    outputs rather than left an empty placeholder -- the checklist
+    (app/agents/validation.py) treats an empty string as unsatisfied, so
+    every freshly generated artifact starts with this item already met,
+    same as guardrails/escalation_policy already do for their own items."""
+    if spec.expected_outputs:
+        fields = ", ".join(f.name for f in spec.expected_outputs)
+        return f"Produces {fields} matching the process's expected output for this step."
+    return f"Completes '{spec.purpose}' without requiring escalation."
+
+
+def _default_completion_conditions(spec: AgentSpec) -> str:
+    return (
+        f"Stop once {', '.join(f.name for f in spec.expected_outputs) or 'the task'} has been produced, or "
+        "escalate per the escalation policy if the task falls outside expected inputs."
+    )
 
 
 def _default_escalation_policy() -> EscalationPolicy:

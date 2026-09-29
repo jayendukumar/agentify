@@ -5,11 +5,12 @@ convention app/api/twin.py/app/api/orchestration.py already follow for
 scenario/run endpoints.
 """
 
-from fastapi import APIRouter, BackgroundTasks, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from app.db import repository
 from app.schemas.evaluation import RegressionSuite, RegressionSuiteCreate, RegressionSuiteRun, RunComparison
 from app.schemas.reproducibility import RunSnapshotView
+from app.twin.errors import TwinServiceError
 
 from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
 
@@ -45,7 +46,10 @@ def start_regression_suite_run(
     app/api/twin.py's/app/api/orchestration.py's `start_run` -- one
     background task per scenario in the suite, run kind picked from the
     suite's own declared kind."""
-    suite_run, run_ids, kind = repository.start_regression_suite_run(db, process_id, suite_id, run_by=user.id)
+    try:
+        suite_run, run_ids, kind = repository.start_regression_suite_run(db, process_id, suite_id, run_by=user.id)
+    except TwinServiceError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     db.commit()
     for run_id in run_ids:
         if kind == "twin":

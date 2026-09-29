@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.generation import build_agent_definition, group_key_for, resolve_group
+from app.agents.validation import compute_checklist
 from app.bpmn.nodes import FlowNodeInfo, extract_flow_nodes
 from app.config import Settings, get_settings
 from app.ids import new_id, utcnow
@@ -45,7 +46,7 @@ from app.schemas.orchestration import (
 )
 from app.schemas.publish import AgentPublication, AgentPublishStatus
 from app.schemas.reproducibility import RunSnapshotView
-from app.schemas.run import RunStatus, RunStep
+from app.schemas.run import NON_TERMINAL_RUN_STATUSES, RunStatus, RunStep
 from app.schemas.twin import (
     InferredToolSchema,
     TwinBaseline,
@@ -575,7 +576,42 @@ def _is_agent_artifact_stale(overlay: BlueprintOverlayModel | None, artifact: Ag
     return False
 
 
+def _compute_agent_lifecycle_status(
+    session: Session, artifact: AgentArtifactModel, *, checklist_complete: bool
+) -> str:
+    """Epic 23, US23.1: derives the DRAFT..DEPLOYED lifecycle from data
+    that already exists -- see AgentArtifact schema's `LifecycleStatus`
+    docstring and the 2026-09-29 decision-log entry for why `VALIDATED`
+    collapses into `SIMULATION_READY` here (this implementation has no
+    signal that distinguishes "checklist just passed" from "ready to
+    simulate" -- they're the same fact until a real intermediate step is
+    added)."""
+    if any(p.status == "deployed" for p in _list_agent_publication_models(session, artifact.id)):
+        return "DEPLOYED"
+    if artifact.approved_at is not None:
+        return "APPROVED"
+    if artifact.marked_release_candidate_at is not None:
+        return "RELEASE_CANDIDATE"
+    if not checklist_complete:
+        return "DRAFT"
+    runs = list(session.scalars(select(SimulationRunModel).where(SimulationRunModel.agent_artifact_id == artifact.id)))
+    if any(r.status in NON_TERMINAL_RUN_STATUSES for r in runs):
+        return "SIMULATING"
+    if any(r.evaluation is not None for r in runs):
+        return "EVALUATED"
+    return "SIMULATION_READY"
+
+
 def _to_pydantic_agent_artifact(session: Session, artifact: AgentArtifactModel, *, is_stale: bool) -> AgentArtifact:
+    definition = AgentDefinition.model_validate(artifact.definition)
+    has_scenarios = (
+        session.scalar(
+            select(TwinScenarioModel.id).where(TwinScenarioModel.agent_artifact_id == artifact.id).limit(1)
+        )
+        is not None
+    )
+    checklist = compute_checklist(definition, has_scenarios=has_scenarios)
+    checklist_complete = all(item.satisfied for item in checklist)
     return AgentArtifact(
         id=artifact.id,
         process_id=artifact.process_id,
@@ -584,12 +620,35 @@ def _to_pydantic_agent_artifact(session: Session, artifact: AgentArtifactModel, 
         primary_node_id=artifact.primary_node_id,
         status="stale" if is_stale else "generated",
         version=artifact.version,
-        definition=AgentDefinition.model_validate(artifact.definition),
+        definition=definition,
         baseline_version_id=artifact.source_baseline_version_id,
+        lifecycle_status=_compute_agent_lifecycle_status(session, artifact, checklist_complete=checklist_complete),
+        checklist=checklist,
+        marked_release_candidate_at=artifact.marked_release_candidate_at,
+        approved_at=artifact.approved_at,
+        approved_by=artifact.approved_by,
+        approved_by_name=_resolve_user_name(session, artifact.approved_by),
         generated_at=artifact.generated_at,
         generated_by=artifact.generated_by,
         generated_by_name=_resolve_user_name(session, artifact.generated_by),
     )
+
+
+_LIFECYCLE_ORDER = [
+    "DRAFT", "VALIDATED", "SIMULATION_READY", "SIMULATING", "EVALUATED", "RELEASE_CANDIDATE", "APPROVED", "DEPLOYED",
+]
+
+
+def _require_simulation_ready(session: Session, artifact: AgentArtifactModel) -> None:
+    """US23.3: refuses to start a run against an artifact that hasn't
+    reached SIMULATION_READY, rather than letting a run start and only
+    surfacing missing definition pieces mid-run."""
+    pydantic_artifact = _to_pydantic_agent_artifact(session, artifact, is_stale=False)
+    if _LIFECYCLE_ORDER.index(pydantic_artifact.lifecycle_status) < _LIFECYCLE_ORDER.index("SIMULATION_READY"):
+        unmet = [item.label for item in pydantic_artifact.checklist if not item.satisfied]
+        raise TwinServiceError(
+            f"Agent artifact '{artifact.id}' hasn't reached SIMULATION_READY yet -- missing: {', '.join(unmet)}"
+        )
 
 
 def generate_agent_artifact(
@@ -696,6 +755,27 @@ def update_agent_governance(
     return _to_pydantic_agent_artifact(
         session, artifact, is_stale=_is_agent_artifact_stale(overlay_model, artifact)
     )
+
+
+def mark_agent_release_candidate(session: Session, process_id: str, artifact_id: str) -> AgentArtifact:
+    """Epic 23, US23.4: an explicit human action -- nothing else can
+    produce this state (see LifecycleStatus's docstring)."""
+    artifact = get_agent_artifact(session, process_id, artifact_id)
+    artifact.marked_release_candidate_at = utcnow()
+    session.flush()
+    overlay_model = session.get(BlueprintOverlayModel, process_id)
+    return _to_pydantic_agent_artifact(session, artifact, is_stale=_is_agent_artifact_stale(overlay_model, artifact))
+
+
+def approve_agent_artifact(
+    session: Session, process_id: str, artifact_id: str, *, approved_by: str | None = None
+) -> AgentArtifact:
+    artifact = get_agent_artifact(session, process_id, artifact_id)
+    artifact.approved_at = utcnow()
+    artifact.approved_by = approved_by
+    session.flush()
+    overlay_model = session.get(BlueprintOverlayModel, process_id)
+    return _to_pydantic_agent_artifact(session, artifact, is_stale=_is_agent_artifact_stale(overlay_model, artifact))
 
 
 # -- digital twin environments & fault injection (Epic 21) --------------------
@@ -986,6 +1066,7 @@ def start_twin_run(session: Session, process_id: str, scenario_id: str, *, run_b
     human checkpoint) suspended/resumed exactly like an orchestration run."""
     scenario_model = get_twin_scenario(session, process_id, scenario_id)
     artifact = get_agent_artifact(session, process_id, scenario_model.agent_artifact_id)
+    _require_simulation_ready(session, artifact)
     environment_model = (
         session.get(TwinEnvironmentModel, scenario_model.environment_id) if scenario_model.environment_id else None
     )
@@ -1542,6 +1623,9 @@ async def _build_node_artifacts(
         if artifact_model is None:
             continue
         if artifact_model.id not in tool_schema_cache:
+            # US23.3: same precondition start_twin_run enforces, checked
+            # once per distinct artifact before its tools are even inferred.
+            _require_simulation_ready(session, artifact_model)
             tool_schema_cache[artifact_model.id] = await _get_or_infer_tool_schemas(llm, session, artifact_model)
         node_artifacts[node.id] = NodeArtifact(
             artifact_id=artifact_model.id,

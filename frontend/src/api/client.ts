@@ -200,6 +200,17 @@ export function updateAgentGovernance(
   })
 }
 
+// Epic 23
+export function markAgentReleaseCandidate(processId: string, artifactId: string): Promise<AgentArtifact> {
+  return request(`/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/mark-release-candidate`, {
+    method: 'POST',
+  })
+}
+
+export function approveAgentArtifact(processId: string, artifactId: string): Promise<AgentArtifact> {
+  return request(`/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/approve`, { method: 'POST' })
+}
+
 // Not JSON (returns text/markdown), so this bypasses the request() helper.
 export async function exportBlueprint(processId: string): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/api/processes/${processId}/blueprint/export?format=markdown`, {

@@ -268,6 +268,9 @@ export interface AgentDefinition {
   escalation_policy: EscalationPolicy
   knowledge_sources: KnowledgeSourceRef[]
   model_policy: ModelPolicy | null
+  // Epic 23, US23.2
+  success_criteria: string
+  completion_conditions: string
 }
 
 export interface AgentGovernanceUpdate {
@@ -277,6 +280,50 @@ export interface AgentGovernanceUpdate {
   tool_contracts?: ToolContract[]
   knowledge_sources?: KnowledgeSourceRef[]
   model_policy?: ModelPolicy
+  success_criteria?: string
+  completion_conditions?: string
+}
+
+// Epic 23: the DRAFT..DEPLOYED lifecycle, computed on every read except
+// for the two states that are explicit human actions (RELEASE_CANDIDATE,
+// APPROVED) -- see backend/app/schemas/agents.py's LifecycleStatus
+// docstring. Distinct from AgentLifecycleStatus below (Epic 15's
+// generated/published/deployed publish-event history) and
+// AgentArtifactStatus above (Epic 12's generated/stale definition-drift
+// flag) -- three different concerns layered on the same artifact.
+export type LifecycleStatus =
+  | 'DRAFT'
+  | 'VALIDATED'
+  | 'SIMULATION_READY'
+  | 'SIMULATING'
+  | 'EVALUATED'
+  | 'RELEASE_CANDIDATE'
+  | 'APPROVED'
+  | 'DEPLOYED'
+
+export type ChecklistItemKey =
+  | 'purpose_and_trigger'
+  | 'bounded_responsibility'
+  | 'typed_input_output'
+  | 'success_criteria'
+  | 'completion_conditions'
+  | 'tool_contracts'
+  | 'permissions'
+  | 'guardrails'
+  | 'retry_policy'
+  | 'escalation_rules'
+  | 'human_approval_policy'
+  | 'knowledge_sources'
+  | 'model_policy'
+  | 'runtime_limits'
+  | 'audit_configuration'
+  | 'test_scenarios'
+
+export interface ChecklistItem {
+  key: ChecklistItemKey
+  label: string
+  satisfied: boolean
+  detail: string
 }
 
 export interface AgentArtifact {
@@ -291,6 +338,13 @@ export interface AgentArtifact {
   version: number
   definition: AgentDefinition
   baseline_version_id: string
+  // Epic 23, US23.1/US23.2
+  lifecycle_status: LifecycleStatus
+  checklist: ChecklistItem[]
+  marked_release_candidate_at: string | null
+  approved_at: string | null
+  approved_by: string | null
+  approved_by_name: string | null
   generated_at: string
   generated_by: string | null
   generated_by_name: string | null

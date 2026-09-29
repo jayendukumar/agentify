@@ -1,8 +1,27 @@
 # Epic 23 -- Agent Definition Quality Gate & Unified Release Lifecycle
 
-**Status: not started.** Groomed 2026-09-28 from the "Digital Twin Agent
-Simulation" requirements doc (Section 8, FR-QG-01) against the current
-codebase -- see `planning/decision-log.md`'s 2026-09-28 entry.
+**Status: fully implemented.** Groomed 2026-09-28 from the "Digital Twin
+Agent Simulation" requirements doc (Section 8, FR-QG-01) against the
+current codebase -- see `planning/decision-log.md`'s 2026-09-28 entry.
+Built 2026-09-29/30 -- `app/schemas/agents.py` (`LifecycleStatus`,
+`ChecklistItem`, `AgentDefinition.success_criteria`/
+`completion_conditions`, `AgentArtifact.lifecycle_status`/`checklist`/
+`marked_release_candidate_at`/`approved_at`/`approved_by`), `app/agents/
+validation.py` (new -- `compute_checklist`), `app/agents/generation.py`
+(real, non-placeholder `success_criteria`/`completion_conditions`
+defaults), `app/db/models.py` (`AgentArtifactModel.marked_release_
+candidate_at`/`approved_at`/`approved_by`), `app/db/repository.py`
+(`_compute_agent_lifecycle_status`, `_require_simulation_ready` wired into
+both `start_twin_run` and orchestration's `_build_node_artifacts`,
+`mark_agent_release_candidate`, `approve_agent_artifact`), `app/api/
+agents.py` (the two new POST endpoints), `app/api/twin.py`/`app/api/
+evaluation.py` (catch `TwinServiceError` from the new precondition and
+map to 400), and frontend `LifecyclePanel.tsx` (new, wired into
+`AgentDetailPanel.tsx` alongside `PublishPanel.tsx`). Live-verified: 347
+backend tests (341 existing + 6 new in `tests/test_api_agent_lifecycle.py`)
+against a real Postgres test DB, plus a clean `tsc -b` + `vite build` +
+104-test `vitest` pass on the frontend -- see `planning/decision-log.md`'s
+2026-09-30 entry, including the required US23.1 design decision.
 
 Goal: Introduce the `DRAFT -> VALIDATED -> SIMULATION_READY -> SIMULATING
 -> EVALUATED -> RELEASE_CANDIDATE -> APPROVED -> DEPLOYED` lifecycle the

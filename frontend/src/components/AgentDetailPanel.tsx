@@ -2,6 +2,7 @@ import type { AgentDefinition } from '../api/types'
 import type { AgentGroup } from '../lib/blueprintLabels'
 import { GOVERNANCE_DESCRIPTIONS, STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
 import AgentArtifactActions from './AgentArtifactActions'
+import LifecyclePanel from './LifecyclePanel'
 import PublishPanel from './PublishPanel'
 
 // Epic 20: read-only summary of an already-generated artifact's declared
@@ -153,7 +154,12 @@ export default function AgentDetailPanel({
           canGenerate={canGenerateAgent}
         />
 
-        {artifact && <PublishPanel processId={processId} artifactId={artifact.id} canPublish={canGenerateAgent} />}
+        {artifact && (
+          <>
+            <LifecyclePanel processId={processId} artifact={artifact} canManage={canGenerateAgent} />
+            <PublishPanel processId={processId} artifactId={artifact.id} canPublish={canGenerateAgent} />
+          </>
+        )}
       </div>
     </aside>
   )

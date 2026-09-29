@@ -12,7 +12,14 @@ import BlueprintPage from './BlueprintPage'
 // six times.
 const DEFAULT_GOVERNANCE: Pick<
   AgentDefinition,
-  'tool_contracts' | 'permissions' | 'guardrails' | 'escalation_policy' | 'knowledge_sources' | 'model_policy'
+  | 'tool_contracts'
+  | 'permissions'
+  | 'guardrails'
+  | 'escalation_policy'
+  | 'knowledge_sources'
+  | 'model_policy'
+  | 'success_criteria'
+  | 'completion_conditions'
 > = {
   tool_contracts: [],
   permissions: [],
@@ -29,6 +36,19 @@ const DEFAULT_GOVERNANCE: Pick<
   escalation_policy: { escalate_when: [], escalation_target: null },
   knowledge_sources: [],
   model_policy: null,
+  success_criteria: 'Produces the expected output.',
+  completion_conditions: 'Stops once the output is produced.',
+}
+
+// Epic 23: every AgentArtifact fixture below needs these fields --
+// spread this in rather than repeating it six times.
+const DEFAULT_LIFECYCLE = {
+  lifecycle_status: 'SIMULATION_READY' as const,
+  checklist: [],
+  marked_release_candidate_at: null,
+  approved_at: null,
+  approved_by: null,
+  approved_by_name: null,
 }
 
 const getProcess = vi.fn()
@@ -64,6 +84,8 @@ const createTwinEnvironment = vi.fn()
 const updateTwinEnvironment = vi.fn()
 const deleteTwinEnvironment = vi.fn()
 const getRunSnapshot = vi.fn()
+const markAgentReleaseCandidate = vi.fn()
+const approveAgentArtifact = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -106,6 +128,8 @@ vi.mock('../api/client', () => ({
   updateTwinEnvironment: (...args: unknown[]) => updateTwinEnvironment(...args),
   deleteTwinEnvironment: (...args: unknown[]) => deleteTwinEnvironment(...args),
   getRunSnapshot: (...args: unknown[]) => getRunSnapshot(...args),
+  markAgentReleaseCandidate: (...args: unknown[]) => markAgentReleaseCandidate(...args),
+  approveAgentArtifact: (...args: unknown[]) => approveAgentArtifact(...args),
 }))
 
 // BlueprintCanvas depends on real bpmn-js/SVG layout -- stubbed here so
@@ -320,6 +344,7 @@ describe('BlueprintPage', () => {
       primary_node_id: 'Task_a',
       status: 'generated',
       version: 1,
+      ...DEFAULT_LIFECYCLE,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
@@ -364,6 +389,7 @@ describe('BlueprintPage', () => {
         primary_node_id: 'Task_a',
         status: 'stale',
         version: 1,
+        ...DEFAULT_LIFECYCLE,
         definition: {
           name: 'Request Reviewer Agent',
           purpose: 'Reviews incoming requests against policy.',
@@ -397,6 +423,7 @@ describe('BlueprintPage', () => {
       primary_node_id: 'Task_a',
       status: 'generated',
       version: 1,
+      ...DEFAULT_LIFECYCLE,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
@@ -446,6 +473,7 @@ describe('BlueprintPage', () => {
       primary_node_id: 'Task_a',
       status: 'generated',
       version: 1,
+      ...DEFAULT_LIFECYCLE,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
@@ -583,6 +611,7 @@ describe('BlueprintPage', () => {
       primary_node_id: 'Task_a',
       status: 'generated',
       version: 1,
+      ...DEFAULT_LIFECYCLE,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
@@ -697,6 +726,7 @@ describe('BlueprintPage', () => {
       primary_node_id: 'Task_a',
       status: 'generated',
       version: 1,
+      ...DEFAULT_LIFECYCLE,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',

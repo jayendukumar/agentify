@@ -395,6 +395,13 @@ class AgentArtifactModel(Base):
     generated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
     # Epic 9/10, US9.9: who triggered (re)generation.
     generated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Epic 23, US23.1: the only two lifecycle states nothing can derive --
+    # everything else (DRAFT..EVALUATED, DEPLOYED) is computed on read from
+    # the checklist/run history/publication status. See AgentArtifact
+    # schema's LifecycleStatus docstring.
+    marked_release_candidate_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     process: Mapped[ProcessModel] = relationship(back_populates="agent_artifacts")
 

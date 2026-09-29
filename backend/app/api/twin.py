@@ -38,8 +38,13 @@ def start_run(
     to execute synchronously inside this one request; now it's created in
     status="CREATED" and driven to completion by a background task, so it
     can be polled (`get_run`), cancelled, and (via a manual human
-    checkpoint) suspended/resumed exactly like an orchestration run."""
-    run = repository.start_twin_run(db, process_id, scenario_id, run_by=user.id)
+    checkpoint) suspended/resumed exactly like an orchestration run.
+    Epic 23, US23.3: also where `_require_simulation_ready` raises if the
+    artifact hasn't reached SIMULATION_READY."""
+    try:
+        run = repository.start_twin_run(db, process_id, scenario_id, run_by=user.id)
+    except TwinServiceError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     db.commit()
     background_tasks.add_task(repository.execute_twin_run_background, run.id, llm)
     return run
