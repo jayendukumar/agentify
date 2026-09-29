@@ -711,6 +711,13 @@ class SimulationRunModel(Base):
     total_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
     turns_used: Mapped[int] = mapped_column(nullable=False, default=0)
     resume_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Epic 22, US22.1: every versioned component that influenced this run
+    # (agent artifact version, model policy, tool contracts, guardrails,
+    # escalation policy, knowledge sources, twin environment/dataset
+    # versions), captured at run start -- see app/twin/snapshot.py. None
+    # for a run persisted before this epic, or an orchestration run that
+    # failed before node artifacts were resolved.
+    snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     cancel_requested: Mapped[bool] = mapped_column(nullable=False, default=False)
     queued_at: Mapped[datetime | None] = mapped_column(nullable=True)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())

@@ -2253,3 +2253,44 @@ call on every faulted request. Worth naming as a testing decision: this
 epic's fault-injection tests assert call counts specifically to catch that
 class of "does the fault check actually short-circuit" bug, not just "does
 the final result look right."
+
+## 2026-09-29 -- Epic 22, Reproducibility: Execution Snapshots
+
+Implemented all three user stories: a per-run snapshot of every versioned
+component that could have influenced the outcome (US22.1), a dedicated
+endpoint that returns it verbatim rather than re-resolving anything live
+(US22.2), and three fixed, non-data-driven reproducibility-tier labels
+(US22.3). 341 backend tests (336 existing + 5 new) pass against the real
+Postgres test DB; frontend `tsc -b`, `vite build`, and 104 `vitest` tests
+all green.
+
+### Twin vs. orchestration runs snapshot at different points, for a real reason
+
+A twin run's snapshot is built synchronously inside `start_twin_run`,
+before the background task is even enqueued -- everything it needs
+(the one artifact, the environment) is already resolved there. An
+orchestration run can't do the same: which agent artifacts are actually
+involved isn't known until `_build_node_artifacts` resolves them inside
+`execute_orchestration_run_background`, and that resolution itself makes
+LLM calls (schema inference) `start_orchestration_run` has no business
+making synchronously inside a request. So the orchestration snapshot is
+built one step later, right after `node_artifacts` are resolved and before
+`run_orchestration` is called -- still "before execution begins" in the
+sense that matters (a cancelled/failed run still has its snapshot), just
+not literally at row-creation time like the twin case.
+
+### Snapshot version-pinning has an honest ceiling: environments and artifacts aren't stored as history
+
+The snapshot records the *version number* that was in effect, but neither
+`AgentArtifactModel` nor `TwinEnvironmentModel` (Epic 19/21) keep a row per
+version -- both mutate in place with a version counter. So "reconstruct
+run #8921's exact configuration" means reading the recorded version
+*number* and any fields snapshotted alongside it (model policy, tool
+contracts, guardrails, escalation policy, knowledge sources, environment
+systems/datasets/personas names), not literally replaying against a
+byte-for-byte historical row if the artifact/environment has since moved
+to a later version. This is stated plainly in code comments
+(`app/twin/snapshot.py`) and not glossed over -- building real version
+history for two more tables was out of scope for what this epic actually
+asked for (a snapshot of what was used, not a full audit-log rebuild of
+every prior state).

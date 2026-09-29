@@ -153,6 +153,10 @@ button.run-step-row-selected, button.run-step-row-selected:not(:disabled):hover 
 .run-evaluation-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--axyntro-space-1); }
 .run-evaluation-list li { display: flex; align-items: baseline; gap: var(--axyntro-space-2); flex-wrap: wrap; }
 .run-evaluation-list .badge { text-transform: capitalize; flex-shrink: 0; }
+.run-reproducibility { margin-top: var(--axyntro-space-3); }
+.run-reproducibility-tiers { list-style: none; margin: var(--axyntro-space-2) 0; padding: 0; display: flex; flex-direction: column; gap: var(--axyntro-space-1); }
+.run-reproducibility-tiers .badge { text-transform: capitalize; }
+.run-reproducibility-snapshot { max-height: 320px; overflow: auto; background: var(--axyntro-blue-mist); padding: var(--axyntro-space-2); border-radius: var(--radius); font-size: var(--axyntro-text-small); white-space: pre-wrap; }
 @media (max-width: 799px) {
   .run-detail-body { flex-direction: column; }
   .run-step-list { max-height: 240px; }

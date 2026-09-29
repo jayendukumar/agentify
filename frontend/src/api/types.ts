@@ -516,6 +516,20 @@ export interface TwinEnvironment extends TwinEnvironmentCreate {
   updated_at: string
 }
 
+// Epic 22: per-run execution snapshots (US22.1/US22.2) and the three fixed
+// reproducibility tiers (US22.3) -- see backend/app/schemas/
+// reproducibility.py. `snapshot` is deliberately untyped: a point-in-time
+// capture of several other schemas' current values, not a second parallel
+// type to keep in sync.
+export type ReproducibilityTier = 'guaranteed' | 'best_effort' | 'not_guaranteed'
+
+export interface RunSnapshotView {
+  run_id: string
+  snapshot: Record<string, unknown> | null
+  reproducibility: Record<string, ReproducibilityTier>
+  explanation: Record<string, string>
+}
+
 // Epic 14 (core slice)
 export type TwinSystemStubMode = 'proxy' | 'static'
 export type TwinHumanCheckpointMode = 'probability' | 'rule' | 'manual'

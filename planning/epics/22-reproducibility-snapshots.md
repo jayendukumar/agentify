@@ -1,8 +1,24 @@
 # Epic 22 -- Reproducibility: Execution Snapshots
 
-**Status: not started.** Groomed 2026-09-28 from the "Digital Twin Agent
-Simulation" requirements doc (Section 10, FR-REP-01) against the current
-codebase -- see `planning/decision-log.md`'s 2026-09-28 entry.
+**Status: fully implemented.** Groomed 2026-09-28 from the "Digital Twin
+Agent Simulation" requirements doc (Section 10, FR-REP-01) against the
+current codebase -- see `planning/decision-log.md`'s 2026-09-28 entry.
+Built 2026-09-29 -- `app/schemas/reproducibility.py` (new --
+`RunSnapshotView`, the three fixed `REPRODUCIBILITY_EXPLANATIONS`),
+`app/twin/snapshot.py` (new -- `build_run_snapshot`), `app/db/models.py`
+(`SimulationRunModel.snapshot`), `app/db/repository.py` (`start_twin_run`
+builds it synchronously; `execute_orchestration_run_background` builds it
+once node artifacts are resolved; `get_run_snapshot`), `app/api/
+evaluation.py` (`GET .../runs/{run_id}/snapshot`), and a "Reproducibility"
+section in `RunDetailView.tsx` (lazily fetched on open). Live-verified:
+341 backend tests (336 existing + 5 new in `tests/
+test_api_reproducibility.py`) against a real Postgres test DB, plus a
+clean `tsc -b` + `vite build` + 104-test `vitest` pass on the frontend --
+see `planning/decision-log.md`'s 2026-09-29 entry.
+
+Denormalized onto `SimulationRunModel` (not a separate snapshot table),
+per the epic's own Notes' stated lean -- consistent with how Epic 14/16
+already keep a run's full trace as one JSON blob.
 
 Goal: Every run records the exact versions of everything that could have
 influenced its outcome, and that configuration can be reconstructed later

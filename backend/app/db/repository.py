@@ -44,6 +44,7 @@ from app.schemas.orchestration import (
     OrchestrationScenarioCreate,
 )
 from app.schemas.publish import AgentPublication, AgentPublishStatus
+from app.schemas.reproducibility import RunSnapshotView
 from app.schemas.run import RunStatus, RunStep
 from app.schemas.twin import (
     InferredToolSchema,
@@ -63,6 +64,7 @@ from app.twin.errors import TwinServiceError
 from app.twin.evaluation import evaluate_run
 from app.twin.orchestrator import NodeArtifact, run_orchestration
 from app.twin.schema_inference import infer_tool_schemas
+from app.twin.snapshot import build_run_snapshot
 
 from .models import (
     ActorModel,
@@ -984,6 +986,9 @@ def start_twin_run(session: Session, process_id: str, scenario_id: str, *, run_b
     human checkpoint) suspended/resumed exactly like an orchestration run."""
     scenario_model = get_twin_scenario(session, process_id, scenario_id)
     artifact = get_agent_artifact(session, process_id, scenario_model.agent_artifact_id)
+    environment_model = (
+        session.get(TwinEnvironmentModel, scenario_model.environment_id) if scenario_model.environment_id else None
+    )
     run = SimulationRunModel(
         id=new_id("simrun"),
         kind="twin",
@@ -991,6 +996,11 @@ def start_twin_run(session: Session, process_id: str, scenario_id: str, *, run_b
         scenario_id=scenario_model.id,
         agent_artifact_id=artifact.id,
         status="CREATED",
+        # Epic 22, US22.1: everything this needs is already resolved here,
+        # before any execution starts.
+        snapshot=build_run_snapshot(
+            kind="twin", scenario_id=scenario_model.id, agent_artifacts=[artifact], environment=environment_model
+        ),
         run_by=run_by,
     )
     session.add(run)
@@ -1588,6 +1598,18 @@ async def execute_orchestration_run_background(
                 _to_pydantic_twin_environment(session, environment_model) if environment_model is not None else None
             )
             node_artifacts = await _build_node_artifacts(llm, session, run_model.process_id, flow_nodes)
+            # Epic 22, US22.1: built once node artifacts are actually known
+            # (unlike a twin run, they can't be resolved synchronously at
+            # start_orchestration_run -- schema inference is an LLM call).
+            distinct_artifact_ids = {na.artifact_id for na in node_artifacts.values()}
+            artifact_models = [
+                m for m in (session.get(AgentArtifactModel, aid) for aid in distinct_artifact_ids) if m is not None
+            ]
+            run_model.snapshot = build_run_snapshot(
+                kind="orchestration", scenario_id=scenario_model.id, agent_artifacts=artifact_models,
+                environment=environment_model,
+            )
+            session.commit()
 
             async def on_node_run(node_run: NodeRun) -> None:
                 run_model.node_runs = [*run_model.node_runs, node_run.model_dump(mode="json")]
@@ -1820,6 +1842,25 @@ def compare_runs(session: Session, process_id: str, run_a_id: str, run_b_id: str
     from app.twin.comparison import compare_runs as _compare_runs
 
     return _compare_runs(run_a, run_b)
+
+
+# -- reproducibility snapshots (Epic 22) ---------------------------------------
+
+
+def get_run_snapshot(session: Session, process_id: str, run_id: str) -> RunSnapshotView:
+    """US22.1/US22.2: reads the snapshot recorded at run time verbatim --
+    no live re-resolution of any versioned component, since the whole
+    point is showing what a *past* run used even after later edits (see
+    this function's schema's module docstring)."""
+    run = session.get(SimulationRunModel, run_id)
+    if run is not None and run.process_id == process_id:
+        return RunSnapshotView(run_id=run_id, snapshot=run.snapshot)
+    # Legacy pre-Epic-17 rows (TwinRunModel/OrchestrationRunModel) never
+    # recorded a snapshot -- confirm the run exists at all (404s otherwise
+    # via the existing merged lookup) and report snapshot=None honestly
+    # rather than fabricating one after the fact.
+    get_any_run(session, process_id, run_id)
+    return RunSnapshotView(run_id=run_id, snapshot=None)
 
 
 # -- publishing (Epic 15) ------------------------------------------------------

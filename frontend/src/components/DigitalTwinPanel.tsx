@@ -428,6 +428,7 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
                     {viewingScenarioId === scenario.id && (
                       <RunDetailView
                         run={lastRun}
+                        processId={processId}
                         staticSubjectLabel={
                           selectedArtifact
                             ? `Agent: ${selectedArtifact.definition.name} -- node: ${selectedArtifact.primary_node_id}`

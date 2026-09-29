@@ -24,6 +24,7 @@ import type {
   RegressionSuiteRun,
   Role,
   RunComparison,
+  RunSnapshotView,
   TwinBaseline,
   TwinEnvironment,
   TwinEnvironmentCreate,
@@ -532,4 +533,9 @@ export function updateTwinEnvironment(
 
 export function deleteTwinEnvironment(processId: string, environmentId: string): Promise<void> {
   return request(`/api/processes/${processId}/twin-environments/${environmentId}`, { method: 'DELETE' })
+}
+
+// Epic 22: per-run execution snapshots and reproducibility tiers
+export function getRunSnapshot(processId: string, runId: string): Promise<RunSnapshotView> {
+  return request(`/api/processes/${processId}/runs/${runId}/snapshot`)
 }

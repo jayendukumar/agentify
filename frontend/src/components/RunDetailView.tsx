@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { OrchestrationRun, RunStep, TwinRun } from '../api/types'
+import { ApiError, getRunSnapshot } from '../api/client'
+import type { OrchestrationRun, RunSnapshotView, RunStep, TwinRun } from '../api/types'
 import BlueprintCanvas from './BlueprintCanvas'
 import StepInspector from './StepInspector'
 import { isTerminalRunStatus } from '../lib/runStatus'
@@ -32,10 +33,12 @@ function noop() {
 // instead), US18.5 (replay scrubber, terminal runs only).
 export default function RunDetailView({
   run,
+  processId,
   canvasXml,
   staticSubjectLabel,
 }: {
   run: TwinRun | OrchestrationRun
+  processId: string
   canvasXml?: string | null
   staticSubjectLabel?: string
 }) {
@@ -43,6 +46,23 @@ export default function RunDetailView({
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
   const playTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Epic 22, US22.2/US22.3: fetched lazily, once, when the reproducibility
+  // section is first opened -- not part of the run object itself (a
+  // separate concern, and most viewers never open it).
+  const [snapshotView, setSnapshotView] = useState<RunSnapshotView | null>(null)
+  const [snapshotError, setSnapshotError] = useState<string | null>(null)
+  const [snapshotLoading, setSnapshotLoading] = useState(false)
+
+  function loadSnapshotOnce() {
+    if (snapshotView || snapshotLoading) return
+    setSnapshotLoading(true)
+    setSnapshotError(null)
+    getRunSnapshot(processId, run.id)
+      .then(setSnapshotView)
+      .catch((err) => setSnapshotError(err instanceof ApiError ? err.message : 'Failed to load the run snapshot'))
+      .finally(() => setSnapshotLoading(false))
+  }
 
   const steps = run.steps
   const terminal = isTerminalRunStatus(run.status)
@@ -142,6 +162,33 @@ export default function RunDetailView({
           </ul>
         </div>
       )}
+
+      {/* Epic 22, US22.2/US22.3: the exact versioned configuration this run
+          used, plus the three reproducibility tiers -- never let "we can
+          reconstruct this run's config" be read as "re-running it produces
+          the same transcript." */}
+      <details className="run-reproducibility" data-testid="run-reproducibility" onToggle={(e) => e.currentTarget.open && loadSnapshotOnce()}>
+        <summary>Reproducibility</summary>
+        {snapshotLoading && <p className="meta">Loading...</p>}
+        {snapshotError && <p className="error" role="alert">{snapshotError}</p>}
+        {snapshotView && (
+          <>
+            <ul className="run-reproducibility-tiers">
+              {Object.entries(snapshotView.reproducibility).map(([tier, level]) => (
+                <li key={tier}>
+                  <span className={`badge ${level === 'guaranteed' ? 'status-done' : 'status-processing'}`}>{tier}: {level.replace('_', ' ')}</span>
+                  <p className="meta">{snapshotView.explanation[tier]}</p>
+                </li>
+              ))}
+            </ul>
+            {snapshotView.snapshot ? (
+              <pre className="run-reproducibility-snapshot">{JSON.stringify(snapshotView.snapshot, null, 2)}</pre>
+            ) : (
+              <p className="meta">No configuration snapshot was recorded for this run (it predates this feature).</p>
+            )}
+          </>
+        )}
+      </details>
 
       {terminal && steps.length > 0 && (
         <div className="run-replay-controls" data-testid="run-replay-controls">

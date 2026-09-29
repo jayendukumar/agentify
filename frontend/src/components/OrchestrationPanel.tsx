@@ -378,7 +378,11 @@ export default function OrchestrationPanel({ processId }: { processId: string })
                       )}
                     </ol>
                     {viewingScenarioId === scenario.id && (
-                      <RunDetailView run={run} canvasXml={versionXmlById[scenario.baseline_version_id] ?? null} />
+                      <RunDetailView
+                        run={run}
+                        processId={processId}
+                        canvasXml={versionXmlById[scenario.baseline_version_id] ?? null}
+                      />
                     )}
                   </div>
                 )}

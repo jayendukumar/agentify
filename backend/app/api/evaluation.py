@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, status
 
 from app.db import repository
 from app.schemas.evaluation import RegressionSuite, RegressionSuiteCreate, RegressionSuiteRun, RunComparison
+from app.schemas.reproducibility import RunSnapshotView
 
 from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
 
@@ -64,3 +65,10 @@ def get_regression_suite_run(process_id: str, suite_run_id: str, db: DbDep, user
 def compare_runs(process_id: str, run_a: str, run_b: str, db: DbDep, user: CurrentUserDep) -> RunComparison:
     del user
     return repository.compare_runs(db, process_id, run_a, run_b)
+
+
+@router.get("/runs/{run_id}/snapshot", response_model=RunSnapshotView)
+def get_run_snapshot(process_id: str, run_id: str, db: DbDep, user: CurrentUserDep) -> RunSnapshotView:
+    """Epic 22, US22.1/US22.2/US22.3."""
+    del user
+    return repository.get_run_snapshot(db, process_id, run_id)

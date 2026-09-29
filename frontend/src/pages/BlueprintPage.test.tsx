@@ -63,6 +63,7 @@ const listTwinEnvironments = vi.fn()
 const createTwinEnvironment = vi.fn()
 const updateTwinEnvironment = vi.fn()
 const deleteTwinEnvironment = vi.fn()
+const getRunSnapshot = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -104,6 +105,7 @@ vi.mock('../api/client', () => ({
   createTwinEnvironment: (...args: unknown[]) => createTwinEnvironment(...args),
   updateTwinEnvironment: (...args: unknown[]) => updateTwinEnvironment(...args),
   deleteTwinEnvironment: (...args: unknown[]) => deleteTwinEnvironment(...args),
+  getRunSnapshot: (...args: unknown[]) => getRunSnapshot(...args),
 }))
 
 // BlueprintCanvas depends on real bpmn-js/SVG layout -- stubbed here so
