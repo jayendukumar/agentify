@@ -338,12 +338,68 @@ export interface RegistryEntry {
   pushed_by_name: string | null
 }
 
+// Epic 17: the unified run state machine and typed execution-step taxonomy
+// shared by twin (Epic 14) and orchestration (Epic 16) runs -- see
+// backend/app/schemas/run.py. `RunStatus` describes execution/lifecycle
+// outcome only, never scenario grading (see `graded_passed` on TwinRun/
+// OrchestrationRun below).
+export type RunStatus =
+  | 'CREATED'
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'WAITING_FOR_MODEL'
+  | 'WAITING_FOR_TOOL'
+  | 'WAITING_FOR_HUMAN'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'TIMED_OUT'
+  | 'ESCALATED'
+
+export const TERMINAL_RUN_STATUSES: ReadonlySet<RunStatus> = new Set([
+  'COMPLETED',
+  'FAILED',
+  'CANCELLED',
+  'TIMED_OUT',
+  'ESCALATED',
+])
+
+export type StepType =
+  | 'RUN_STARTED'
+  | 'CONTEXT_RETRIEVED'
+  | 'MODEL_INVOKED'
+  | 'DECISION'
+  | 'TOOL_REQUESTED'
+  | 'POLICY_CHECK'
+  | 'TOOL_EXECUTED'
+  | 'TOOL_FAILED'
+  | 'HUMAN_APPROVAL_REQUESTED'
+  | 'HUMAN_APPROVED'
+  | 'HUMAN_REJECTED'
+  | 'AGENT_DELEGATED'
+  | 'RETRY'
+  | 'ESCALATION'
+  | 'FINAL_RESPONSE'
+  | 'RUN_COMPLETED'
+
+export interface RunStep {
+  seq: number
+  type: StepType
+  node_id: string | null
+  target: string | null
+  arguments: Record<string, unknown>
+  result: Record<string, unknown> | null
+  decision: 'approve' | 'reject' | null
+  reason: string | null
+  denied: boolean
+  static_fallback: boolean
+  occurred_at: string
+}
+
 // Epic 14 (core slice)
 export type TwinSystemStubMode = 'proxy' | 'static'
-export type TwinHumanCheckpointMode = 'probability' | 'rule'
+export type TwinHumanCheckpointMode = 'probability' | 'rule' | 'manual'
 export type TwinRuleOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte'
-export type TwinTraceStepKind = 'tool_call' | 'human_checkpoint'
-export type TwinRunStatus = 'passed' | 'failed' | 'error'
 
 export interface TwinStaticResponseRule {
   match: Record<string, unknown>
@@ -370,8 +426,13 @@ export interface TwinHumanCheckpointConfig {
   rule: TwinHumanDecisionRule | null
 }
 
+// Kept narrow and separate from StepType above -- this is only the
+// two-kind vocabulary a scenario author uses to declare an *expected* step
+// (grading), not the runtime's own full execution-trace taxonomy.
+export type TwinExpectedStepKind = 'tool_call' | 'human_checkpoint'
+
 export interface TwinExpectedStep {
-  kind: TwinTraceStepKind
+  kind: TwinExpectedStepKind
   target: string | null
   expected_decision: 'approve' | 'reject' | null
 }
@@ -390,15 +451,6 @@ export interface TwinScenario {
   created_by_name: string | null
 }
 
-export interface TwinTraceStep {
-  kind: TwinTraceStepKind
-  target: string
-  arguments: Record<string, unknown>
-  result: Record<string, unknown> | null
-  decision: 'approve' | 'reject' | null
-  static_fallback: boolean
-}
-
 export interface TwinDeviation {
   reason: string
   step_index: number | null
@@ -406,17 +458,19 @@ export interface TwinDeviation {
 
 export interface TwinRun {
   id: string
+  kind: 'twin'
   scenario_id: string
   agent_artifact_id: string
-  status: TwinRunStatus
-  trace: TwinTraceStep[]
+  status: RunStatus
+  steps: RunStep[]
   final_output: Record<string, unknown> | null
   deviations: TwinDeviation[]
+  graded_passed: boolean | null
   total_cost_usd: number | null
   total_tokens: number
   turns_used: number
   started_at: string
-  completed_at: string
+  completed_at: string | null
   run_by: string | null
   run_by_name: string | null
 }
@@ -458,10 +512,8 @@ export interface RegistrySearchResult {
 
 // Epic 16: process-level orchestration rehearsal -- runs every automatable
 // node's agent together along the real process graph. Builds on the Epic 14
-// types above (TwinSystemStub, TwinHumanCheckpointConfig, TwinTraceStep,
-// TwinDeviation) rather than redefining them.
-export type OrchestrationRunStatus = 'running' | 'passed' | 'failed' | 'error'
-export type NodeRunStatus = 'passed' | 'error'
+// types above (TwinSystemStub, TwinHumanCheckpointConfig, TwinDeviation)
+// rather than redefining them.
 export type NodeRunKind = 'agent' | 'manual' | 'gateway' | 'start_event' | 'end_event'
 export type ManualNodeMode = 'human_checkpoint' | 'fixed_stub'
 export type DataMappingMode = 'llm_adapter' | 'exact_field_contract'
@@ -497,21 +549,13 @@ export interface OrchestrationScenario extends OrchestrationScenarioCreate {
   created_by_name: string | null
 }
 
-export interface DataHandoff {
-  from_node_id: string | null
-  to_node_id: string
-  mode: DataMappingMode
-  input_before: Record<string, unknown>
-  input_after: Record<string, unknown>
-}
-
 export interface NodeRun {
   node_id: string
   node_label: string
   kind: NodeRunKind
-  status: NodeRunStatus
+  status: RunStatus
   agent_artifact_id: string | null
-  trace: TwinTraceStep[]
+  steps: RunStep[]
   output: Record<string, unknown> | null
   error_message: string | null
   total_cost_usd: number | null
@@ -522,14 +566,16 @@ export interface NodeRun {
 
 export interface OrchestrationRun {
   id: string
+  kind: 'orchestration'
   scenario_id: string
   process_id: string
-  status: OrchestrationRunStatus
+  status: RunStatus
+  steps: RunStep[]
   node_runs: NodeRun[]
-  handoffs: DataHandoff[]
   visited_path: string[]
   final_output: Record<string, unknown> | null
   deviations: TwinDeviation[]
+  graded_passed: boolean | null
   total_cost_usd: number | null
   total_tokens: number
   started_at: string

@@ -17,11 +17,20 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from .run import RunBase, TwinDeviation
+
 SystemStubMode = Literal["proxy", "static"]
-HumanCheckpointMode = Literal["probability", "rule"]
+# Epic 17, US17.3: "manual" is new -- a real person supplies the checkpoint
+# decision later via the run's resume endpoint, instead of the engine
+# auto-resolving it from `approve_probability`/`rule` the moment the agent
+# asks. See app/twin/engine.py's suspend path.
+HumanCheckpointMode = Literal["probability", "rule", "manual"]
 RuleOperator = Literal["eq", "ne", "gt", "gte", "lt", "lte"]
+# Epic 17: kept narrow and separate from app/schemas/run.py's full StepType
+# taxonomy -- this is only the two-kind vocabulary a scenario author uses to
+# declare an *expected* step (US14.3's grading), not the runtime's own
+# sixteen-value execution trace.
 TraceStepKind = Literal["tool_call", "human_checkpoint"]
-TwinRunStatus = Literal["passed", "failed", "error"]
 
 
 class StaticResponseRule(BaseModel):
@@ -90,40 +99,17 @@ class TwinScenario(TwinScenarioCreate):
     created_by_name: str | None = None
 
 
-class TwinTraceStep(BaseModel):
-    kind: TraceStepKind
-    target: str
-    arguments: dict[str, Any] = {}
-    result: dict[str, Any] | None = None
-    decision: Literal["approve", "reject"] | None = None
-    static_fallback: bool = False
-    # Epic 20: True when app/twin/gateway.py's Tool Gateway denied this
-    # call against the artifact's own declared permissions/tool contracts
-    # -- `result` carries the denial reason, this flag makes it filterable
-    # without parsing `result`.
-    denied: bool = False
+class TwinRun(RunBase):
+    """Epic 17: a twin run is now one `kind="twin"` SimulationRun (see
+    app/db/models.py) -- this schema is the API-facing projection of it,
+    extending app/schemas/run.py's RunBase with the two fields that only
+    make sense for a single-agent run (an orchestration run instead has
+    `process_id`/`node_runs`/`visited_path` -- see app/schemas/
+    orchestration.py's OrchestrationRun)."""
 
-
-class TwinDeviation(BaseModel):
-    reason: str
-    step_index: int | None = None
-
-
-class TwinRun(BaseModel):
-    id: str
     scenario_id: str
     agent_artifact_id: str
-    status: TwinRunStatus
-    trace: list[TwinTraceStep]
-    final_output: dict[str, Any] | None = None
-    deviations: list[TwinDeviation]
-    total_cost_usd: float | None = None
-    total_tokens: int
-    turns_used: int
-    started_at: datetime
-    completed_at: datetime
-    run_by: str | None = None
-    run_by_name: str | None = None
+    turns_used: int = 0
 
 
 class InferredToolSchema(BaseModel):

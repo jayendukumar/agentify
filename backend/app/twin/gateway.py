@@ -29,6 +29,7 @@ from __future__ import annotations
 import time
 from collections import Counter
 from dataclasses import dataclass, field
+from typing import Any, Literal
 
 from app.schemas.agents import AgentDefinition, RuntimeGuardrails
 
@@ -69,12 +70,18 @@ def check_tool_permission(artifact: AgentDefinition, system_name: str) -> Policy
 class GuardrailExceeded(Exception):
     """Raised by GuardrailTracker the moment a configured limit would be
     crossed -- caught by app/twin/engine.py's run loop and turned into a
-    graceful TwinDeviation + status="error", the same outcome today's
-    max-turns exhaustion already produces, never an unhandled exception
-    reaching the API layer."""
+    graceful TwinDeviation + a terminal RunStatus, never an unhandled
+    exception reaching the API layer.
 
-    def __init__(self, reason: str):
+    Epic 17: `kind` lets the engine map this onto the right RunStatus --
+    "timeout" (the wall-clock guardrail specifically) always becomes
+    TIMED_OUT; every other limit ("limit": tool-call count, tokens, cost,
+    loop detection, step exhaustion) becomes ESCALATED when the artifact
+    declares an escalation policy, else FAILED (today's behavior)."""
+
+    def __init__(self, reason: str, kind: Literal["timeout", "limit"] = "limit"):
         self.reason = reason
+        self.kind = kind
         super().__init__(reason)
 
 
@@ -97,13 +104,19 @@ class GuardrailTracker:
     cost_incomplete: bool = False
     _call_counts: "Counter[tuple[str, str]]" = field(default_factory=Counter)
     _started_at: float = field(default_factory=time.monotonic)
+    # Epic 17: wall-clock elapsed at the moment a manual human checkpoint
+    # suspended a prior leg of this run (0.0 for a run that hasn't been
+    # resumed) -- added to this leg's own monotonic elapsed time so
+    # max_runtime_seconds is enforced across a suspend/resume gap, not
+    # reset by it.
+    _prior_elapsed: float = 0.0
 
     def before_model_call(self) -> None:
         if self.model_calls >= self.guardrails.max_model_calls:
             raise GuardrailExceeded(f"Exceeded max_model_calls ({self.guardrails.max_model_calls})")
-        elapsed = time.monotonic() - self._started_at
+        elapsed = self._prior_elapsed + (time.monotonic() - self._started_at)
         if elapsed > self.guardrails.max_runtime_seconds:
-            raise GuardrailExceeded(f"Exceeded max_runtime_seconds ({self.guardrails.max_runtime_seconds})")
+            raise GuardrailExceeded(f"Exceeded max_runtime_seconds ({self.guardrails.max_runtime_seconds})", kind="timeout")
         self.model_calls += 1
 
     def before_tool_call(self, system_name: str, arguments_key: str) -> None:
@@ -132,3 +145,31 @@ class GuardrailTracker:
         # against a running total we know is incomplete.
         if not self.cost_incomplete and self.total_cost_usd > self.guardrails.max_cost_usd:
             raise GuardrailExceeded(f"Exceeded max_cost_usd ({self.guardrails.max_cost_usd})")
+
+    def to_state(self) -> dict[str, Any]:
+        """Epic 17, US17.3: serializes running counters so a manual human
+        checkpoint can suspend mid-run and resume later in a different
+        process/request without resetting any guardrail."""
+        return {
+            "model_calls": self.model_calls,
+            "tool_calls": self.tool_calls,
+            "total_tokens": self.total_tokens,
+            "total_cost_usd": self.total_cost_usd,
+            "cost_incomplete": self.cost_incomplete,
+            "call_counts": [[list(key), count] for key, count in self._call_counts.items()],
+            "elapsed_seconds": self._prior_elapsed + (time.monotonic() - self._started_at),
+        }
+
+    @classmethod
+    def from_state(cls, guardrails: RuntimeGuardrails, state: dict[str, Any]) -> "GuardrailTracker":
+        tracker = cls(
+            guardrails=guardrails,
+            model_calls=state["model_calls"],
+            tool_calls=state["tool_calls"],
+            total_tokens=state["total_tokens"],
+            total_cost_usd=state["total_cost_usd"],
+            cost_incomplete=state["cost_incomplete"],
+        )
+        tracker._call_counts = Counter({tuple(key): count for key, count in state["call_counts"]})
+        tracker._prior_elapsed = state["elapsed_seconds"]
+        return tracker

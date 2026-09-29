@@ -1,4 +1,5 @@
 import json
+import time
 
 import pytest
 
@@ -6,6 +7,21 @@ from app.llm.types import ChatCompletionResult, ToolCall, Usage
 
 from .test_api_agents import _automatable_node, _seed_blueprint
 from .test_api_blueprint import _finalize
+
+# WAITING_FOR_HUMAN counts as a stopping point (a stable resting state a
+# test needs to observe and act on), unlike the transient WAITING_FOR_MODEL/
+# WAITING_FOR_TOOL phases within one still-in-progress turn.
+_KEEP_POLLING_STATUSES = {"CREATED", "QUEUED", "RUNNING", "WAITING_FOR_MODEL", "WAITING_FOR_TOOL"}
+
+
+def _await_terminal_twin_run(client, process_id: str, run_id: str, *, timeout_seconds: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        run = client.get(f"/api/processes/{process_id}/twin-runs/{run_id}").json()
+        if run["status"] not in _KEEP_POLLING_STATUSES:
+            return run
+        time.sleep(0.1)
+    raise AssertionError(f"Twin run {run_id} did not finish within {timeout_seconds}s")
 
 
 def _llm_result(*, tool_calls=None, text=None) -> ChatCompletionResult:
@@ -119,12 +135,17 @@ def test_run_scenario_end_to_end_and_summary(client, fake_llm):
     ]
 
     r = client.post(f"/api/processes/{process['id']}/scenarios/{scenario['id']}/run")
-    assert r.status_code == 200
-    run = r.json()
-    assert run["status"] == "passed"
+    assert r.status_code == 202
+    started = r.json()
+    assert started["status"] == "CREATED"
+
+    run = _await_terminal_twin_run(client, process["id"], started["id"])
+    assert run["status"] == "COMPLETED"
+    assert run["graded_passed"] is True
     assert run["deviations"] == []
     assert run["final_output"] == {"summary": "done"}
-    assert [step["kind"] for step in run["trace"]] == ["tool_call", "human_checkpoint"]
+    actionable = [step["type"] for step in run["steps"] if step["type"] in ("TOOL_EXECUTED", "HUMAN_APPROVED")]
+    assert actionable == ["TOOL_EXECUTED", "HUMAN_APPROVED"]
 
     runs = client.get(f"/api/processes/{process['id']}/agent-artifacts/{artifact['id']}/runs").json()
     assert len(runs) == 1
@@ -135,7 +156,12 @@ def test_run_scenario_end_to_end_and_summary(client, fake_llm):
     assert summary["pass_rate"] == 1.0
 
 
-def test_run_scenario_invalid_schema_inference_returns_502(client, fake_llm):
+def test_run_scenario_invalid_schema_inference_lands_as_failed(client, fake_llm):
+    """Epic 17, US17.6: twin runs execute in a background task now, so a
+    schema-inference failure can no longer surface as an immediate 502 --
+    the POST always accepts (202), and the failure lands on the polled run
+    as status="FAILED" with a deviation, the same as any other execution
+    problem (see app/twin/engine.py's docstring, decision 4)."""
     process, artifact = _make_artifact(client)
     scenario = client.post(
         f"/api/processes/{process['id']}/agent-artifacts/{artifact['id']}/scenarios", json=_scenario_payload()
@@ -144,7 +170,106 @@ def test_run_scenario_invalid_schema_inference_returns_502(client, fake_llm):
     fake_llm.complete.return_value = _llm_result(text="not json")
 
     r = client.post(f"/api/processes/{process['id']}/scenarios/{scenario['id']}/run")
-    assert r.status_code == 502
+    assert r.status_code == 202
+
+    run = _await_terminal_twin_run(client, process["id"], r.json()["id"])
+    assert run["status"] == "FAILED"
+    assert any("tool schemas" in d["reason"] for d in run["deviations"])
+
+
+def test_run_scenario_manual_checkpoint_suspends_then_resumes(client, fake_llm):
+    """Epic 17, US17.3/US17.4: a scenario configured for a real person's
+    checkpoint decision genuinely suspends the run, and the resume/cancel
+    endpoints (app/api/twin.py) drive it the rest of the way."""
+    process, artifact = _make_artifact(client)
+    scenario = client.post(
+        f"/api/processes/{process['id']}/agent-artifacts/{artifact['id']}/scenarios",
+        json=_scenario_payload(human_checkpoint_config={"mode": "manual"}, expected_steps=[], expected_outputs={}),
+    ).json()
+
+    schema_payload = {
+        "tools": [
+            {
+                "system_name": "CRM API",
+                "tool_name": "lookup_record",
+                "description": "Look up a record by id.",
+                "parameters": {"type": "object", "properties": {"record_id": {"type": "string"}}, "required": ["record_id"]},
+                "response_shape_description": "An object with a 'tier' field.",
+            }
+        ]
+    }
+    fake_llm.complete.side_effect = [
+        _llm_result(text=json.dumps(schema_payload)),
+        _llm_result(
+            tool_calls=[
+                ToolCall(
+                    id="c2",
+                    name="request_human_decision",
+                    arguments={"summary": "Approve?", "proposed_action": {"tier": "gold"}},
+                )
+            ]
+        ),
+        _llm_result(text=json.dumps({"summary": "done"})),
+    ]
+
+    run_id = client.post(f"/api/processes/{process['id']}/scenarios/{scenario['id']}/run").json()["id"]
+    waiting = _await_terminal_twin_run(client, process["id"], run_id)
+    assert waiting["status"] == "WAITING_FOR_HUMAN"
+
+    r = client.post(f"/api/processes/{process['id']}/twin-runs/{run_id}/resume", json={"decision": "approve"})
+    assert r.status_code == 202
+
+    run = _await_terminal_twin_run(client, process["id"], run_id)
+    assert run["status"] == "COMPLETED"
+    assert run["final_output"] == {"summary": "done"}
+
+
+def test_cancel_twin_run(client, fake_llm):
+    process, artifact = _make_artifact(client)
+    scenario = client.post(
+        f"/api/processes/{process['id']}/agent-artifacts/{artifact['id']}/scenarios",
+        json=_scenario_payload(human_checkpoint_config={"mode": "manual"}, expected_steps=[], expected_outputs={}),
+    ).json()
+
+    schema_payload = {
+        "tools": [
+            {
+                "system_name": "CRM API",
+                "tool_name": "lookup_record",
+                "description": "Look up a record by id.",
+                "parameters": {"type": "object", "properties": {"record_id": {"type": "string"}}, "required": ["record_id"]},
+                "response_shape_description": "An object with a 'tier' field.",
+            }
+        ]
+    }
+    fake_llm.complete.side_effect = [
+        _llm_result(text=json.dumps(schema_payload)),
+        _llm_result(
+            tool_calls=[
+                ToolCall(
+                    id="c2",
+                    name="request_human_decision",
+                    arguments={"summary": "Approve?", "proposed_action": {"tier": "gold"}},
+                )
+            ]
+        ),
+        _llm_result(text=json.dumps({"summary": "done"})),
+    ]
+
+    run_id = client.post(f"/api/processes/{process['id']}/scenarios/{scenario['id']}/run").json()["id"]
+    _await_terminal_twin_run(client, process["id"], run_id)  # let it reach WAITING_FOR_HUMAN
+
+    # A WAITING_FOR_HUMAN run has no active background task to notice a
+    # cancel_requested flag, so cancelling one resolves immediately rather
+    # than needing a resume to "wake it up" -- see repository.cancel_run.
+    assert client.post(f"/api/processes/{process['id']}/twin-runs/{run_id}/cancel").status_code == 202
+    run = client.get(f"/api/processes/{process['id']}/twin-runs/{run_id}").json()
+    assert run["status"] == "CANCELLED"
+
+    assert (
+        client.post(f"/api/processes/{process['id']}/twin-runs/{run_id}/resume", json={"decision": "approve"}).status_code
+        == 400
+    )
 
 
 def test_run_scenario_requires_editor(client, viewer_client):
@@ -192,8 +317,8 @@ def _run_happy_path_scenario(client, fake_llm, process, artifact, scenario) -> d
         _llm_result(text=json.dumps({"summary": "done"})),
     ]
     r = client.post(f"/api/processes/{process['id']}/scenarios/{scenario['id']}/run")
-    assert r.status_code == 200
-    return r.json()
+    assert r.status_code == 202
+    return _await_terminal_twin_run(client, process["id"], r.json()["id"])
 
 
 # -- US14.5: manual baseline comparison ----------------------------------------

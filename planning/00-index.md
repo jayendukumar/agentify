@@ -105,9 +105,10 @@ first slice doesn't yet have, rather than a from-scratch rebuild of
 | 23 | [Agent Definition Quality Gate & Unified Release Lifecycle](epics/23-quality-gate-and-release-lifecycle.md) | DRAFT -> ... -> DEPLOYED checklist-gated lifecycle, reconciled with Epic 12/15's existing status fields |
 
 Suggested order: Epic 20 first (17, 21, and 23 all assume its fields
-exist), then Epic 17, then 18/19/21 roughly in parallel (each depends on
-17 but not on each other), then 22 last (it snapshots versions the others
-introduce), then 23 (depends on 20, 19, and reconciling with 12/15).
+exist) -- **done**, then Epic 17 (unified run/step model) -- **done**,
+then 18/19/21 roughly in parallel (each depends on 17 but not on each
+other), then 22 last (it snapshots versions the others introduce), then
+23 (depends on 20, 19, and reconciling with 12/15).
 Epic 19's Notes section explicitly declines to scope the requirements
 doc's "automated agent improvement loop" (its Section 12) as a committed
 epic -- the source document itself frames that as future-looking, not

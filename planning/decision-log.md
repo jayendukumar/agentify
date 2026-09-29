@@ -1930,3 +1930,137 @@ relies on this (its scenario sets matching `expected_steps` explicitly)
 yet. Fixed by adding matching `expected_steps` to the new tests, isolating
 each assertion to the specific behavior (permission grant/denial) it's
 meant to test rather than an incidental grading mismatch.
+
+## 2026-09-29 -- Epic 17, Simulation Run Lifecycle & Execution Trace Model
+
+Implemented all six user stories: a unified `RunStatus`/`StepType`/`RunStep`
+taxonomy (`app/schemas/run.py`) shared by twin (Epic 14) and orchestration
+(Epic 16) runs, replacing their two independent ad hoc shapes; background
+execution for twin runs (US17.6, matching Epic 16's existing pattern);
+cooperative cancellation (US17.4); genuine manual human-in-the-loop
+suspend/resume (US17.3); and escalation as a distinct outcome (US17.5).
+Live-verified: full backend suite (316 tests, up from 307) run against a
+real Postgres test DB in a container built from this repo's own
+`axyntro-api` image; `tsc -b` + `vite build` + 93-test `vitest` clean on
+the frontend; a real manual-checkpoint pause/resume and a cancel exercised
+against the live stack (OpenRouter -> Qwen), not just the fake LLM client.
+
+### Migration is additive, not a row-by-row rewrite
+
+New `simulation_runs` table (`SimulationRunModel`) is what both runtimes
+write to going forward; `twin_runs`/`orchestration_runs` are left in place
+untouched. `list_twin_runs`/`get_twin_summary`/`list_orchestration_runs`/
+`get_orchestration_run` now query both tables and merge, mapping legacy
+rows through a `_legacy_run_status`/`_legacy_trace_to_steps` projection so
+old runs keep displaying correctly under the new shape (old `trace` entries
+map onto `TOOL_EXECUTED`/`TOOL_FAILED`/`HUMAN_APPROVED`/`HUMAN_REJECTED`
+steps; old `passed`/`failed` status both map to `COMPLETED`, differing only
+in `graded_passed`). The epic doc explicitly left "migrate every row" vs.
+"additive with a mapping layer" open -- chose the latter: this is
+pre-release local-dev/test data, not production history that needs to
+stay byte-identical, and preserving every row physically (rather than
+requiring a data-migration script) is strictly safer.
+
+### Lifecycle status is decoupled from scenario grading
+
+The epic's own state-machine list (`CREATED -> ... -> {COMPLETED, FAILED,
+CANCELLED, TIMED_OUT}`) has no room for "the run finished but grading
+disagreed" as a separate case from "the run finished cleanly" -- yet
+Epic 20's policy-denial behavior (a denied tool call downgrades the whole
+run's status to `"failed"` even when the agent recovers and produces a
+correct final output) was exactly that conflation. Fixed by making
+`RunStatus` describe execution/lifecycle outcome only; grading (did the
+trace/output match `expected_steps`/`expected_outputs`) is now
+`graded_passed: bool | None`, computed independently. A run that executes
+to a final response is always `COMPLETED`, even with a policy denial or a
+grading mismatch recorded via `graded_passed=False` -- "what does status
+mean" no longer depends on which kind of run or how it happened to fail.
+
+### Escalation mapping: only a runtime guardrail breach is escalation-eligible, not every failure
+
+`GuardrailExceeded` (`app/twin/gateway.py`) gained a `kind: "timeout" |
+"limit"` field. Engine maps `kind="timeout"` to `TIMED_OUT` unconditionally
+(a wall-clock cutoff isn't "the agent asking for help"); `kind="limit"`
+(tool-call count, tokens, cost, loop detection, or step exhaustion) becomes
+`ESCALATED` only when the artifact declares a non-empty
+`escalation_policy.escalate_when`, else `FAILED` (Epic 20's original
+behavior, preserved when governance isn't opted in). A malformed final
+JSON response or an unknown-tool call is always `FAILED`, deliberately not
+escalation-eligible -- those are model/programming defects, not the
+agent's own guardrail firing.
+
+### Manual pause/resume: engine.py had to become resumable, not just extended
+
+US17.3 ("closes the gap Epic 14's Discovery section explicitly deferred")
+needed `run_scenario` to genuinely suspend mid-conversation and resume in a
+different process/request later, not just add a third `human_checkpoint_config.mode`
+value. Implementation: on a manual checkpoint, the engine serializes
+`messages` (already a list of pydantic `ChatMessage`s -- `model_dump(mode="json")`
+round-trips losslessly), the `GuardrailTracker`'s counters (new
+`to_state`/`from_state` methods, including wall-clock elapsed time so
+`max_runtime_seconds` is enforced across the suspend/resume gap, not reset
+by it), the steps emitted so far, and any *other* tool calls from the same
+model turn not yet resolved (`pending_calls`) -- into one JSON-serializable
+`resume_state` dict stored on the run row's own `resume_state` column, read
+back and consumed by `execute_twin_run_background`/
+`execute_orchestration_run_background` on the next invocation. Orchestration
+needed the same treatment one level up (a nested agent's own suspension, or
+a manual node's own checkpoint, both propagate as the *orchestration run's*
+`WAITING_FOR_HUMAN`) via an analogous `resume_state` shape
+(`current_id`/`current_data`/`visited_path`/`node_runs`/`steps`/`manual`/
+`node_resume_state`).
+
+### Real defect found only by testing background-task exception safety, not by reading the code
+
+Moving twin runs to background execution (US17.6) exposed a latent
+assumption Epic 14 always had: `run_scenario` let `TwinServiceError` (an
+unknown tool call, a malformed LLM response while inferring tool schemas)
+propagate all the way out, relying on always running inside one HTTP
+request where `app/api/twin.py` caught it and returned a 502. A
+`BackgroundTasks` callback has no such catcher -- an uncaught exception
+there is simply lost, leaving the run row stuck non-terminal forever.
+Found by writing `test_run_scenario_invalid_schema_inference_lands_as_failed`
+against the real `TestClient` (which runs background tasks for real, not
+mocked) and watching it crash instead of returning a graceful `FAILED`
+run. Fixed in two places: `run_scenario` itself now catches
+`TwinServiceError` (and, as a last resort, any `Exception`) alongside
+`GuardrailExceeded`; and `execute_twin_run_background`/
+`execute_orchestration_run_background` wrap their own pre-`run_scenario`
+setup (tool-schema inference, node-artifact building) in the same
+try/except, matching the pattern Epic 16 already used for orchestration's
+own setup phase.
+
+### Real defect found via live cancel/resume testing: a `WAITING_FOR_HUMAN` run has no background task to notice `cancel_requested`
+
+First cancel-endpoint implementation just set `cancel_requested=True` and
+returned, cooperative-checked by the run's own `on_step` callback -- correct
+for a `RUNNING` leg, but a `WAITING_FOR_HUMAN` run has *no* active
+background task at all; nothing would ever check that flag until a resume
+"woke it up" again, which is backwards (cancelling shouldn't require
+resuming first). Found while wiring the frontend's cancel button and
+having to reach for a workaround (resume immediately after cancel, just to
+trigger the check) -- a sign the backend contract was wrong, not that the
+frontend needed to compensate. Fixed `repository.cancel_run`: a
+`WAITING_FOR_HUMAN` run resolves straight to `CANCELLED` (no background
+task needed, nothing to interrupt), and `resume_run` on an
+already-terminal run now raises `TwinServiceError` -> both API endpoints
+return `400` for that case (previously unhandled -> would have been a raw
+500). Updated `test_cancel_run`/`test_cancel_twin_run` accordingly.
+
+### Frontend blast radius stayed small despite the status-vocabulary rewrite
+
+Confirmed via research before touching anything: only `types.ts`,
+`client.ts`, `DigitalTwinPanel.tsx`, `OrchestrationPanel.tsx`, and one test
+fixture (`BlueprintPage.test.tsx`) reference `TwinRun`/`OrchestrationRun`/
+`NodeRun`/the old `TwinTraceStep`, and usage inside them was shallow
+(status-string comparisons for badges/polling, `.trace.length`, a handful
+of named fields) -- no other "Digital Twin"-named component touches these
+types. Consolidated the two panels' ad hoc status-class functions into one
+shared `frontend/src/lib/runStatus.ts` (`runStatusBadgeClass`,
+`isTerminalRunStatus`) rather than duplicating the new eleven-value
+`RunStatus` switch twice. Added minimal (not redesigned) Approve/Reject/
+Cancel buttons to `OrchestrationPanel.tsx` for a `WAITING_FOR_HUMAN` run --
+Epic 17 is data-model/execution-plumbing, not new UI (Epic 18 owns
+observability), but shipping a backend capability with *zero* way to
+reach it from the product would make US17.3/17.4 untestable end-to-end
+through the real app.

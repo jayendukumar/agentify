@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   createScenario,
   deleteScenario,
   deleteTwinBaseline,
+  getTwinRun,
   getTwinSummary,
   listScenarios,
   listTwinRuns,
-  runScenario,
   setTwinBaseline,
+  startTwinRun,
 } from '../api/client'
 import type {
   AgentArtifact,
@@ -20,13 +21,15 @@ import type {
   TwinSystemStub,
 } from '../api/types'
 import type { AgentGroup } from '../lib/blueprintLabels'
+import { isTerminalRunStatus, runStatusBadgeClass } from '../lib/runStatus'
 import { handleTabKeyDown } from '../lib/tabKeyboard'
 
 const DEFAULT_HUMAN_CHECKPOINT_CONFIG = '{"mode": "probability", "approve_probability": 1.0}'
 
-function statusBadgeClass(status: TwinRun['status']): string {
-  return status === 'passed' ? 'badge status-done' : 'badge status-failed'
-}
+// Epic 17, US17.6: twin runs execute in the background now -- poll rather
+// than push, same mechanism/interval OrchestrationPanel.tsx already uses
+// for its (multi-agent, so naturally slower) rehearsal runs.
+const POLL_INTERVAL_MS = 2000
 
 function parseJsonField<T>(raw: string, fieldLabel: string): T {
   try {
@@ -69,6 +72,29 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
   const [savingBaseline, setSavingBaseline] = useState(false)
   const [baselineError, setBaselineError] = useState<string | null>(null)
 
+  const pollTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
+
+  function startPolling(scenarioId: string, runId: string) {
+    const existing = pollTimers.current[scenarioId]
+    if (existing) clearInterval(existing)
+    const timer = setInterval(async () => {
+      try {
+        const run = await getTwinRun(processId, runId)
+        setRunsByScenario((prev) => ({ ...prev, [scenarioId]: run }))
+        if (isTerminalRunStatus(run.status)) {
+          clearInterval(timer)
+          delete pollTimers.current[scenarioId]
+          if (selectedArtifactId) void refreshSummary(selectedArtifactId)
+        }
+      } catch (err) {
+        clearInterval(timer)
+        delete pollTimers.current[scenarioId]
+        setRunError(err instanceof ApiError ? err.message : 'Lost connection while watching the run')
+      }
+    }, POLL_INTERVAL_MS)
+    pollTimers.current[scenarioId] = timer
+  }
+
   useEffect(() => {
     if (!selectedArtifactId) {
       setScenarios([])
@@ -100,6 +126,9 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
           if (!latestByScenario[run.scenario_id]) latestByScenario[run.scenario_id] = run
         }
         setRunsByScenario(latestByScenario)
+        for (const run of Object.values(latestByScenario)) {
+          if (!isTerminalRunStatus(run.status)) startPolling(run.scenario_id, run.id)
+        }
       })
       .catch((err) => {
         if (!cancelled) setLoadError(err instanceof ApiError ? err.message : 'Failed to load scenarios')
@@ -196,9 +225,9 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
     setRunningId(scenarioId)
     setRunError(null)
     try {
-      const run = await runScenario(processId, scenarioId)
+      const run = await startTwinRun(processId, scenarioId)
       setRunsByScenario((prev) => ({ ...prev, [scenarioId]: run }))
-      await refreshSummary(selectedArtifactId)
+      startPolling(scenarioId, run.id)
     } catch (err) {
       setRunError(err instanceof ApiError ? err.message : 'Failed to run scenario')
     } finally {
@@ -336,7 +365,9 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
               <li key={scenario.id} className="registry-entry-card" data-testid="twin-scenario-card">
                 <div className="registry-entry-header">
                   <span>{scenario.name}</span>
-                  {lastRun && <span className={statusBadgeClass(lastRun.status)}>{lastRun.status}</span>}
+                  {lastRun && (
+                    <span className={runStatusBadgeClass(lastRun.status, lastRun.graded_passed)}>{lastRun.status}</span>
+                  )}
                 </div>
                 <div className="registry-entry-actions">
                   <button type="button" onClick={() => handleRun(scenario.id)} disabled={runningId === scenario.id}>
@@ -358,7 +389,7 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
                       </ul>
                     )}
                     <p className="meta">
-                      {lastRun.trace.length} step(s) -- {lastRun.turns_used} turn(s) --{' '}
+                      {lastRun.steps.length} step(s) -- {lastRun.turns_used} turn(s) --{' '}
                       {lastRun.total_cost_usd !== null ? `$${lastRun.total_cost_usd.toFixed(4)}` : 'cost unknown'}
                     </p>
                   </div>

@@ -1,9 +1,28 @@
 # Epic 17 -- Simulation Run Lifecycle & Execution Trace Model
 
-**Status: not started.** Groomed 2026-09-28 from the "Digital Twin Agent
-Simulation" requirements doc (Sections 5 and part of 2) against the current
-codebase -- see `planning/decision-log.md`'s 2026-09-28 entry for the source
-review.
+**Status: implemented (all six user stories).** Groomed 2026-09-28 from the
+"Digital Twin Agent Simulation" requirements doc (Sections 5 and part of 2)
+against the current codebase; built 2026-09-29 -- `app/schemas/run.py` (new
+-- `RunStatus`, `StepType`, `RunStep`, `RunBase`, shared by twin and
+orchestration), `app/twin/gateway.py` (`GuardrailExceeded.kind`,
+`GuardrailTracker.to_state`/`from_state` for suspend/resume),
+`app/twin/engine.py` and `app/twin/orchestrator.py` (rewritten: typed step
+emission, cooperative cancellation via `RunCancelled`, genuine
+suspend/resume for a manual human checkpoint), `app/db/models.py`'s new
+`SimulationRunModel` + its Alembic revision (additive -- `twin_runs`/
+`orchestration_runs` untouched, merged into reads), `app/db/repository.py`
+(background execution for twin runs, cancel/resume, legacy-row merge),
+`app/api/twin.py`/`app/api/orchestration.py` (new run-get/cancel/resume
+endpoints), plus the frontend's status vocabulary and minimal
+resume/cancel affordance (`frontend/src/lib/runStatus.ts`,
+`DigitalTwinPanel.tsx`, `OrchestrationPanel.tsx`). Live-verified: full
+backend suite (316 tests, up from 307) against a real Postgres test DB in
+a container built from this repo's own `axyntro-api` image; `tsc -b` +
+`vite build` + 93-test `vitest` clean on the frontend; a real manual
+pause/resume and a cancel exercised against the live stack (OpenRouter ->
+Qwen) -- see `planning/decision-log.md`'s 2026-09-29 entry for the design
+decisions (additive migration, status/grading decoupling, escalation
+mapping) and the real defects found while building this.
 
 Goal: Replace the two separate, ad hoc run/trace shapes that exist today --
 Epic 14's `TwinRun` (`status: passed|failed|error`, a flat list of

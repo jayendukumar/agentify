@@ -357,8 +357,26 @@ export function deleteScenario(processId: string, scenarioId: string): Promise<v
   return request(`/api/processes/${processId}/scenarios/${scenarioId}`, { method: 'DELETE' })
 }
 
-export function runScenario(processId: string, scenarioId: string): Promise<TwinRun> {
+// Epic 17, US17.6: twin runs now execute in the background -- this returns
+// immediately with the run in status="CREATED"; poll `getTwinRun` for
+// progress, same pattern as `startOrchestrationRun`/`getOrchestrationRun`.
+export function startTwinRun(processId: string, scenarioId: string): Promise<TwinRun> {
   return request(`/api/processes/${processId}/scenarios/${scenarioId}/run`, { method: 'POST' })
+}
+
+export function getTwinRun(processId: string, runId: string): Promise<TwinRun> {
+  return request(`/api/processes/${processId}/twin-runs/${runId}`)
+}
+
+export function cancelTwinRun(processId: string, runId: string): Promise<void> {
+  return request(`/api/processes/${processId}/twin-runs/${runId}/cancel`, { method: 'POST' })
+}
+
+export function resumeTwinRun(processId: string, runId: string, decision: 'approve' | 'reject'): Promise<TwinRun> {
+  return request(`/api/processes/${processId}/twin-runs/${runId}/resume`, {
+    method: 'POST',
+    body: JSON.stringify({ decision }),
+  })
 }
 
 export function listTwinRuns(processId: string, artifactId: string): Promise<TwinRun[]> {
@@ -409,6 +427,21 @@ export function startOrchestrationRun(processId: string, scenarioId: string): Pr
 
 export function getOrchestrationRun(processId: string, runId: string): Promise<OrchestrationRun> {
   return request(`/api/processes/${processId}/orchestration/runs/${runId}`)
+}
+
+export function cancelOrchestrationRun(processId: string, runId: string): Promise<void> {
+  return request(`/api/processes/${processId}/orchestration/runs/${runId}/cancel`, { method: 'POST' })
+}
+
+export function resumeOrchestrationRun(
+  processId: string,
+  runId: string,
+  decision: 'approve' | 'reject',
+): Promise<OrchestrationRun> {
+  return request(`/api/processes/${processId}/orchestration/runs/${runId}/resume`, {
+    method: 'POST',
+    body: JSON.stringify({ decision }),
+  })
 }
 
 export function listOrchestrationRuns(processId: string, scenarioId?: string): Promise<OrchestrationRun[]> {

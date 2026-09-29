@@ -20,10 +20,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from .twin import TwinDeviation, TwinHumanCheckpointConfig, TwinSystemStub, TwinTraceStep
+from .run import RunBase, RunStatus, RunStep
+from .twin import TwinHumanCheckpointConfig, TwinSystemStub
 
-OrchestrationRunStatus = Literal["running", "passed", "failed", "error"]
-NodeRunStatus = Literal["passed", "error"]
 NodeRunKind = Literal["agent", "manual", "gateway", "start_event", "end_event"]
 ManualNodeMode = Literal["human_checkpoint", "fixed_stub"]
 DataMappingMode = Literal["llm_adapter", "exact_field_contract"]
@@ -81,26 +80,21 @@ class OrchestrationScenario(OrchestrationScenarioCreate):
     created_by_name: str | None = None
 
 
-class DataHandoff(BaseModel):
-    """US16.5: one cross-agent data-shape adaptation, logged as its own
-    record so a mismatch is visible rather than silently guessed away.
-    `from_node_id` is None for the very first handoff (the scenario's own
-    start-event inputs, adapted into the first node's expected shape)."""
-
-    from_node_id: str | None = None
-    to_node_id: str
-    mode: DataMappingMode
-    input_before: dict[str, Any]
-    input_after: dict[str, Any]
-
-
 class NodeRun(BaseModel):
+    """Epic 17: a per-node summary within one orchestration run -- kept as
+    a convenience index over the run's unified `steps` (app/schemas/run.py),
+    not a second trace format: `steps` here is exactly the subsequence of
+    the parent OrchestrationRun's `steps` tagged with this `node_id`.
+    `status` reuses RunBase's own RunStatus rather than a bespoke two-value
+    enum -- for an agent node, it's literally that agent's own nested run
+    outcome (app/twin/engine.py's RunOutcome.status)."""
+
     node_id: str
     node_label: str
     kind: NodeRunKind
-    status: NodeRunStatus
+    status: RunStatus
     agent_artifact_id: str | None = None
-    trace: list[TwinTraceStep] = []
+    steps: list[RunStep] = []
     output: dict[str, Any] | None = None
     error_message: str | None = None
     total_cost_usd: float | None = None
@@ -109,19 +103,15 @@ class NodeRun(BaseModel):
     completed_at: datetime | None = None
 
 
-class OrchestrationRun(BaseModel):
-    id: str
+class OrchestrationRun(RunBase):
+    """Epic 17: an orchestration run is now one `kind="orchestration"`
+    SimulationRun -- extends RunBase with the fields specific to a
+    multi-agent process walk. `handoffs` (Epic 16's DataHandoff) is gone --
+    cross-agent data reshaping is now recorded as the `arguments`/`result`
+    of each AGENT_DELEGATED step in `steps` instead of a second parallel
+    record."""
+
     scenario_id: str
     process_id: str
-    status: OrchestrationRunStatus
     node_runs: list[NodeRun] = []
-    handoffs: list[DataHandoff] = []
     visited_path: list[str] = []
-    final_output: dict[str, Any] | None = None
-    deviations: list[TwinDeviation] = []
-    total_cost_usd: float | None = None
-    total_tokens: int = 0
-    started_at: datetime
-    completed_at: datetime | None = None
-    run_by: str | None = None
-    run_by_name: str | None = None

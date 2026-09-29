@@ -8,10 +8,9 @@ from app.llm.types import ChatCompletionResult, Usage
 from app.schemas.agents import AgentDefinition
 from app.schemas.blueprint import AgentIOField
 from app.schemas.orchestration import GatewayDecision, ManualNodeConfig, OrchestrationScenario
-from app.schemas.twin import TwinDeviation
+from app.schemas.run import TwinDeviation
 from app.twin import orchestrator as orchestrator_module
-from app.twin.engine import TwinRunOutcome
-from app.twin.errors import TwinServiceError
+from app.twin.engine import RunCancelled, RunOutcome
 from app.twin.orchestrator import NodeArtifact, grade_orchestration, run_orchestration
 
 
@@ -51,10 +50,10 @@ def _definition(**overrides) -> AgentDefinition:
     return AgentDefinition(**defaults)
 
 
-def _agent_outcome(**overrides) -> TwinRunOutcome:
-    defaults = dict(status="passed", trace=[], final_output={"result": "ok"}, deviations=[], total_cost_usd=0.001, total_tokens=5, turns_used=1)
+def _agent_outcome(**overrides) -> RunOutcome:
+    defaults = dict(status="COMPLETED", steps=[], final_output={"result": "ok"}, deviations=[], graded_passed=True, total_cost_usd=0.001, total_tokens=5, turns_used=1)
     defaults.update(overrides)
-    return TwinRunOutcome(**defaults)
+    return RunOutcome(**defaults)
 
 
 def _llm_result(*, text: str) -> ChatCompletionResult:
@@ -68,29 +67,29 @@ def _llm_result(*, text: str) -> ChatCompletionResult:
 
 def test_grade_orchestration_passes_with_no_expectations():
     scenario = _scenario()
-    status, deviations = grade_orchestration(["n1", "n2"], {"x": 1}, scenario)
-    assert status == "passed"
+    graded_passed, deviations = grade_orchestration(["n1", "n2"], {"x": 1}, scenario)
+    assert graded_passed is True
     assert deviations == []
 
 
 def test_grade_orchestration_flags_path_mismatch():
     scenario = _scenario(expected_path=["n1", "n2"])
-    status, deviations = grade_orchestration(["n1", "n3"], {}, scenario)
-    assert status == "failed"
+    graded_passed, deviations = grade_orchestration(["n1", "n3"], {}, scenario)
+    assert graded_passed is False
     assert any("n3" in d.reason for d in deviations)
 
 
 def test_grade_orchestration_flags_final_output_mismatch():
     scenario = _scenario(expected_final_output={"amount": 100})
-    status, deviations = grade_orchestration([], {"amount": 50}, scenario)
-    assert status == "failed"
+    graded_passed, deviations = grade_orchestration([], {"amount": 50}, scenario)
+    assert graded_passed is False
     assert any("amount" in d.reason for d in deviations)
 
 
 def test_grade_orchestration_flags_missing_final_output_field():
     scenario = _scenario(expected_final_output={"amount": 100})
-    status, deviations = grade_orchestration([], {}, scenario)
-    assert status == "failed"
+    graded_passed, deviations = grade_orchestration([], {}, scenario)
+    assert graded_passed is False
     assert any("missing" in d.reason for d in deviations)
 
 
@@ -125,7 +124,7 @@ async def test_run_orchestration_linear_agent_then_end(fake_llm, monkeypatch):
         fake_llm, flow_nodes=flow_nodes, node_artifacts=node_artifacts, scenario=_scenario(), max_turns_per_node=8
     )
 
-    assert outcome.status == "passed"
+    assert outcome.status == "COMPLETED"
     assert outcome.visited_path == ["start", "task", "end"]
     assert outcome.final_output == {"result": "ok"}
     assert outcome.total_cost_usd == pytest.approx(0.001)
@@ -137,7 +136,7 @@ async def test_run_orchestration_linear_agent_then_end(fake_llm, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_orchestration_agent_error_stops_the_run(fake_llm, monkeypatch):
-    error_outcome = _agent_outcome(status="error", deviations=[TwinDeviation(reason="bad JSON", step_index=None)])
+    error_outcome = _agent_outcome(status="FAILED", graded_passed=None, deviations=[TwinDeviation(reason="bad JSON", step_index=None)])
     monkeypatch.setattr(orchestrator_module, "run_scenario", AsyncMock(return_value=error_outcome))
     flow_nodes = _linear_flow_nodes()
     node_artifacts = {"task": NodeArtifact(artifact_id="art_1", definition=_definition(), tool_schemas={})}
@@ -146,8 +145,8 @@ async def test_run_orchestration_agent_error_stops_the_run(fake_llm, monkeypatch
         fake_llm, flow_nodes=flow_nodes, node_artifacts=node_artifacts, scenario=_scenario(), max_turns_per_node=8
     )
 
-    assert outcome.status == "error"
-    assert outcome.node_runs[0].status == "error"
+    assert outcome.status == "FAILED"
+    assert outcome.node_runs[0].status == "FAILED"
     assert any("bad JSON" in d.reason for d in outcome.deviations)
 
 
@@ -184,7 +183,7 @@ async def test_run_orchestration_gateway_without_decision_errors(fake_llm):
     outcome = await run_orchestration(
         fake_llm, flow_nodes=_gateway_flow_nodes(), node_artifacts={}, scenario=_scenario(), max_turns_per_node=8
     )
-    assert outcome.status == "error"
+    assert outcome.status == "FAILED"
     assert any("gw" in d.reason for d in outcome.deviations)
 
 
@@ -194,7 +193,7 @@ async def test_run_orchestration_gateway_follows_configured_decision(fake_llm):
     outcome = await run_orchestration(
         fake_llm, flow_nodes=_gateway_flow_nodes(), node_artifacts={}, scenario=scenario, max_turns_per_node=8
     )
-    assert outcome.status == "passed"
+    assert outcome.status == "COMPLETED"
     assert outcome.visited_path == ["start", "gw", "end_b"]
 
 
@@ -204,7 +203,7 @@ async def test_run_orchestration_gateway_rejects_invalid_target(fake_llm):
     outcome = await run_orchestration(
         fake_llm, flow_nodes=_gateway_flow_nodes(), node_artifacts={}, scenario=scenario, max_turns_per_node=8
     )
-    assert outcome.status == "error"
+    assert outcome.status == "FAILED"
 
 
 # -- run_orchestration: diagrams with no explicit start/end events ---------------
@@ -232,7 +231,7 @@ async def test_run_orchestration_falls_back_to_root_node_with_no_start_event(fak
     outcome = await run_orchestration(
         fake_llm, flow_nodes=_no_events_flow_nodes(), node_artifacts={}, scenario=_scenario(), max_turns_per_node=8
     )
-    assert outcome.status == "passed"
+    assert outcome.status == "COMPLETED"
     assert outcome.visited_path == ["task1", "task2"]
     assert [nr.kind for nr in outcome.node_runs] == ["manual", "manual"]
     assert outcome.final_output == outcome.node_runs[-1].output
@@ -240,14 +239,20 @@ async def test_run_orchestration_falls_back_to_root_node_with_no_start_event(fak
 
 @pytest.mark.asyncio
 async def test_run_orchestration_raises_on_ambiguous_entry_points(fake_llm):
+    """Epic 17: a background task must never let an exception escape (see
+    app/twin/engine.py's docstring, decision 4 in the epic's plan) -- this
+    now lands as status="FAILED" with a deviation, not a raised exception,
+    the same way any other TwinServiceError (a data-adaptation failure, an
+    unknown tool call) does."""
     flow_nodes = [
         FlowNodeInfo(id="task1", label="Task 1", bpmn_type="userTask", lane_name=None, predecessors=[], successors=[]),
         FlowNodeInfo(id="task2", label="Task 2", bpmn_type="userTask", lane_name=None, predecessors=[], successors=[]),
     ]
-    with pytest.raises(TwinServiceError):
-        await run_orchestration(
-            fake_llm, flow_nodes=flow_nodes, node_artifacts={}, scenario=_scenario(), max_turns_per_node=8
-        )
+    outcome = await run_orchestration(
+        fake_llm, flow_nodes=flow_nodes, node_artifacts={}, scenario=_scenario(), max_turns_per_node=8
+    )
+    assert outcome.status == "FAILED"
+    assert any("ambiguous" in d.reason for d in outcome.deviations)
 
 
 # -- run_orchestration: manual (non-automatable) nodes ----------------------------
@@ -258,11 +263,11 @@ async def test_run_orchestration_manual_node_defaults_to_human_checkpoint(fake_l
     outcome = await run_orchestration(
         fake_llm, flow_nodes=_linear_flow_nodes(), node_artifacts={}, scenario=_scenario(), max_turns_per_node=8
     )
-    assert outcome.status == "passed"
+    assert outcome.status == "COMPLETED"
     manual_run = outcome.node_runs[0]
     assert manual_run.kind == "manual"
     assert manual_run.output["human_decision"] == "approve"  # default approve_probability=1.0
-    assert manual_run.trace[0].kind == "human_checkpoint"
+    assert any(s.type == "HUMAN_APPROVED" and s.decision == "approve" for s in manual_run.steps)
 
 
 @pytest.mark.asyncio
@@ -273,19 +278,19 @@ async def test_run_orchestration_manual_node_fixed_stub(fake_llm):
     outcome = await run_orchestration(
         fake_llm, flow_nodes=_linear_flow_nodes(), node_artifacts={}, scenario=scenario, max_turns_per_node=8
     )
-    assert outcome.status == "passed"
+    assert outcome.status == "COMPLETED"
     assert outcome.node_runs[0].output == {"filed": True}
     assert outcome.final_output == {"filed": True}
 
 
-# -- run_orchestration: data handoff ----------------------------------------------
+# -- run_orchestration: data handoff (folded into AGENT_DELEGATED steps) ---------
 
 
 @pytest.mark.asyncio
 async def test_run_orchestration_llm_adapter_reshapes_input(fake_llm, monkeypatch):
     captured_scenarios = []
 
-    async def fake_run_scenario(llm, *, artifact, tool_schemas, scenario, max_turns):
+    async def fake_run_scenario(llm, *, artifact, tool_schemas, scenario, max_turns, **kwargs):
         captured_scenarios.append(scenario)
         return _agent_outcome()
 
@@ -299,10 +304,11 @@ async def test_run_orchestration_llm_adapter_reshapes_input(fake_llm, monkeypatc
         fake_llm, flow_nodes=_linear_flow_nodes(), node_artifacts=node_artifacts, scenario=_scenario(inputs={"raw": "data"}), max_turns_per_node=8
     )
 
-    assert outcome.status == "passed"
+    assert outcome.status == "COMPLETED"
     assert captured_scenarios[0].inputs == {"foo": "bar"}
-    assert outcome.handoffs[0].mode == "llm_adapter"
-    assert outcome.handoffs[0].input_after == {"foo": "bar"}
+    delegated = next(s for s in outcome.steps if s.type == "AGENT_DELEGATED")
+    assert delegated.arguments["mode"] == "llm_adapter"
+    assert delegated.result["input_after"] == {"foo": "bar"}
 
 
 @pytest.mark.asyncio
@@ -316,8 +322,8 @@ async def test_run_orchestration_exact_field_contract_missing_field_errors(fake_
         fake_llm, flow_nodes=_linear_flow_nodes(), node_artifacts=node_artifacts, scenario=scenario, max_turns_per_node=8
     )
 
-    assert outcome.status == "error"
-    assert outcome.node_runs[0].status == "error"
+    assert outcome.status == "FAILED"
+    assert outcome.node_runs[0].status == "FAILED"
     assert "missing_field" in outcome.node_runs[0].error_message
     fake_llm.complete.assert_not_called()  # exact contract mode never calls the LLM
 
@@ -342,7 +348,7 @@ async def test_run_orchestration_stops_on_max_total_steps(fake_llm):
     outcome = await run_orchestration(
         fake_llm, flow_nodes=flow_nodes, node_artifacts={}, scenario=scenario, max_turns_per_node=8, max_total_steps=5
     )
-    assert outcome.status == "error"
+    assert outcome.status == "FAILED"
     assert any("Exceeded max total steps" in d.reason for d in outcome.deviations)
 
 
@@ -362,3 +368,48 @@ async def test_run_orchestration_calls_on_node_run_callback_incrementally(fake_l
 
     assert seen == ["task", "end"]
     assert seen == [nr.node_id for nr in outcome.node_runs]
+
+
+# -- Epic 17: manual human-in-the-loop pause/resume at a manual node -------------
+
+
+@pytest.mark.asyncio
+async def test_run_orchestration_manual_node_manual_checkpoint_suspends_and_resumes(fake_llm):
+    from app.schemas.twin import TwinHumanCheckpointConfig
+
+    scenario = _scenario(
+        manual_node_config={"task": ManualNodeConfig(human_checkpoint_config=TwinHumanCheckpointConfig(mode="manual"))}
+    )
+
+    suspended = await run_orchestration(
+        fake_llm, flow_nodes=_linear_flow_nodes(), node_artifacts={}, scenario=scenario, max_turns_per_node=8
+    )
+
+    assert suspended.status == "WAITING_FOR_HUMAN"
+    assert suspended.resume_state is not None
+    assert suspended.resume_state["manual"] is True
+
+    resumed = await run_orchestration(
+        fake_llm, flow_nodes=_linear_flow_nodes(), node_artifacts={}, scenario=scenario, max_turns_per_node=8,
+        resume_state=suspended.resume_state, human_decision="reject",
+    )
+
+    assert resumed.status == "COMPLETED"
+    assert resumed.node_runs[0].output["human_decision"] == "reject"
+
+
+# -- Epic 17: cooperative cancellation --------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_orchestration_cancelled_via_on_step(fake_llm):
+    async def on_step(step):
+        if step.type == "RUN_STARTED":
+            raise RunCancelled()
+
+    outcome = await run_orchestration(
+        fake_llm, flow_nodes=_linear_flow_nodes(), node_artifacts={}, scenario=_scenario(),
+        max_turns_per_node=8, on_step=on_step,
+    )
+
+    assert outcome.status == "CANCELLED"

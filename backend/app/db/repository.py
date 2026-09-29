@@ -29,13 +29,13 @@ from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema
 from app.schemas.documents import IngestionStatus
 from app.schemas.gap_analysis import GapFinding, GapFindingOption
 from app.schemas.orchestration import (
-    DataHandoff,
     NodeRun,
     OrchestrationRun,
     OrchestrationScenario,
     OrchestrationScenarioCreate,
 )
 from app.schemas.publish import AgentPublication, AgentPublishStatus
+from app.schemas.run import RunStatus, RunStep
 from app.schemas.twin import (
     InferredToolSchema,
     TwinBaseline,
@@ -49,7 +49,7 @@ from app.schemas.twin import (
 )
 from app.schemas.versions import VersionDetail
 from app.store import NotFoundError
-from app.twin.engine import run_scenario
+from app.twin.engine import RunCancelled, run_scenario
 from app.twin.errors import TwinServiceError
 from app.twin.orchestrator import NodeArtifact, run_orchestration
 from app.twin.schema_inference import infer_tool_schemas
@@ -71,6 +71,7 @@ from .models import (
     ProcessModel,
     ProcessSchemaChangeModel,
     SessionModel,
+    SimulationRunModel,
     SourceRefModel,
     TwinBaselineModel,
     TwinRunModel,
@@ -697,15 +698,86 @@ def _to_pydantic_twin_scenario(session: Session, scenario: TwinScenarioModel) ->
     )
 
 
+def _legacy_run_status(status: str) -> tuple[RunStatus, bool | None]:
+    """Epic 17: maps a pre-Epic-17 TwinRunModel/OrchestrationRunModel
+    `status` string onto the new (status, graded_passed) split -- historical
+    rows are never re-executed, only re-displayed through the new shape.
+    "passed"/"failed" both mean the run *executed* to completion (only
+    grading differed); "error" (or a leftover "running" from a crashed
+    background task predating this migration) means it did not."""
+    if status == "passed":
+        return "COMPLETED", True
+    if status == "failed":
+        return "COMPLETED", False
+    return "FAILED", None
+
+
+def _legacy_trace_to_steps(trace: list[dict], *, occurred_at) -> list[RunStep]:
+    """Epic 17: maps a pre-Epic-17 flat two-kind trace (`tool_call`/
+    `human_checkpoint`) onto the new typed RunStep taxonomy for display.
+    Old trace entries never recorded a per-step timestamp, so every mapped
+    step shares the run's own `occurred_at` (its completion time) --
+    approximate, but this is historical read-only data, never re-graded."""
+    steps: list[RunStep] = []
+    for i, entry in enumerate(trace):
+        if entry.get("kind") == "human_checkpoint":
+            step_type = "HUMAN_APPROVED" if entry.get("decision") == "approve" else "HUMAN_REJECTED"
+        else:
+            step_type = "TOOL_FAILED" if entry.get("denied") else "TOOL_EXECUTED"
+        steps.append(
+            RunStep(
+                seq=i,
+                type=step_type,
+                target=entry.get("target"),
+                arguments=entry.get("arguments") or {},
+                result=entry.get("result"),
+                decision=entry.get("decision"),
+                denied=bool(entry.get("denied")),
+                static_fallback=bool(entry.get("static_fallback")),
+                occurred_at=occurred_at,
+            )
+        )
+    return steps
+
+
 def _to_pydantic_twin_run(session: Session, run: TwinRunModel) -> TwinRun:
+    """Epic 17: projects a pre-Epic-17 TwinRunModel row (kept forever, never
+    migrated -- see app/db/models.py's SimulationRunModel docstring) through
+    the new TwinRun shape, so it still displays correctly alongside new
+    SimulationRunModel-backed runs (see `list_twin_runs`/`get_twin_summary`'s
+    merge)."""
+    status, graded_passed = _legacy_run_status(run.status)
     return TwinRun(
         id=run.id,
+        kind="twin",
         scenario_id=run.scenario_id,
         agent_artifact_id=run.agent_artifact_id,
-        status=run.status,
-        trace=run.trace,
+        status=status,
+        steps=_legacy_trace_to_steps(run.trace, occurred_at=run.completed_at),
         final_output=run.final_output,
-        deviations=run.deviations,
+        deviations=[TwinDeviation.model_validate(d) for d in run.deviations],
+        graded_passed=graded_passed,
+        total_cost_usd=run.total_cost_usd,
+        total_tokens=run.total_tokens,
+        turns_used=run.turns_used,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        run_by=run.run_by,
+        run_by_name=_resolve_user_name(session, run.run_by),
+    )
+
+
+def _to_pydantic_sim_twin_run(session: Session, run: SimulationRunModel) -> TwinRun:
+    return TwinRun(
+        id=run.id,
+        kind="twin",
+        scenario_id=run.scenario_id,
+        agent_artifact_id=run.agent_artifact_id or "",
+        status=run.status,
+        steps=[RunStep.model_validate(s) for s in run.steps],
+        final_output=run.final_output,
+        deviations=[TwinDeviation.model_validate(d) for d in run.deviations],
+        graded_passed=run.graded_passed,
         total_cost_usd=run.total_cost_usd,
         total_tokens=run.total_tokens,
         turns_used=run.turns_used,
@@ -787,52 +859,180 @@ async def _get_or_infer_tool_schemas(
     return schemas
 
 
-async def execute_twin_run(
-    llm: LLMClient, session: Session, process_id: str, scenario_id: str, *, run_by: str | None = None
-) -> TwinRun:
+def start_twin_run(session: Session, process_id: str, scenario_id: str, *, run_by: str | None = None) -> TwinRun:
+    """Epic 17, US17.6: creates the run row in status="CREATED" and returns
+    immediately -- the caller (app/api/twin.py) commits this and enqueues
+    `execute_twin_run_background` as a FastAPI BackgroundTask, the same
+    two-step handoff app/api/orchestration.py's `start_run` already uses
+    (itself modeled on app/api/documents.py's ingestion upload). Twin runs
+    used to execute synchronously inside one request -- this closes that
+    gap so a twin run can be polled, cancelled, and (via a later manual
+    human checkpoint) suspended/resumed exactly like an orchestration run."""
     scenario_model = get_twin_scenario(session, process_id, scenario_id)
     artifact = get_agent_artifact(session, process_id, scenario_model.agent_artifact_id)
-    definition = AgentDefinition.model_validate(artifact.definition)
-    tool_schemas = await _get_or_infer_tool_schemas(llm, session, artifact)
-    scenario = _to_pydantic_twin_scenario(session, scenario_model)
-
-    started_at = utcnow()
-    outcome = await run_scenario(
-        llm,
-        artifact=definition,
-        tool_schemas=tool_schemas,
-        scenario=scenario,
-        max_turns=get_settings().twin_max_loop_turns,
-    )
-    completed_at = utcnow()
-
-    run = TwinRunModel(
-        id=new_id("twinrun"),
+    run = SimulationRunModel(
+        id=new_id("simrun"),
+        kind="twin",
+        process_id=process_id,
         scenario_id=scenario_model.id,
         agent_artifact_id=artifact.id,
-        status=outcome.status,
-        trace=[step.model_dump() for step in outcome.trace],
-        final_output=outcome.final_output,
-        deviations=[deviation.model_dump() for deviation in outcome.deviations],
-        total_cost_usd=outcome.total_cost_usd,
-        total_tokens=outcome.total_tokens,
-        turns_used=outcome.turns_used,
-        started_at=started_at,
-        completed_at=completed_at,
+        status="CREATED",
         run_by=run_by,
     )
     session.add(run)
     session.flush()
-    return _to_pydantic_twin_run(session, run)
+    return _to_pydantic_sim_twin_run(session, run)
+
+
+async def execute_twin_run_background(
+    run_id: str, llm: LLMClient, settings: Settings | None = None, human_decision: str | None = None
+) -> None:
+    """US17.6: the FastAPI BackgroundTask entry point for a twin run.
+    Opens its own DB session -- same reasoning as app/ingestion/
+    pipeline.py's process_document, since a BackgroundTask can outlive the
+    request-scoped session's teardown. Also the resume entry point (Epic
+    17, US17.3): called again after `resume_run` flips a WAITING_FOR_HUMAN
+    row back toward RUNNING -- `run_model.resume_state` (persisted by the
+    prior leg) and the caller-supplied `human_decision` are read/consumed
+    here rather than threaded through BackgroundTasks.add_task."""
+    from app.db.session import get_session_factory
+
+    settings = settings or get_settings()
+    session = get_session_factory()()
+    try:
+        run_model = session.get(SimulationRunModel, run_id)
+        if run_model is None:
+            return
+        scenario_model = session.get(TwinScenarioModel, run_model.scenario_id)
+        artifact = session.get(AgentArtifactModel, run_model.agent_artifact_id) if run_model.agent_artifact_id else None
+        if scenario_model is None or artifact is None:
+            run_model.status = "FAILED"
+            run_model.deviations = [{"reason": "The scenario or agent artifact this run was started from no longer exists"}]
+            run_model.completed_at = utcnow()
+            session.commit()
+            return
+
+        definition = AgentDefinition.model_validate(artifact.definition)
+        try:
+            tool_schemas = await _get_or_infer_tool_schemas(llm, session, artifact)
+        except TwinServiceError as exc:
+            run_model.status = "FAILED"
+            run_model.deviations = [{"reason": str(exc)}]
+            run_model.completed_at = utcnow()
+            session.commit()
+            return
+        scenario = _to_pydantic_twin_scenario(session, scenario_model)
+        resume_state = run_model.resume_state
+        run_model.resume_state = None
+        run_model.status = "RUNNING"
+        session.commit()
+
+        async def on_step(step: RunStep) -> None:
+            run_model.steps = [*run_model.steps, step.model_dump(mode="json")]
+            session.commit()
+            session.refresh(run_model, attribute_names=["cancel_requested"])
+            if run_model.cancel_requested:
+                raise RunCancelled()
+
+        async def on_phase(status: RunStatus) -> None:
+            run_model.status = status
+            session.commit()
+
+        outcome = await run_scenario(
+            llm,
+            artifact=definition,
+            tool_schemas=tool_schemas,
+            scenario=scenario,
+            max_turns=settings.twin_max_loop_turns,
+            resume_state=resume_state,
+            human_decision=human_decision,
+            on_step=on_step,
+            on_phase=on_phase,
+        )
+
+        run_model.steps = [s.model_dump(mode="json") for s in outcome.steps]
+        run_model.status = outcome.status
+        run_model.final_output = outcome.final_output
+        run_model.deviations = [d.model_dump(mode="json") for d in outcome.deviations]
+        run_model.graded_passed = outcome.graded_passed
+        run_model.total_cost_usd = outcome.total_cost_usd
+        run_model.total_tokens = outcome.total_tokens
+        run_model.turns_used = outcome.turns_used
+        run_model.resume_state = outcome.resume_state
+        if outcome.status != "WAITING_FOR_HUMAN":
+            run_model.completed_at = utcnow()
+        session.commit()
+    finally:
+        session.close()
+
+
+def _get_simulation_run(session: Session, process_id: str, run_id: str, *, kind: str) -> SimulationRunModel:
+    run = session.get(SimulationRunModel, run_id)
+    if run is None or run.process_id != process_id or run.kind != kind:
+        raise NotFoundError(f"{kind} run", run_id)
+    return run
+
+
+def cancel_run(session: Session, process_id: str, run_id: str, *, kind: str) -> None:
+    """Epic 17, US17.4: `kind` ("twin" or "orchestration") guards against
+    cancelling a run through the wrong kind's endpoint. A running leg is
+    checked cooperatively by its own `on_step` callback (see
+    `execute_twin_run_background`/`execute_orchestration_run_background`)
+    rather than forcibly killed, since a background task has no safe way to
+    be interrupted mid-await -- but a WAITING_FOR_HUMAN run has no active
+    background task to notice that flag at all (nothing runs again until a
+    resume), so cancelling one resolves immediately instead of waiting for
+    a wake-up that would otherwise never come."""
+    run = _get_simulation_run(session, process_id, run_id, kind=kind)
+    if run.status == "WAITING_FOR_HUMAN":
+        run.status = "CANCELLED"
+        run.resume_state = None
+        run.completed_at = utcnow()
+    else:
+        run.cancel_requested = True
+    session.commit()
+
+
+def resume_run(session: Session, process_id: str, run_id: str, decision: str, *, kind: str) -> SimulationRunModel:
+    """Epic 17, US17.3: flips a WAITING_FOR_HUMAN row back toward RUNNING --
+    the caller (app/api/twin.py or app/api/orchestration.py) commits this
+    and enqueues the matching `execute_*_run_background` with
+    `human_decision=decision`."""
+    run = _get_simulation_run(session, process_id, run_id, kind=kind)
+    if run.status != "WAITING_FOR_HUMAN":
+        raise TwinServiceError(f"Run '{run_id}' is not waiting for a human decision (status: {run.status})")
+    run.status = "RUNNING"
+    session.commit()
+    return run
+
+
+def get_twin_run(session: Session, process_id: str, run_id: str) -> TwinRun:
+    run = session.get(SimulationRunModel, run_id)
+    if run is not None and run.kind == "twin" and run.process_id == process_id:
+        return _to_pydantic_sim_twin_run(session, run)
+    legacy = session.get(TwinRunModel, run_id)
+    if legacy is not None:
+        get_agent_artifact(session, process_id, legacy.agent_artifact_id)  # 404s if wrong process
+        return _to_pydantic_twin_run(session, legacy)
+    raise NotFoundError("twin run", run_id)
 
 
 def list_twin_runs(session: Session, process_id: str, artifact_id: str) -> list[TwinRun]:
     get_process(session, process_id)  # 404s if missing
     get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
-    runs = session.scalars(
-        select(TwinRunModel).where(TwinRunModel.agent_artifact_id == artifact_id).order_by(TwinRunModel.started_at.desc())
+    legacy_runs = session.scalars(
+        select(TwinRunModel).where(TwinRunModel.agent_artifact_id == artifact_id)
     )
-    return [_to_pydantic_twin_run(session, run) for run in runs]
+    sim_runs = session.scalars(
+        select(SimulationRunModel).where(
+            SimulationRunModel.kind == "twin", SimulationRunModel.agent_artifact_id == artifact_id
+        )
+    )
+    runs = [_to_pydantic_twin_run(session, run) for run in legacy_runs] + [
+        _to_pydantic_sim_twin_run(session, run) for run in sim_runs
+    ]
+    runs.sort(key=lambda run: run.started_at, reverse=True)
+    return runs
 
 
 def _to_pydantic_twin_baseline(session: Session, baseline: TwinBaselineModel) -> TwinBaseline:
@@ -887,31 +1087,52 @@ def delete_twin_baseline(session: Session, process_id: str, artifact_id: str) ->
 def get_twin_summary(session: Session, process_id: str, artifact_id: str) -> TwinSummary:
     get_process(session, process_id)  # 404s if missing
     get_agent_artifact(session, process_id, artifact_id)  # 404s if missing/wrong process
-    runs = list(session.scalars(select(TwinRunModel).where(TwinRunModel.agent_artifact_id == artifact_id)))
+    legacy_runs = list(session.scalars(select(TwinRunModel).where(TwinRunModel.agent_artifact_id == artifact_id)))
+    sim_runs = list(
+        session.scalars(
+            select(SimulationRunModel).where(
+                SimulationRunModel.kind == "twin", SimulationRunModel.agent_artifact_id == artifact_id
+            )
+        )
+    )
     baseline_model = session.get(TwinBaselineModel, artifact_id)
     baseline = _to_pydantic_twin_baseline(session, baseline_model) if baseline_model is not None else None
 
-    run_count = len(runs)
+    # Epic 17: normalizes both the legacy TwinRunModel rows and the new
+    # SimulationRunModel rows into one (passed, cost, deviations, duration)
+    # shape so the aggregate math below doesn't need to know which table a
+    # row came from. A SimulationRunModel row still in flight (not yet
+    # completed) has nothing to grade yet, so it's excluded here.
+    rows: list[tuple[bool, float | None, list[dict], float]] = [
+        (run.status == "passed", run.total_cost_usd, run.deviations, (run.completed_at - run.started_at).total_seconds())
+        for run in legacy_runs
+    ] + [
+        (bool(run.graded_passed), run.total_cost_usd, run.deviations, (run.completed_at - run.started_at).total_seconds())
+        for run in sim_runs
+        if run.completed_at is not None
+    ]
+
+    run_count = len(rows)
     if run_count == 0:
         return TwinSummary(agent_artifact_id=artifact_id, run_count=0, baseline=baseline)
 
-    pass_rate = sum(1 for run in runs if run.status == "passed") / run_count
+    pass_rate = sum(1 for passed, _, _, _ in rows if passed) / run_count
     # A single run with an unpriced model (see estimate_cost_usd) makes the
     # whole aggregate cost unknown rather than silently under-reporting it --
     # same "don't show a wrong partial number" principle as
     # UsageTracker.OperationTotals.cost_estimate_incomplete.
-    cost_incomplete = any(run.total_cost_usd is None for run in runs)
-    total_cost = None if cost_incomplete else sum(run.total_cost_usd or 0.0 for run in runs)
+    cost_incomplete = any(cost is None for _, cost, _, _ in rows)
+    total_cost = None if cost_incomplete else sum(cost or 0.0 for _, cost, _, _ in rows)
     average_cost = None if cost_incomplete else total_cost / run_count
 
     reason_counts: dict[str, int] = {}
-    for run in runs:
-        for deviation in run.deviations:
+    for _, _, deviations, _ in rows:
+        for deviation in deviations:
             reason = deviation.get("reason", "")
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
     common_failure_reasons = sorted(reason_counts, key=lambda reason: reason_counts[reason], reverse=True)[:5]
 
-    average_duration = sum((run.completed_at - run.started_at).total_seconds() for run in runs) / run_count
+    average_duration = sum(duration for _, _, _, duration in rows) / run_count
     comparison = None
     if baseline is not None:
         # US14.5: only compare a side that actually has both values -- a
@@ -1021,16 +1242,66 @@ def delete_orchestration_scenario(session: Session, process_id: str, scenario_id
 
 
 def _to_pydantic_orchestration_run(session: Session, run: OrchestrationRunModel) -> OrchestrationRun:
+    """Epic 17: projects a pre-Epic-17 OrchestrationRunModel row (kept
+    forever, never migrated) through the new OrchestrationRun shape --
+    `handoffs` has no equivalent any more (Epic 17 folded that into
+    AGENT_DELEGATED steps) so it's simply not shown for these historical
+    rows, same spirit as _to_pydantic_twin_run's trace-to-steps mapping."""
+    status, graded_passed = _legacy_run_status(run.status)
+    node_runs = []
+    for nr in run.node_runs:
+        nr_status, _ = _legacy_run_status(nr.get("status", "error"))
+        occurred_at = nr.get("completed_at") or run.completed_at or run.started_at
+        node_runs.append(
+            NodeRun(
+                node_id=nr["node_id"],
+                node_label=nr["node_label"],
+                kind=nr["kind"],
+                status=nr_status,
+                agent_artifact_id=nr.get("agent_artifact_id"),
+                steps=_legacy_trace_to_steps(nr.get("trace") or [], occurred_at=occurred_at),
+                output=nr.get("output"),
+                error_message=nr.get("error_message"),
+                total_cost_usd=nr.get("total_cost_usd"),
+                total_tokens=nr.get("total_tokens", 0),
+                started_at=nr["started_at"],
+                completed_at=nr.get("completed_at"),
+            )
+        )
     return OrchestrationRun(
         id=run.id,
+        kind="orchestration",
         scenario_id=run.scenario_id,
         process_id=run.process_id,
-        status=run.status,
-        node_runs=[NodeRun.model_validate(node_run) for node_run in run.node_runs],
-        handoffs=[DataHandoff.model_validate(handoff) for handoff in run.handoffs],
+        status=status,
+        steps=[],
+        node_runs=node_runs,
         visited_path=run.visited_path,
         final_output=run.final_output,
         deviations=[TwinDeviation.model_validate(deviation) for deviation in run.deviations],
+        graded_passed=graded_passed,
+        total_cost_usd=run.total_cost_usd,
+        total_tokens=run.total_tokens,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        run_by=run.run_by,
+        run_by_name=_resolve_user_name(session, run.run_by),
+    )
+
+
+def _to_pydantic_sim_orchestration_run(session: Session, run: SimulationRunModel) -> OrchestrationRun:
+    return OrchestrationRun(
+        id=run.id,
+        kind="orchestration",
+        scenario_id=run.scenario_id,
+        process_id=run.process_id,
+        status=run.status,
+        steps=[RunStep.model_validate(s) for s in run.steps],
+        node_runs=[NodeRun.model_validate(nr) for nr in run.node_runs],
+        visited_path=run.visited_path,
+        final_output=run.final_output,
+        deviations=[TwinDeviation.model_validate(d) for d in run.deviations],
+        graded_passed=run.graded_passed,
         total_cost_usd=run.total_cost_usd,
         total_tokens=run.total_tokens,
         started_at=run.started_at,
@@ -1043,40 +1314,53 @@ def _to_pydantic_orchestration_run(session: Session, run: OrchestrationRunModel)
 def start_orchestration_run(
     session: Session, process_id: str, scenario_id: str, *, run_by: str | None = None
 ) -> OrchestrationRun:
-    """US16.7: creates the run row in `status="running"` with no node_runs
+    """US16.7: creates the run row in status="CREATED" with no node_runs
     yet and returns immediately -- the caller (app/api/orchestration.py)
     commits this and enqueues `execute_orchestration_run_background` as a
     FastAPI BackgroundTask, the same two-step handoff
-    app/api/documents.py uses for Epic 1's ingestion pipeline."""
+    app/api/documents.py uses for Epic 1's ingestion pipeline. Epic 17:
+    now a `kind="orchestration"` SimulationRunModel row, the same unified
+    table `start_twin_run` writes to."""
     scenario_model = get_orchestration_scenario_model(session, process_id, scenario_id)
-    run = OrchestrationRunModel(
-        id=new_id("orchrun"),
+    run = SimulationRunModel(
+        id=new_id("simrun"),
+        kind="orchestration",
         scenario_id=scenario_model.id,
         process_id=process_id,
-        status="running",
+        status="CREATED",
         run_by=run_by,
     )
     session.add(run)
     session.flush()
-    return _to_pydantic_orchestration_run(session, run)
+    return _to_pydantic_sim_orchestration_run(session, run)
 
 
 def get_orchestration_run(session: Session, process_id: str, run_id: str) -> OrchestrationRun:
-    run = session.get(OrchestrationRunModel, run_id)
-    if run is None or run.process_id != process_id:
-        raise NotFoundError("orchestration run", run_id)
-    return _to_pydantic_orchestration_run(session, run)
+    run = session.get(SimulationRunModel, run_id)
+    if run is not None and run.kind == "orchestration" and run.process_id == process_id:
+        return _to_pydantic_sim_orchestration_run(session, run)
+    legacy = session.get(OrchestrationRunModel, run_id)
+    if legacy is not None and legacy.process_id == process_id:
+        return _to_pydantic_orchestration_run(session, legacy)
+    raise NotFoundError("orchestration run", run_id)
 
 
 def list_orchestration_runs(
     session: Session, process_id: str, scenario_id: str | None = None
 ) -> list[OrchestrationRun]:
     get_process(session, process_id)  # 404s if missing
-    stmt = select(OrchestrationRunModel).where(OrchestrationRunModel.process_id == process_id)
+    legacy_stmt = select(OrchestrationRunModel).where(OrchestrationRunModel.process_id == process_id)
+    sim_stmt = select(SimulationRunModel).where(
+        SimulationRunModel.kind == "orchestration", SimulationRunModel.process_id == process_id
+    )
     if scenario_id is not None:
-        stmt = stmt.where(OrchestrationRunModel.scenario_id == scenario_id)
-    runs = session.scalars(stmt.order_by(OrchestrationRunModel.started_at.desc()))
-    return [_to_pydantic_orchestration_run(session, run) for run in runs]
+        legacy_stmt = legacy_stmt.where(OrchestrationRunModel.scenario_id == scenario_id)
+        sim_stmt = sim_stmt.where(SimulationRunModel.scenario_id == scenario_id)
+    runs = [_to_pydantic_orchestration_run(session, run) for run in session.scalars(legacy_stmt)] + [
+        _to_pydantic_sim_orchestration_run(session, run) for run in session.scalars(sim_stmt)
+    ]
+    runs.sort(key=lambda run: run.started_at, reverse=True)
+    return runs
 
 
 async def _build_node_artifacts(
@@ -1109,31 +1393,38 @@ async def _build_node_artifacts(
 
 
 async def execute_orchestration_run_background(
-    run_id: str, llm: LLMClient, settings: Settings | None = None
+    run_id: str, llm: LLMClient, settings: Settings | None = None, human_decision: str | None = None
 ) -> None:
     """US16.2-16.7: the FastAPI BackgroundTask entry point for a rehearsal
     run. Opens its own DB session/connection -- same reasoning as
     app/ingestion/pipeline.py's process_document, since a BackgroundTask
-    can outlive the request-scoped session's teardown. Persists
-    node_runs/visited_path incrementally (via the orchestrator's
-    on_node_run callback) so a concurrent GET on this run id shows live
+    can outlive the request-scoped session's teardown. Persists steps/
+    node_runs/visited_path incrementally (via the orchestrator's on_step/
+    on_node_run callbacks) so a concurrent GET on this run id shows live
     progress, then writes the final status/deviations/cost once the walk
-    ends."""
+    ends. Epic 17: also the resume entry point (US17.3) -- see
+    execute_twin_run_background's docstring for why `resume_state` is read
+    off the row rather than threaded through BackgroundTasks.add_task."""
     from app.db.session import get_session_factory
 
     settings = settings or get_settings()
     session = get_session_factory()()
     try:
-        run_model = session.get(OrchestrationRunModel, run_id)
+        run_model = session.get(SimulationRunModel, run_id)
         if run_model is None:
             return
         scenario_model = session.get(OrchestrationScenarioModel, run_model.scenario_id)
         if scenario_model is None:
-            run_model.status = "error"
-            run_model.deviations = [{"reason": "The scenario this run was started from no longer exists", "step_index": None}]
+            run_model.status = "FAILED"
+            run_model.deviations = [{"reason": "The scenario this run was started from no longer exists"}]
             run_model.completed_at = utcnow()
             session.commit()
             return
+
+        resume_state = run_model.resume_state
+        run_model.resume_state = None
+        run_model.status = "RUNNING"
+        session.commit()
 
         try:
             version = get_version(session, run_model.process_id, scenario_model.baseline_version_id)
@@ -1146,6 +1437,17 @@ async def execute_orchestration_run_background(
                 run_model.visited_path = [*run_model.visited_path, node_run.node_id]
                 session.commit()
 
+            async def on_step(step: RunStep) -> None:
+                run_model.steps = [*run_model.steps, step.model_dump(mode="json")]
+                session.commit()
+                session.refresh(run_model, attribute_names=["cancel_requested"])
+                if run_model.cancel_requested:
+                    raise RunCancelled()
+
+            async def on_phase(status: RunStatus) -> None:
+                run_model.status = status
+                session.commit()
+
             outcome = await run_orchestration(
                 llm,
                 flow_nodes=flow_nodes,
@@ -1153,24 +1455,31 @@ async def execute_orchestration_run_background(
                 scenario=scenario,
                 max_turns_per_node=settings.twin_max_loop_turns,
                 max_total_steps=settings.orchestration_max_total_steps,
+                resume_state=resume_state,
+                human_decision=human_decision,
                 on_node_run=on_node_run,
+                on_step=on_step,
+                on_phase=on_phase,
             )
         except (TwinServiceError, NotFoundError) as exc:
-            run_model.status = "error"
-            run_model.deviations = [{"reason": str(exc), "step_index": None}]
+            run_model.status = "FAILED"
+            run_model.deviations = [{"reason": str(exc)}]
             run_model.completed_at = utcnow()
             session.commit()
             return
 
         run_model.node_runs = [node_run.model_dump(mode="json") for node_run in outcome.node_runs]
+        run_model.steps = [s.model_dump(mode="json") for s in outcome.steps]
         run_model.status = outcome.status
-        run_model.handoffs = [handoff.model_dump(mode="json") for handoff in outcome.handoffs]
         run_model.visited_path = outcome.visited_path
         run_model.final_output = outcome.final_output
         run_model.deviations = [deviation.model_dump(mode="json") for deviation in outcome.deviations]
+        run_model.graded_passed = outcome.graded_passed
         run_model.total_cost_usd = outcome.total_cost_usd
         run_model.total_tokens = outcome.total_tokens
-        run_model.completed_at = utcnow()
+        run_model.resume_state = outcome.resume_state
+        if outcome.status != "WAITING_FOR_HUMAN":
+            run_model.completed_at = utcnow()
         session.commit()
     finally:
         session.close()

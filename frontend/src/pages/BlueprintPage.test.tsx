@@ -47,7 +47,8 @@ const markPublicationDeployed = vi.fn()
 const listScenarios = vi.fn()
 const createScenario = vi.fn()
 const deleteScenario = vi.fn()
-const runScenario = vi.fn()
+const startTwinRun = vi.fn()
+const getTwinRun = vi.fn()
 const listTwinRuns = vi.fn()
 const getTwinSummary = vi.fn()
 const setTwinBaseline = vi.fn()
@@ -77,7 +78,8 @@ vi.mock('../api/client', () => ({
   listScenarios: (...args: unknown[]) => listScenarios(...args),
   createScenario: (...args: unknown[]) => createScenario(...args),
   deleteScenario: (...args: unknown[]) => deleteScenario(...args),
-  runScenario: (...args: unknown[]) => runScenario(...args),
+  startTwinRun: (...args: unknown[]) => startTwinRun(...args),
+  getTwinRun: (...args: unknown[]) => getTwinRun(...args),
   listTwinRuns: (...args: unknown[]) => listTwinRuns(...args),
   getTwinSummary: (...args: unknown[]) => getTwinSummary(...args),
   setTwinBaseline: (...args: unknown[]) => setTwinBaseline(...args),
@@ -584,12 +586,14 @@ describe('BlueprintPage', () => {
     }
     const run: TwinRun = {
       id: 'twinrun-1',
+      kind: 'twin',
       scenario_id: 'twinsc-1',
       agent_artifact_id: 'agent-1',
-      status: 'passed',
-      trace: [],
+      status: 'COMPLETED',
+      steps: [],
       final_output: {},
       deviations: [],
+      graded_passed: true,
       total_cost_usd: 0.001,
       total_tokens: 10,
       turns_used: 1,
@@ -615,7 +619,8 @@ describe('BlueprintPage', () => {
       baseline: null,
       baseline_comparison: null,
     })
-    runScenario.mockResolvedValue(run)
+    startTwinRun.mockResolvedValue(run)
+    getTwinRun.mockResolvedValue(run)
     const user = userEvent.setup()
     renderPage()
 
@@ -627,8 +632,8 @@ describe('BlueprintPage', () => {
 
     await user.click(twinPanel.getByRole('button', { name: /^run$/i }))
 
-    await waitFor(() => expect(runScenario).toHaveBeenCalledWith('proc-1', 'twinsc-1'))
-    expect(await twinPanel.findByText('passed')).toBeInTheDocument()
+    await waitFor(() => expect(startTwinRun).toHaveBeenCalledWith('proc-1', 'twinsc-1'))
+    expect(await twinPanel.findByText('COMPLETED')).toBeInTheDocument()
   })
 
   it('saves a manual baseline on the Digital Twin Simulation tab (US14.5)', async () => {

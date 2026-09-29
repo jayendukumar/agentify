@@ -9,7 +9,9 @@ registry entries (RegistryEntryModel), Epic 14's digital twin scenarios/
 runs/baselines (TwinToolSchemaModel/TwinScenarioModel/TwinRunModel/
 TwinBaselineModel), Epic 15's publish history (AgentPublicationModel),
 Epic 16's orchestration rehearsal scenarios/runs (OrchestrationScenarioModel/
-OrchestrationRunModel), and Epic 9/10's users/sessions (UserModel/
+OrchestrationRunModel), Epic 17's unified run store (SimulationRunModel --
+additive, see its own docstring; TwinRunModel/OrchestrationRunModel are
+kept for historical rows), and Epic 9/10's users/sessions (UserModel/
 SessionModel), each promoted out of
 the in-memory store (app/store.py) once its own epic made the data real.
 app/store.py now only defines NotFoundError -- nothing left to hold in
@@ -613,6 +615,55 @@ class OrchestrationRunModel(Base):
     deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     total_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     total_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class SimulationRunModel(Base):
+    """Epic 17: the unified run store both twin (Epic 14) and orchestration
+    (Epic 16) runs write to going forward, replacing TwinRunModel/
+    OrchestrationRunModel's two separate, ad hoc shapes with one
+    RunStatus/RunStep taxonomy (app/schemas/run.py) shared by both --
+    disambiguated by `kind`. Deliberately additive, not a data migration:
+    `twin_runs`/`orchestration_runs` are left in place unaltered so no run
+    history is lost or moved; app/db/repository.py's list/summary reads
+    merge rows from both the old tables and this one. See
+    planning/epics/17-simulation-run-lifecycle.md and this repo's
+    decision-log for why.
+
+    `process_id` is denormalized on both kinds (previously only
+    OrchestrationRunModel had it) so a single cancel/resume/list query
+    never needs a kind-specific join. `resume_state` is only ever
+    populated while `status == "WAITING_FOR_HUMAN"` -- an opaque JSON blob
+    app/twin/engine.py's `run_scenario`/app/twin/orchestrator.py's
+    `run_orchestration` produce and consume, never read for any other
+    purpose. Like OrchestrationRunModel (and unlike TwinRunModel), this row
+    is mutated incrementally while non-terminal so a concurrent GET shows
+    live progress."""
+
+    __tablename__ = "simulation_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    scenario_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    agent_artifact_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False, default="CREATED", index=True)
+    steps: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    node_runs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    visited_path: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    graded_passed: Mapped[bool | None] = mapped_column(nullable=True)
+    total_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    total_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    turns_used: Mapped[int] = mapped_column(nullable=False, default=0)
+    resume_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(nullable=False, default=False)
+    queued_at: Mapped[datetime | None] = mapped_column(nullable=True)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

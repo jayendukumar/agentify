@@ -6,10 +6,12 @@ app/api/documents.py's upload endpoint: create the row, commit explicitly
 (a BackgroundTask can start running before DbDep's own end-of-request
 commit), then enqueue the background execution."""
 
-from fastapi import APIRouter, BackgroundTasks, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from app.db import repository
 from app.schemas.orchestration import OrchestrationRun, OrchestrationScenario, OrchestrationScenarioCreate
+from app.schemas.run import ResumeDecision
+from app.twin.errors import TwinServiceError
 
 from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
 
@@ -48,6 +50,27 @@ def start_run(
 @router.get("/runs/{run_id}", response_model=OrchestrationRun)
 def get_run(process_id: str, run_id: str, db: DbDep, user: CurrentUserDep) -> OrchestrationRun:
     del user
+    return repository.get_orchestration_run(db, process_id, run_id)
+
+
+@router.post("/runs/{run_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
+def cancel_run(process_id: str, run_id: str, db: DbDep, user: EditorDep) -> None:
+    del user
+    repository.cancel_run(db, process_id, run_id, kind="orchestration")
+
+
+@router.post("/runs/{run_id}/resume", response_model=OrchestrationRun, status_code=status.HTTP_202_ACCEPTED)
+def resume_run(
+    process_id: str, run_id: str, body: ResumeDecision, db: DbDep, llm: LLMDep, user: EditorDep,
+    background_tasks: BackgroundTasks,
+) -> OrchestrationRun:
+    del user
+    try:
+        run = repository.resume_run(db, process_id, run_id, body.decision, kind="orchestration")
+    except TwinServiceError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    db.commit()
+    background_tasks.add_task(repository.execute_orchestration_run_background, run.id, llm, human_decision=body.decision)
     return repository.get_orchestration_run(db, process_id, run_id)
 
 

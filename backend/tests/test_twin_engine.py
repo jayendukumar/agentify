@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.llm.types import ChatCompletionResult, ToolCall, Usage
-from app.schemas.agents import AgentDefinition, ResourcePermission, RuntimeGuardrails, ToolContract
+from app.schemas.agents import AgentDefinition, EscalationPolicy, ResourcePermission, RuntimeGuardrails, ToolContract
+from app.schemas.run import RunStep
 from app.schemas.twin import (
     HumanDecisionRule,
     InferredToolSchema,
@@ -14,7 +15,6 @@ from app.schemas.twin import (
     TwinHumanCheckpointConfig,
     TwinScenario,
     TwinSystemStub,
-    TwinTraceStep,
 )
 from app.twin.engine import grade_run, run_scenario
 from app.twin.errors import TwinServiceError
@@ -55,6 +55,16 @@ def _llm_result(*, tool_calls=None, text=None) -> ChatCompletionResult:
         usage=Usage(input_tokens=1, output_tokens=1, total_tokens=2),
         model="test-model",
     )
+
+
+def _step(type: str, **kwargs) -> RunStep:
+    kwargs.setdefault("seq", 0)
+    kwargs.setdefault("occurred_at", datetime.now(timezone.utc))
+    return RunStep(type=type, **kwargs)
+
+
+def _actionable_types(steps: list[RunStep]) -> list[str]:
+    return [s.type for s in steps if s.type in ("TOOL_EXECUTED", "TOOL_FAILED", "HUMAN_APPROVED", "HUMAN_REJECTED")]
 
 
 # -- resolve_human_decision ----------------------------------------------------
@@ -139,9 +149,9 @@ async def test_resolve_tool_call_proxy_mode_calls_llm():
 
 
 def test_grade_run_passes_when_trace_and_output_match():
-    trace = [
-        TwinTraceStep(kind="tool_call", target="CRM system", result={"tier": "gold"}),
-        TwinTraceStep(kind="human_checkpoint", target="human_checkpoint", decision="approve"),
+    steps = [
+        _step("TOOL_EXECUTED", target="CRM system", result={"tier": "gold"}),
+        _step("HUMAN_APPROVED", target="human_checkpoint", decision="approve"),
     ]
     scenario = _scenario(
         expected_steps=[
@@ -151,40 +161,40 @@ def test_grade_run_passes_when_trace_and_output_match():
         expected_outputs={"confirmation": None, "status": "sent"},
     )
 
-    status, deviations = grade_run(trace, {"confirmation": "abc123", "status": "sent"}, scenario)
+    graded_passed, deviations = grade_run(steps, {"confirmation": "abc123", "status": "sent"}, scenario)
 
-    assert status == "passed"
+    assert graded_passed is True
     assert deviations == []
 
 
 def test_grade_run_reports_first_mismatched_step():
-    trace = [TwinTraceStep(kind="tool_call", target="Email system")]
+    steps = [_step("TOOL_EXECUTED", target="Email system")]
     scenario = _scenario(expected_steps=[TwinExpectedStep(kind="tool_call", target="CRM system")])
 
-    status, deviations = grade_run(trace, {}, scenario)
+    graded_passed, deviations = grade_run(steps, {}, scenario)
 
-    assert status == "failed"
+    assert graded_passed is False
     assert len(deviations) == 1
     assert deviations[0].step_index == 0
     assert "CRM system" in deviations[0].reason and "Email system" in deviations[0].reason
 
 
 def test_grade_run_reports_missing_and_extra_steps():
-    trace = [TwinTraceStep(kind="tool_call", target="CRM system"), TwinTraceStep(kind="tool_call", target="Email system")]
+    steps = [_step("TOOL_EXECUTED", target="CRM system"), _step("TOOL_EXECUTED", target="Email system")]
     scenario = _scenario(expected_steps=[TwinExpectedStep(kind="tool_call", target="CRM system")])
 
-    status, deviations = grade_run(trace, {}, scenario)
+    graded_passed, deviations = grade_run(steps, {}, scenario)
 
-    assert status == "failed"
+    assert graded_passed is False
     assert any("extra step" in d.reason for d in deviations)
 
 
 def test_grade_run_reports_missing_and_mismatched_output_fields():
     scenario = _scenario(expected_outputs={"confirmation": "XYZ", "status": "sent"})
 
-    status, deviations = grade_run([], {"confirmation": "ABC"}, scenario)
+    graded_passed, deviations = grade_run([], {"confirmation": "ABC"}, scenario)
 
-    assert status == "failed"
+    assert graded_passed is False
     reasons = " ".join(d.reason for d in deviations)
     assert "confirmation" in reasons
     assert "status" in reasons and "missing" in reasons.lower()
@@ -234,12 +244,14 @@ async def test_run_scenario_end_to_end_pass():
 
     outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
 
-    assert outcome.status == "passed"
+    assert outcome.status == "COMPLETED"
+    assert outcome.graded_passed is True
     assert outcome.deviations == []
     assert outcome.turns_used == 3
     assert outcome.final_output == {"confirmation": "sent"}
-    assert [step.kind for step in outcome.trace] == ["tool_call", "human_checkpoint"]
-    assert outcome.trace[1].decision == "approve"
+    assert _actionable_types(outcome.steps) == ["TOOL_EXECUTED", "HUMAN_APPROVED"]
+    approved = next(s for s in outcome.steps if s.type == "HUMAN_APPROVED")
+    assert approved.decision == "approve"
     assert outcome.total_tokens == 6
     # "test-model" has no entry in the pricing table (app/llm/usage.py) --
     # cost must come back None (unknown), never a silently wrong partial sum.
@@ -247,7 +259,7 @@ async def test_run_scenario_end_to_end_pass():
 
 
 @pytest.mark.asyncio
-async def test_run_scenario_exceeds_max_turns_returns_error():
+async def test_run_scenario_exceeds_max_turns_returns_failed():
     artifact = AgentDefinition(
         name="Loops Forever Agent",
         purpose="Never finishes",
@@ -264,9 +276,36 @@ async def test_run_scenario_exceeds_max_turns_returns_error():
 
     outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=1)
 
-    assert outcome.status == "error"
+    assert outcome.status == "FAILED"
     assert outcome.turns_used == 1
-    assert any("Exceeded max turns" in d.reason for d in outcome.deviations)
+    assert any("without producing a final answer" in d.reason for d in outcome.deviations)
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_exceeding_max_steps_escalates_when_policy_declared():
+    """Epic 17, US17.5: the same "ran out of steps" condition becomes
+    ESCALATED instead of FAILED once the artifact declares an escalation
+    policy -- "the agent correctly asked for help" (well, hit its own
+    declared limit) must be distinguishable from "the agent broke"."""
+    artifact = AgentDefinition(
+        name="Loops Forever Agent",
+        purpose="Never finishes",
+        trigger="x",
+        system_prompt="You are Loops Forever Agent.",
+        tools_systems_needed=["CRM system"],
+        model="test-model",
+        escalation_policy=EscalationPolicy(escalate_when=["stuck in a loop"]),
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(system_stubs={"CRM system": TwinSystemStub(mode="static", static_responses=[StaticResponseRule()])})
+
+    llm = AsyncMock()
+    llm.complete.return_value = _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "1"})])
+
+    outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=1)
+
+    assert outcome.status == "ESCALATED"
+    assert any(s.type == "ESCALATION" for s in outcome.steps)
 
 
 # -- Epic 20: Tool Gateway / guardrail enforcement -----------------------------
@@ -277,8 +316,11 @@ async def test_run_scenario_denies_call_to_undeclared_tool_and_feeds_back_denial
     """An artifact that HAS declared governance (a non-empty tool_contracts
     list) denies a call to a system with no granted permission -- the
     denial is fed back to the model as a tool observation (like a real
-    403), recorded in the trace with `denied=True`, and reported as a
-    deviation even though the agent still produces a valid final output."""
+    403), recorded as a TOOL_FAILED/denied=True step, and reported as a
+    deviation even though the agent still produces a valid final output.
+    Epic 17: a policy-denied call no longer downgrades the run's lifecycle
+    *status* (still COMPLETED -- the run genuinely executed to a final
+    response) -- only `graded_passed`, decoupled from status."""
     artifact = AgentDefinition(
         name="Refund Agent",
         purpose="Process a refund request",
@@ -290,11 +332,6 @@ async def test_run_scenario_denies_call_to_undeclared_tool_and_feeds_back_denial
         permissions=[],  # nothing granted -- read on "customer" is NOT allowed
     )
     tool_schemas = {"CRM system": _crm_schema()}
-    # expected_steps matches the trace exactly, so grade_run itself reports
-    # no deviations -- isolating this assertion to Epic 20's own
-    # policy-denial downgrade (a policy_deviation always fails a run, even
-    # one that otherwise passed grading) rather than piggybacking on
-    # grade_run's separate "unexpected step" logic.
     scenario = _scenario(expected_steps=[TwinExpectedStep(kind="tool_call", target="CRM system")])
 
     llm = AsyncMock()
@@ -305,9 +342,11 @@ async def test_run_scenario_denies_call_to_undeclared_tool_and_feeds_back_denial
 
     outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
 
-    assert outcome.status == "failed"
-    assert outcome.trace[0].denied is True
-    assert outcome.trace[0].result["error"] == "permission_denied"
+    assert outcome.status == "COMPLETED"
+    assert outcome.graded_passed is False
+    denied_step = next(s for s in outcome.steps if s.type == "TOOL_FAILED")
+    assert denied_step.denied is True
+    assert denied_step.result["error"] == "permission_denied"
     assert any("denied by policy" in d.reason for d in outcome.deviations)
     # The agent still ran to completion using the denial as an observation,
     # not a crashed/aborted run.
@@ -340,9 +379,11 @@ async def test_run_scenario_allows_call_when_permission_granted():
 
     outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
 
-    assert outcome.status == "passed"
-    assert outcome.trace[0].denied is False
-    assert outcome.trace[0].result == {"tier": "gold"}
+    assert outcome.status == "COMPLETED"
+    assert outcome.graded_passed is True
+    executed_step = next(s for s in outcome.steps if s.type == "TOOL_EXECUTED")
+    assert executed_step.denied is False
+    assert executed_step.result == {"tier": "gold"}
 
 
 @pytest.mark.asyncio
@@ -364,7 +405,7 @@ async def test_run_scenario_stops_when_max_tool_calls_exceeded():
 
     outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
 
-    assert outcome.status == "error"
+    assert outcome.status == "FAILED"
     assert any("Exceeded max_tool_calls" in d.reason for d in outcome.deviations)
 
 
@@ -391,6 +432,86 @@ async def test_run_scenario_effective_max_turns_clamped_by_artifact_guardrails()
     # artifact's own guardrails.max_steps=1 is stricter and wins.
     outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
 
-    assert outcome.status == "error"
+    assert outcome.status == "FAILED"
     assert outcome.turns_used == 1
-    assert "Exceeded max turns (1)" in outcome.deviations[-1].reason
+    assert "Exceeded max_steps (1)" in outcome.deviations[-1].reason
+
+
+# -- Epic 17: manual human-in-the-loop pause/resume (US17.3) -------------------
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_manual_checkpoint_suspends_and_resumes():
+    artifact = AgentDefinition(
+        name="Refund Agent",
+        purpose="Process a refund request",
+        trigger="Refund requested",
+        system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"],
+        human_checkpoint="review_before_action",
+        model="test-model",
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(human_checkpoint_config=TwinHumanCheckpointConfig(mode="manual"))
+
+    llm = AsyncMock()
+    llm.complete.side_effect = [
+        _llm_result(
+            tool_calls=[
+                ToolCall(id="c1", name="request_human_decision", arguments={"summary": "ok?", "proposed_action": {"a": 1}})
+            ]
+        ),
+        _llm_result(text='{"confirmation": "sent"}'),
+    ]
+
+    suspended = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
+
+    assert suspended.status == "WAITING_FOR_HUMAN"
+    assert suspended.resume_state is not None
+    assert any(s.type == "HUMAN_APPROVAL_REQUESTED" for s in suspended.steps)
+
+    resumed = await run_scenario(
+        llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5,
+        resume_state=suspended.resume_state, human_decision="approve",
+    )
+
+    assert resumed.status == "COMPLETED"
+    assert resumed.final_output == {"confirmation": "sent"}
+    approved = next(s for s in resumed.steps if s.type == "HUMAN_APPROVED")
+    assert approved.decision == "approve"
+    # Regression check (found via live testing against the real LLM): the
+    # resumed call already had its request emitted before suspending --
+    # resuming must not re-emit a second HUMAN_APPROVAL_REQUESTED for it.
+    assert sum(1 for s in resumed.steps if s.type == "HUMAN_APPROVAL_REQUESTED") == 1
+
+
+# -- Epic 17: cooperative cancellation (US17.4) --------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_cancelled_via_on_step():
+    from app.twin.engine import RunCancelled
+
+    artifact = AgentDefinition(
+        name="Refund Agent",
+        purpose="x",
+        trigger="x",
+        system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"],
+        model="test-model",
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(system_stubs={"CRM system": TwinSystemStub(mode="static", static_responses=[StaticResponseRule()])})
+
+    llm = AsyncMock()
+    llm.complete.return_value = _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "1"})])
+
+    async def on_step(step):
+        if step.type == "RUN_STARTED":
+            raise RunCancelled()
+
+    outcome = await run_scenario(
+        llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5, on_step=on_step
+    )
+
+    assert outcome.status == "CANCELLED"

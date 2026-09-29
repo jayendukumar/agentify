@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ApiError,
+  cancelOrchestrationRun,
   createOrchestrationScenario,
   deleteOrchestrationScenario,
   getOrchestrationRun,
   listOrchestrationRuns,
   listOrchestrationScenarios,
+  resumeOrchestrationRun,
   startOrchestrationRun,
 } from '../api/client'
 import type {
@@ -18,6 +20,7 @@ import type {
   TwinHumanCheckpointConfig,
   TwinSystemStub,
 } from '../api/types'
+import { isTerminalRunStatus, runStatusBadgeClass } from '../lib/runStatus'
 
 // US16.7: poll rather than push (websockets/SSE) -- same live-observability
 // mechanism app/ingestion/pipeline.py already uses for document processing
@@ -32,16 +35,6 @@ function parseJsonField<T>(raw: string, fieldLabel: string): T {
   } catch {
     throw new Error(`${fieldLabel} is not valid JSON`)
   }
-}
-
-function nodeRunStatusClass(status: NodeRun['status']): string {
-  return status === 'passed' ? 'badge status-done' : 'badge status-failed'
-}
-
-function runStatusClass(status: OrchestrationRun['status']): string {
-  if (status === 'passed') return 'badge status-done'
-  if (status === 'running') return 'badge status-processing'
-  return 'badge status-failed'
 }
 
 const NODE_RUN_KIND_LABELS: Record<NodeRun['kind'], string> = {
@@ -81,7 +74,10 @@ export default function OrchestrationPanel({ processId }: { processId: string })
       try {
         const run = await getOrchestrationRun(processId, runId)
         setRunsByScenario((prev) => ({ ...prev, [scenarioId]: run }))
-        if (run.status !== 'running') {
+        // WAITING_FOR_HUMAN is a stable resting state too -- nothing
+        // changes until a person resumes it, so stop polling there as
+        // well, not just at a true terminal status.
+        if (isTerminalRunStatus(run.status) || run.status === 'WAITING_FOR_HUMAN') {
           clearInterval(timer)
           delete pollTimers.current[scenarioId]
         }
@@ -111,7 +107,9 @@ export default function OrchestrationPanel({ processId }: { processId: string })
         }
         setRunsByScenario(latestByScenario)
         for (const run of Object.values(latestByScenario)) {
-          if (run.status === 'running') startPolling(run.scenario_id, run.id)
+          if (!isTerminalRunStatus(run.status) && run.status !== 'WAITING_FOR_HUMAN') {
+            startPolling(run.scenario_id, run.id)
+          }
         }
       })
       .catch((err) => {
@@ -199,6 +197,36 @@ export default function OrchestrationPanel({ processId }: { processId: string })
     }
   }
 
+  // Epic 17, US17.3/US17.4: a WAITING_FOR_HUMAN run needs a real person's
+  // decision (or a cancellation) to move again -- resuming re-enters the
+  // same background execution, so polling picks back up exactly as it did
+  // for the initial run.
+  async function handleResumeRun(runId: string, scenarioId: string, decision: 'approve' | 'reject') {
+    setRunError(null)
+    try {
+      const run = await resumeOrchestrationRun(processId, runId, decision)
+      setRunsByScenario((prev) => ({ ...prev, [scenarioId]: run }))
+      startPolling(scenarioId, runId)
+    } catch (err) {
+      setRunError(err instanceof ApiError ? err.message : 'Failed to resume the run')
+    }
+  }
+
+  async function handleCancelRun(runId: string, scenarioId: string) {
+    setRunError(null)
+    try {
+      await cancelOrchestrationRun(processId, runId)
+      // A WAITING_FOR_HUMAN run has no active background task, so
+      // app/db/repository.py's cancel_run resolves it to CANCELLED
+      // immediately -- refetch once rather than poll for a change that
+      // already happened.
+      const run = await getOrchestrationRun(processId, runId)
+      setRunsByScenario((prev) => ({ ...prev, [scenarioId]: run }))
+    } catch (err) {
+      setRunError(err instanceof ApiError ? err.message : 'Failed to cancel the run')
+    }
+  }
+
   if (loading) {
     return (
       <div className="page" data-testid="orchestration-panel">
@@ -231,19 +259,44 @@ export default function OrchestrationPanel({ processId }: { processId: string })
               <li key={scenario.id} className="registry-entry-card" data-testid="orchestration-scenario-card">
                 <div className="registry-entry-header">
                   <span>{scenario.name}</span>
-                  {run && <span className={runStatusClass(run.status)}>{run.status}</span>}
+                  {run && <span className={runStatusBadgeClass(run.status, run.graded_passed)}>{run.status}</span>}
                 </div>
                 <div className="registry-entry-actions">
                   <button
                     type="button"
                     onClick={() => handleStartRun(scenario.id)}
-                    disabled={startingId === scenario.id || run?.status === 'running'}
+                    disabled={startingId === scenario.id || (!!run && !isTerminalRunStatus(run.status))}
                   >
-                    {run?.status === 'running' ? 'Running...' : startingId === scenario.id ? 'Starting...' : 'Run'}
+                    {run && !isTerminalRunStatus(run.status)
+                      ? 'Running...'
+                      : startingId === scenario.id
+                        ? 'Starting...'
+                        : 'Run'}
                   </button>
                   <button type="button" className="button-secondary" onClick={() => handleDelete(scenario.id)}>
                     Delete
                   </button>
+                  {run?.status === 'WAITING_FOR_HUMAN' && (
+                    <>
+                      <button type="button" onClick={() => handleResumeRun(run.id, scenario.id, 'approve')}>
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        onClick={() => handleResumeRun(run.id, scenario.id, 'reject')}
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        onClick={() => handleCancelRun(run.id, scenario.id)}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
                 </div>
                 {run && (
                   <div data-testid="orchestration-run-result">
@@ -263,18 +316,23 @@ export default function OrchestrationPanel({ processId }: { processId: string })
                     <ol data-testid="orchestration-timeline">
                       {run.node_runs.map((nodeRun, i) => (
                         <li key={`${nodeRun.node_id}-${i}`} data-testid="orchestration-node-run">
-                          <span className={nodeRunStatusClass(nodeRun.status)}>{nodeRun.status}</span>{' '}
+                          <span className={runStatusBadgeClass(nodeRun.status)}>{nodeRun.status}</span>{' '}
                           <strong>{nodeRun.node_label}</strong>{' '}
                           <span className="meta">({NODE_RUN_KIND_LABELS[nodeRun.kind]})</span>
                           {nodeRun.error_message && <p className="error">{nodeRun.error_message}</p>}
-                          {nodeRun.trace.length > 0 && (
-                            <p className="meta">{nodeRun.trace.length} tool/checkpoint call(s)</p>
+                          {nodeRun.steps.length > 0 && (
+                            <p className="meta">{nodeRun.steps.length} step(s)</p>
                           )}
                         </li>
                       ))}
-                      {run.status === 'running' && (
+                      {!isTerminalRunStatus(run.status) && run.status !== 'WAITING_FOR_HUMAN' && (
                         <li className="meta" data-testid="orchestration-run-live">
                           Running -- watching live...
+                        </li>
+                      )}
+                      {run.status === 'WAITING_FOR_HUMAN' && (
+                        <li className="meta" data-testid="orchestration-run-waiting">
+                          Waiting for a human decision...
                         </li>
                       )}
                     </ol>
