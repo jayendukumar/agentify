@@ -286,6 +286,9 @@ export interface AgentArtifact {
   node_ids: string[]
   primary_node_id: string
   status: AgentArtifactStatus
+  // Epic 19, US19.5: bumped every time this artifact is regenerated --
+  // distinct from `status` above (a lifecycle state, not a counter).
+  version: number
   definition: AgentDefinition
   baseline_version_id: string
   generated_at: string
@@ -393,7 +396,82 @@ export interface RunStep {
   reason: string | null
   denied: boolean
   static_fallback: boolean
+  // Epic 18, US18.2: LLM usage this specific step caused (a model turn, a
+  // proxy-simulated tool response, a data-adapter reshape) -- null for a
+  // step with no LLM call of its own, or a step mapped from a pre-Epic-18
+  // historical run. Not a second source of truth for the run-level total.
+  tokens: number | null
+  cost_usd: number | null
   occurred_at: string
+}
+
+// Epic 19: named evaluation dimensions (US19.1), reusable regression suites
+// (US19.2/US19.3), and run comparison (US19.4) -- see backend/app/schemas/
+// evaluation.py. Structural, not an LLM-judge score.
+export type EvaluationDimensionName =
+  | 'task_completion'
+  | 'policy_compliance'
+  | 'tool_selection_correctness'
+  | 'tool_argument_correctness'
+  | 'output_correctness'
+  | 'grounding'
+  | 'resilience'
+  | 'efficiency'
+  | 'human_intervention'
+  | 'latency'
+  | 'token_usage'
+  | 'cost'
+
+export interface EvaluationDimension {
+  name: EvaluationDimensionName
+  passed: boolean
+  detail: string
+}
+
+export interface EvaluationResult {
+  dimensions: EvaluationDimension[]
+  passed_count: number
+  total_count: number
+}
+
+export interface RegressionSuiteCreate {
+  name: string
+  agent_artifact_id: string | null
+  kind: 'twin' | 'orchestration'
+  scenario_ids: string[]
+}
+
+export interface RegressionSuite extends RegressionSuiteCreate {
+  id: string
+  process_id: string
+  created_at: string
+  created_by: string | null
+  created_by_name: string | null
+}
+
+export interface RegressionSuiteScenarioResult {
+  scenario_id: string
+  run_id: string
+  status: string
+  graded_passed: boolean | null
+}
+
+export interface RegressionSuiteRun {
+  id: string
+  suite_id: string
+  status: 'running' | 'completed'
+  run_ids: string[]
+  pass_count: number
+  total_count: number
+  scenario_results: RegressionSuiteScenarioResult[]
+  started_at: string
+  completed_at: string | null
+}
+
+export interface RunComparison {
+  run_a_id: string
+  run_b_id: string
+  differences: string[]
 }
 
 // Epic 14 (core slice)
@@ -466,6 +544,9 @@ export interface TwinRun {
   final_output: Record<string, unknown> | null
   deviations: TwinDeviation[]
   graded_passed: boolean | null
+  // Epic 19, US19.1: null for a non-terminal or ungraded run, and for any
+  // run persisted before this epic.
+  evaluation: EvaluationResult | null
   total_cost_usd: number | null
   total_tokens: number
   turns_used: number
@@ -576,6 +657,7 @@ export interface OrchestrationRun {
   final_output: Record<string, unknown> | null
   deviations: TwinDeviation[]
   graded_passed: boolean | null
+  evaluation: EvaluationResult | null
   total_cost_usd: number | null
   total_tokens: number
   started_at: string

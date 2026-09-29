@@ -5,6 +5,7 @@ import {
   createOrchestrationScenario,
   deleteOrchestrationScenario,
   getOrchestrationRun,
+  getVersion,
   listOrchestrationRuns,
   listOrchestrationScenarios,
   resumeOrchestrationRun,
@@ -21,6 +22,8 @@ import type {
   TwinSystemStub,
 } from '../api/types'
 import { isTerminalRunStatus, runStatusBadgeClass } from '../lib/runStatus'
+import RegressionSuitePanel from './RegressionSuitePanel'
+import RunDetailView from './RunDetailView'
 
 // US16.7: poll rather than push (websockets/SSE) -- same live-observability
 // mechanism app/ingestion/pipeline.py already uses for document processing
@@ -64,6 +67,9 @@ export default function OrchestrationPanel({ processId }: { processId: string })
   const [expectedFinalOutputJson, setExpectedFinalOutputJson] = useState('{}')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+
+  const [viewingScenarioId, setViewingScenarioId] = useState<string | null>(null)
+  const [versionXmlById, setVersionXmlById] = useState<Record<string, string>>({})
 
   const pollTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
 
@@ -212,6 +218,24 @@ export default function OrchestrationPanel({ processId }: { processId: string })
     }
   }
 
+  // Epic 18, US18.4: the run detail's embedded canvas needs the process's
+  // real finalized BPMN, not the synthetic chain diagram DigitalTwinBpmnView
+  // renders -- fetched lazily (only once the viewer actually opens a run)
+  // and cached per version id, since several scenarios can share one
+  // baseline_version_id.
+  async function handleToggleView(scenario: OrchestrationScenario) {
+    const next = viewingScenarioId === scenario.id ? null : scenario.id
+    setViewingScenarioId(next)
+    if (next && !versionXmlById[scenario.baseline_version_id]) {
+      try {
+        const version = await getVersion(processId, scenario.baseline_version_id)
+        setVersionXmlById((prev) => ({ ...prev, [scenario.baseline_version_id]: version.xml }))
+      } catch (err) {
+        setRunError(err instanceof ApiError ? err.message : 'Failed to load the process diagram for this run')
+      }
+    }
+  }
+
   async function handleCancelRun(runId: string, scenarioId: string) {
     setRunError(null)
     try {
@@ -276,6 +300,11 @@ export default function OrchestrationPanel({ processId }: { processId: string })
                   <button type="button" className="button-secondary" onClick={() => handleDelete(scenario.id)}>
                     Delete
                   </button>
+                  {run && (
+                    <button type="button" className="button-secondary" onClick={() => handleToggleView(scenario)}>
+                      {viewingScenarioId === scenario.id ? 'Hide run' : 'View run'}
+                    </button>
+                  )}
                   {run?.status === 'WAITING_FOR_HUMAN' && (
                     <>
                       <button type="button" onClick={() => handleResumeRun(run.id, scenario.id, 'approve')}>
@@ -336,6 +365,9 @@ export default function OrchestrationPanel({ processId }: { processId: string })
                         </li>
                       )}
                     </ol>
+                    {viewingScenarioId === scenario.id && (
+                      <RunDetailView run={run} canvasXml={versionXmlById[scenario.baseline_version_id] ?? null} />
+                    )}
                   </div>
                 )}
               </li>
@@ -348,6 +380,13 @@ export default function OrchestrationPanel({ processId }: { processId: string })
           {runError}
         </p>
       )}
+
+      <RegressionSuitePanel
+        processId={processId}
+        kind="orchestration"
+        agentArtifactId={null}
+        availableScenarios={scenarios.map((s) => ({ id: s.id, name: s.name }))}
+      />
 
       <h3>New scenario</h3>
       <form className="twin-scenario-form" onSubmit={handleCreateScenario}>

@@ -309,6 +309,9 @@ async def test_run_orchestration_llm_adapter_reshapes_input(fake_llm, monkeypatc
     delegated = next(s for s in outcome.steps if s.type == "AGENT_DELEGATED")
     assert delegated.arguments["mode"] == "llm_adapter"
     assert delegated.result["input_after"] == {"foo": "bar"}
+    # Epic 18, US18.2: the data-adapter's own LLM call's usage belongs on
+    # this step, not just folded silently into the run-level total.
+    assert delegated.tokens == 2
 
 
 @pytest.mark.asyncio

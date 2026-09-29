@@ -877,6 +877,16 @@ button:disabled {
   stroke: var(--axyntro-error) !important;
 }
 
+/* Epic 18, US18.4: the currently-executing (live) or currently-selected
+   (replay/inspect) node during a run, applied by RunDetailView's own
+   embedded BlueprintCanvas instance -- deliberately a different color from
+   the verdict markers above, since this means something different. */
+.run-node-active .djs-visual > :first-child {
+  fill: var(--axyntro-info-bg) !important;
+  stroke: var(--axyntro-info) !important;
+  stroke-width: 3px !important;
+}
+
 .blueprint-title {
   margin: 0;
 }

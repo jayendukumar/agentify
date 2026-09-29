@@ -140,6 +140,14 @@ class AgentArtifact(BaseModel):
     node_ids: list[str]
     primary_node_id: str
     status: AgentArtifactStatus
+    # Epic 19, US19.5: an incrementing version identifier, bumped by
+    # `repository.generate_agent_artifact` every time an existing artifact
+    # (same group_key) is regenerated -- distinct from `status` above,
+    # which is a lifecycle state (generated/stale), not a counter. Runs,
+    # regression suites, and version comparisons (US19.2-19.4) key off
+    # this, not off `generated_at` (which a resumed/retried generation
+    # could otherwise make ambiguous).
+    version: int = 1
     definition: AgentDefinition
     baseline_version_id: str
     generated_at: datetime

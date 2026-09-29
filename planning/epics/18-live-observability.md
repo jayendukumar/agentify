@@ -1,8 +1,25 @@
 # Epic 18 -- Live Observability: Synchronized Views, Inspector & Replay
 
-**Status: not started.** Groomed 2026-09-28 from the "Digital Twin Agent
-Simulation" requirements doc (Section 6) against the current codebase --
-see `planning/decision-log.md`'s 2026-09-28 entry.
+**Status: implemented (all five user stories).** Groomed 2026-09-28 from
+the "Digital Twin Agent Simulation" requirements doc (Section 6) against
+the current codebase; built 2026-09-29 -- `frontend/src/lib/runSteps.ts`
+(new -- Process/Agent/Technical filters, `narrateStep`, replay's
+`cumulativeAt`/`stepDurationMs`), `frontend/src/components/
+StepInspector.tsx` and `RunDetailView.tsx` (new), `DigitalTwinPanel.tsx`/
+`OrchestrationPanel.tsx` (a "View run" toggle mounting `RunDetailView`),
+plus a small additive backend change (`app/schemas/run.py`'s `RunStep`
+gains `tokens`/`cost_usd`, populated in `app/twin/engine.py`/
+`orchestrator.py`) so the step inspector has real per-step usage to show,
+not just run-level totals. Twin runs get the same Process/Agent/Technical
+treatment as orchestration runs, with a static "Agent: X -- node: Y" header
+in place of a live canvas (see `planning/decision-log.md`'s 2026-09-29
+entry for why, and for the three-views-not-three-panes layout decision).
+Live-verified: full backend suite passing against a real Postgres test DB;
+`tsc -b`/`vite build`/`vitest run` clean on the frontend; exercised through
+an actual browser session against the real running stack (real LLM via
+OpenRouter -> Qwen) -- live step list, view switching, step selection,
+canvas embedding, and the replay scrubber all confirmed working against a
+real twin run on a real generated agent (HROnboarding).
 
 Goal: Give a running or completed simulation the three-pane, synchronized,
 replayable observability experience the requirements describe, replacing

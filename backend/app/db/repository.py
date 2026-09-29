@@ -22,11 +22,19 @@ from app.ingestion.extractors import ExtractedBlock
 from app.ingestion.merge import merge_process_schemas
 from app.llm import LLMClient
 from app.registry.base import RegistryConnector
-from app.schemas.agents import AgentArtifact, AgentDefinition, AgentGovernanceUpdate
+from app.schemas.agents import AgentArtifact, AgentDefinition, AgentGovernanceUpdate, RuntimeGuardrails
 from app.schemas.blueprint import BlueprintNodeResult, BlueprintOverlay
 from app.schemas.chat import ChatMessageResult
 from app.schemas.common import Actor, ProcessElement, ProcessFlow, ProcessSchema, SourceRef
 from app.schemas.documents import IngestionStatus
+from app.schemas.evaluation import (
+    EvaluationResult,
+    RegressionSuite,
+    RegressionSuiteCreate,
+    RegressionSuiteRun,
+    RegressionSuiteScenarioResult,
+    RunComparison,
+)
 from app.schemas.gap_analysis import GapFinding, GapFindingOption
 from app.schemas.orchestration import (
     NodeRun,
@@ -51,6 +59,7 @@ from app.schemas.versions import VersionDetail
 from app.store import NotFoundError
 from app.twin.engine import RunCancelled, run_scenario
 from app.twin.errors import TwinServiceError
+from app.twin.evaluation import evaluate_run
 from app.twin.orchestrator import NodeArtifact, run_orchestration
 from app.twin.schema_inference import infer_tool_schemas
 
@@ -70,6 +79,8 @@ from .models import (
     ProcessFlowModel,
     ProcessModel,
     ProcessSchemaChangeModel,
+    RegressionSuiteModel,
+    RegressionSuiteRunModel,
     SessionModel,
     SimulationRunModel,
     SourceRefModel,
@@ -568,6 +579,7 @@ def _to_pydantic_agent_artifact(session: Session, artifact: AgentArtifactModel, 
         node_ids=artifact.node_ids,
         primary_node_id=artifact.primary_node_id,
         status="stale" if is_stale else "generated",
+        version=artifact.version,
         definition=AgentDefinition.model_validate(artifact.definition),
         baseline_version_id=artifact.source_baseline_version_id,
         generated_at=artifact.generated_at,
@@ -620,6 +632,9 @@ def generate_agent_artifact(
         artifact.source_node_snapshot = snapshot
         artifact.generated_by = generated_by
         artifact.generated_at = utcnow()
+        # Epic 19, US19.5: every regenerate of an existing row is a new
+        # version to key runs/suites/comparisons against.
+        artifact.version += 1
 
     session.flush()
     return _to_pydantic_agent_artifact(session, artifact, is_stale=False)
@@ -778,6 +793,7 @@ def _to_pydantic_sim_twin_run(session: Session, run: SimulationRunModel) -> Twin
         final_output=run.final_output,
         deviations=[TwinDeviation.model_validate(d) for d in run.deviations],
         graded_passed=run.graded_passed,
+        evaluation=EvaluationResult.model_validate(run.evaluation) if run.evaluation else None,
         total_cost_usd=run.total_cost_usd,
         total_tokens=run.total_tokens,
         turns_used=run.turns_used,
@@ -961,6 +977,21 @@ async def execute_twin_run_background(
         run_model.resume_state = outcome.resume_state
         if outcome.status != "WAITING_FOR_HUMAN":
             run_model.completed_at = utcnow()
+            # Epic 19, US19.1: computed once the run reaches a terminal
+            # state, using the artifact's own guardrails as each dimension's
+            # threshold reference (efficiency/latency/token_usage/cost).
+            run_model.evaluation = evaluate_run(
+                steps=outcome.steps,
+                final_output=outcome.final_output,
+                deviations=outcome.deviations,
+                graded_passed=outcome.graded_passed,
+                status=outcome.status,
+                guardrails=definition.guardrails,
+                total_cost_usd=outcome.total_cost_usd,
+                total_tokens=outcome.total_tokens,
+                started_at=run_model.started_at,
+                completed_at=run_model.completed_at,
+            ).model_dump(mode="json")
         session.commit()
     finally:
         session.close()
@@ -1302,6 +1333,7 @@ def _to_pydantic_sim_orchestration_run(session: Session, run: SimulationRunModel
         final_output=run.final_output,
         deviations=[TwinDeviation.model_validate(d) for d in run.deviations],
         graded_passed=run.graded_passed,
+        evaluation=EvaluationResult.model_validate(run.evaluation) if run.evaluation else None,
         total_cost_usd=run.total_cost_usd,
         total_tokens=run.total_tokens,
         started_at=run.started_at,
@@ -1480,9 +1512,188 @@ async def execute_orchestration_run_background(
         run_model.resume_state = outcome.resume_state
         if outcome.status != "WAITING_FOR_HUMAN":
             run_model.completed_at = utcnow()
+            # Epic 19, US19.1: an orchestration run has no single artifact
+            # to pull guardrails from -- default RuntimeGuardrails() is the
+            # threshold reference for efficiency/latency/token_usage/cost,
+            # same "no single owner" reasoning RegressionSuiteModel's
+            # nullable agent_artifact_id already documents for this kind.
+            run_model.evaluation = evaluate_run(
+                steps=outcome.steps,
+                final_output=outcome.final_output,
+                deviations=outcome.deviations,
+                graded_passed=outcome.graded_passed,
+                status=outcome.status,
+                guardrails=RuntimeGuardrails(),
+                total_cost_usd=outcome.total_cost_usd,
+                total_tokens=outcome.total_tokens,
+                started_at=run_model.started_at,
+                completed_at=run_model.completed_at,
+            ).model_dump(mode="json")
         session.commit()
     finally:
         session.close()
+
+
+# -- evaluation, regression suites & comparison (Epic 19) ---------------------
+
+
+def get_any_run(session: Session, process_id: str, run_id: str) -> TwinRun | OrchestrationRun:
+    """US19.4/US19.3: resolves a run id regardless of kind -- tries twin
+    first, then orchestration, the same ambiguity every other cross-kind
+    run id already has to handle (see `_get_simulation_run`'s `kind`
+    parameter). Raises NotFoundError (from the orchestration lookup) if
+    neither matches."""
+    try:
+        return get_twin_run(session, process_id, run_id)
+    except NotFoundError:
+        return get_orchestration_run(session, process_id, run_id)
+
+
+def _to_pydantic_regression_suite(session: Session, suite: RegressionSuiteModel) -> RegressionSuite:
+    return RegressionSuite(
+        id=suite.id,
+        process_id=suite.process_id,
+        agent_artifact_id=suite.agent_artifact_id,
+        kind=suite.kind,
+        name=suite.name,
+        scenario_ids=suite.scenario_ids,
+        created_at=suite.created_at,
+        created_by=suite.created_by,
+        created_by_name=_resolve_user_name(session, suite.created_by),
+    )
+
+
+def create_regression_suite(
+    session: Session, process_id: str, data: RegressionSuiteCreate, *, created_by: str | None = None
+) -> RegressionSuite:
+    """US19.2. `scenario_ids` are validated by existing, kind-matching
+    lookups (`get_twin_scenario`/`get_orchestration_scenario_model`) so a
+    suite can never reference a scenario that doesn't exist or belongs to
+    another process."""
+    get_process(session, process_id)  # 404s if missing
+    if data.kind == "twin":
+        if data.agent_artifact_id is None:
+            raise TwinServiceError("A twin regression suite must declare agent_artifact_id")
+        get_agent_artifact(session, process_id, data.agent_artifact_id)  # 404s if missing/wrong process
+        for scenario_id in data.scenario_ids:
+            get_twin_scenario(session, process_id, scenario_id)
+    else:
+        for scenario_id in data.scenario_ids:
+            get_orchestration_scenario_model(session, process_id, scenario_id)
+
+    suite = RegressionSuiteModel(
+        id=new_id("regsuite"),
+        process_id=process_id,
+        agent_artifact_id=data.agent_artifact_id,
+        kind=data.kind,
+        name=data.name,
+        scenario_ids=list(data.scenario_ids),
+        created_by=created_by,
+    )
+    session.add(suite)
+    session.flush()
+    return _to_pydantic_regression_suite(session, suite)
+
+
+def list_regression_suites(session: Session, process_id: str) -> list[RegressionSuite]:
+    get_process(session, process_id)  # 404s if missing
+    suites = session.scalars(
+        select(RegressionSuiteModel)
+        .where(RegressionSuiteModel.process_id == process_id)
+        .order_by(RegressionSuiteModel.created_at)
+    )
+    return [_to_pydantic_regression_suite(session, suite) for suite in suites]
+
+
+def get_regression_suite_model(session: Session, process_id: str, suite_id: str) -> RegressionSuiteModel:
+    suite = session.get(RegressionSuiteModel, suite_id)
+    if suite is None or suite.process_id != process_id:
+        raise NotFoundError("regression suite", suite_id)
+    return suite
+
+
+def delete_regression_suite(session: Session, process_id: str, suite_id: str) -> None:
+    suite = get_regression_suite_model(session, process_id, suite_id)
+    session.delete(suite)
+    session.flush()
+
+
+def start_regression_suite_run(
+    session: Session, process_id: str, suite_id: str, *, run_by: str | None = None
+) -> tuple[RegressionSuiteRun, list[str], str]:
+    """US19.3: starts one SimulationRunModel per scenario in the suite
+    (through the existing `start_twin_run`/`start_orchestration_run` -- no
+    duplicated execution path), wraps the resulting run ids in a
+    RegressionSuiteRunModel, and returns (suite_run, run_ids, kind) so the
+    caller (app/api/evaluation.py) can enqueue the right background task
+    (execute_twin_run_background vs execute_orchestration_run_background)
+    per run, the same two-step create-then-enqueue handoff every other run
+    start already uses."""
+    suite = get_regression_suite_model(session, process_id, suite_id)
+    run_ids: list[str] = []
+    for scenario_id in suite.scenario_ids:
+        if suite.kind == "twin":
+            run = start_twin_run(session, process_id, scenario_id, run_by=run_by)
+        else:
+            run = start_orchestration_run(session, process_id, scenario_id, run_by=run_by)
+        run_ids.append(run.id)
+
+    suite_run = RegressionSuiteRunModel(
+        id=new_id("regrun"), suite_id=suite.id, run_ids=run_ids, status="running", started_by=run_by
+    )
+    session.add(suite_run)
+    session.flush()
+    return _to_pydantic_regression_suite_run(session, suite_run), run_ids, suite.kind
+
+
+def _to_pydantic_regression_suite_run(session: Session, suite_run: RegressionSuiteRunModel) -> RegressionSuiteRun:
+    results: list[RegressionSuiteScenarioResult] = []
+    all_terminal = True
+    for run_id in suite_run.run_ids:
+        run_model = session.get(SimulationRunModel, run_id)
+        if run_model is None:
+            continue
+        scenario_id = run_model.scenario_id
+        if run_model.completed_at is None:
+            all_terminal = False
+        results.append(
+            RegressionSuiteScenarioResult(
+                scenario_id=scenario_id, run_id=run_id, status=run_model.status, graded_passed=run_model.graded_passed
+            )
+        )
+    if all_terminal and suite_run.status != "completed":
+        suite_run.status = "completed"
+        suite_run.completed_at = utcnow()
+        session.flush()
+
+    pass_count = sum(1 for r in results if r.graded_passed)
+    return RegressionSuiteRun(
+        id=suite_run.id,
+        suite_id=suite_run.suite_id,
+        status=suite_run.status,  # type: ignore[arg-type]
+        run_ids=suite_run.run_ids,
+        pass_count=pass_count,
+        total_count=len(results),
+        scenario_results=results,
+        started_at=suite_run.started_at,
+        completed_at=suite_run.completed_at,
+    )
+
+
+def get_regression_suite_run(session: Session, process_id: str, suite_run_id: str) -> RegressionSuiteRun:
+    suite_run = session.get(RegressionSuiteRunModel, suite_run_id)
+    if suite_run is None:
+        raise NotFoundError("regression suite run", suite_run_id)
+    get_regression_suite_model(session, process_id, suite_run.suite_id)  # 404s if wrong process
+    return _to_pydantic_regression_suite_run(session, suite_run)
+
+
+def compare_runs(session: Session, process_id: str, run_a_id: str, run_b_id: str) -> RunComparison:
+    run_a = get_any_run(session, process_id, run_a_id)
+    run_b = get_any_run(session, process_id, run_b_id)
+    from app.twin.comparison import compare_runs as _compare_runs
+
+    return _compare_runs(run_a, run_b)
 
 
 # -- publishing (Epic 15) ------------------------------------------------------

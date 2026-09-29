@@ -345,13 +345,17 @@ async def run_scenario(
                     except TwinServiceError as exc:
                         await emit("TOOL_FAILED", target=system_name, arguments=call.arguments, reason=str(exc))
                         raise
+                    step_tokens: int | None = None
+                    step_cost: float | None = None
                     if llm_call is not None:
                         usage, model = llm_call
                         account(model, usage)
-                        tracker.record_usage(usage.total_tokens, estimate_cost_usd(model, usage))
+                        step_tokens = usage.total_tokens
+                        step_cost = estimate_cost_usd(model, usage)
+                        tracker.record_usage(usage.total_tokens, step_cost)
                     await emit(
                         "TOOL_EXECUTED", target=system_name, arguments=call.arguments, result=tool_response,
-                        static_fallback=static_fallback,
+                        static_fallback=static_fallback, tokens=step_tokens, cost_usd=step_cost,
                     )
             tool_messages.append(ChatMessage(role="tool", tool_call_id=call.id, name=call.name, content=json.dumps(tool_response)))
         return tool_messages, None
@@ -387,8 +391,12 @@ async def run_scenario(
                 response_format=None if tools else {"type": "json_object"},
             )
             account(result.model, result.usage)
-            tracker.record_usage(result.usage.total_tokens, estimate_cost_usd(result.model, result.usage))
-            await emit("MODEL_INVOKED", result={"has_tool_calls": bool(result.tool_calls)})
+            model_cost = estimate_cost_usd(result.model, result.usage)
+            tracker.record_usage(result.usage.total_tokens, model_cost)
+            await emit(
+                "MODEL_INVOKED", result={"has_tool_calls": bool(result.tool_calls)},
+                tokens=result.usage.total_tokens, cost_usd=model_cost,
+            )
 
             if not result.tool_calls:
                 final_output = _parse_json_object(result.text)

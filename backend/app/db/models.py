@@ -11,8 +11,9 @@ TwinBaselineModel), Epic 15's publish history (AgentPublicationModel),
 Epic 16's orchestration rehearsal scenarios/runs (OrchestrationScenarioModel/
 OrchestrationRunModel), Epic 17's unified run store (SimulationRunModel --
 additive, see its own docstring; TwinRunModel/OrchestrationRunModel are
-kept for historical rows), and Epic 9/10's users/sessions (UserModel/
-SessionModel), each promoted out of
+kept for historical rows), Epic 19's regression suites
+(RegressionSuiteModel/RegressionSuiteRunModel), and Epic 9/10's users/
+sessions (UserModel/SessionModel), each promoted out of
 the in-memory store (app/store.py) once its own epic made the data real.
 app/store.py now only defines NotFoundError -- nothing left to hold in
 memory.
@@ -384,6 +385,9 @@ class AgentArtifactModel(Base):
     group_key: Mapped[str] = mapped_column(String, nullable=False)
     node_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     primary_node_id: Mapped[str] = mapped_column(String, nullable=False)
+    # Epic 19, US19.5: bumped by repository.generate_agent_artifact on every
+    # regenerate of an existing row -- see AgentArtifact schema's docstring.
+    version: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
     definition: Mapped[dict] = mapped_column(JSON, nullable=False)
     source_baseline_version_id: Mapped[str] = mapped_column(String, nullable=False)
     source_node_snapshot: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
@@ -658,6 +662,12 @@ class SimulationRunModel(Base):
     final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     graded_passed: Mapped[bool | None] = mapped_column(nullable=True)
+    # Epic 19, US19.1: the twelve-dimension EvaluationResult (app/schemas/
+    # evaluation.py), computed once alongside graded_passed/deviations --
+    # None for a still-running or non-COMPLETED run, and for every run
+    # persisted before this epic (never backfilled, same "historical rows
+    # just don't have it" convention RunStep.tokens/cost_usd set in Epic 18).
+    evaluation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     total_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     total_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
     turns_used: Mapped[int] = mapped_column(nullable=False, default=0)
@@ -667,3 +677,45 @@ class SimulationRunModel(Base):
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class RegressionSuiteModel(Base):
+    """Epic 19, US19.2: a named, reusable set of scenario ids (twin or
+    orchestration) an Automation Architect wants to re-run together as one
+    regression pass, instead of an ungrouped scenario list. `agent_artifact_id`
+    is required for kind="twin" (a suite of one agent's scenarios) and left
+    null for kind="orchestration" (a process-wide rehearsal suite has no
+    single owning artifact)."""
+
+    __tablename__ = "regression_suites"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    agent_artifact_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    scenario_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class RegressionSuiteRunModel(Base):
+    """Epic 19, US19.3: one execution of a whole RegressionSuiteModel --
+    `run_ids` are SimulationRunModel ids (one per scenario, started through
+    the existing start_twin_run/start_orchestration_run + background-task
+    path, never a duplicated execution mechanism). Aggregate pass/fail is
+    computed on read from those runs' own graded_passed, not stored here,
+    the same "derive, don't duplicate" convention AgentArtifactModel's
+    staleness already follows."""
+
+    __tablename__ = "regression_suite_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    suite_id: Mapped[str] = mapped_column(ForeignKey("regression_suites.id", ondelete="CASCADE"), index=True)
+    run_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="running")
+    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    started_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

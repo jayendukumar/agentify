@@ -252,10 +252,45 @@ async def test_run_scenario_end_to_end_pass():
     assert _actionable_types(outcome.steps) == ["TOOL_EXECUTED", "HUMAN_APPROVED"]
     approved = next(s for s in outcome.steps if s.type == "HUMAN_APPROVED")
     assert approved.decision == "approve"
+    # Epic 18, US18.2: MODEL_INVOKED steps carry their own token usage...
+    model_steps = [s for s in outcome.steps if s.type == "MODEL_INVOKED"]
+    assert len(model_steps) == 3
+    assert all(s.tokens == 2 for s in model_steps)
+    # ...but a statically-matched tool response never calls the LLM, so its
+    # TOOL_EXECUTED step has no per-step usage to report.
+    tool_step = next(s for s in outcome.steps if s.type == "TOOL_EXECUTED")
+    assert tool_step.tokens is None
+    assert tool_step.cost_usd is None
     assert outcome.total_tokens == 6
     # "test-model" has no entry in the pricing table (app/llm/usage.py) --
     # cost must come back None (unknown), never a silently wrong partial sum.
     assert outcome.total_cost_usd is None
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_proxy_mode_tool_call_carries_step_usage():
+    """Epic 18, US18.2: unlike a statically-matched response, a Proxy-mode
+    tool call fabricates its response via its own LLM call -- that usage
+    belongs on the TOOL_EXECUTED step, not just the run-level total."""
+    artifact = AgentDefinition(
+        name="Refund Agent", purpose="x", trigger="x", system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"], model="test-model",
+    )
+    tool_schemas = {"CRM system": _crm_schema()}
+    scenario = _scenario(system_stubs={"CRM system": TwinSystemStub(mode="proxy")})
+
+    llm = AsyncMock()
+    llm.complete.side_effect = [
+        _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "123"})]),
+        _llm_result(text='{"tier": "gold"}'),  # the Proxy simulation's own LLM call
+        _llm_result(text='{"confirmation": "sent"}'),
+    ]
+
+    outcome = await run_scenario(llm, artifact=artifact, tool_schemas=tool_schemas, scenario=scenario, max_turns=5)
+
+    tool_step = next(s for s in outcome.steps if s.type == "TOOL_EXECUTED")
+    assert tool_step.tokens == 2
+    assert tool_step.static_fallback is False
 
 
 @pytest.mark.asyncio

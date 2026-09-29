@@ -1,8 +1,20 @@
 # Epic 19 -- Evaluation Dimensions, Regression Suites & Version Comparison
 
-**Status: not started.** Groomed 2026-09-28 from the "Digital Twin Agent
-Simulation" requirements doc (Section 7 and FR-OBS-05) against the current
-codebase -- see `planning/decision-log.md`'s 2026-09-28 entry.
+**Status: fully implemented.** Groomed 2026-09-28 from the "Digital Twin
+Agent Simulation" requirements doc (Section 7 and FR-OBS-05) against the
+current codebase -- see `planning/decision-log.md`'s 2026-09-28 entry.
+Built 2026-09-29 -- `app/schemas/evaluation.py` (new), `app/twin/
+evaluation.py` (new -- `evaluate_run`, the twelve structural dimensions),
+`app/twin/comparison.py` (new -- `compare_runs`), `app/db/models.py`
+(`AgentArtifactModel.version`, `SimulationRunModel.evaluation`,
+`RegressionSuiteModel`, `RegressionSuiteRunModel`), `app/db/repository.py`
+(regression suite CRUD/run/aggregate, `compare_runs`, `get_any_run`,
+version bump on regenerate), `app/api/evaluation.py` (new router), and
+frontend `RegressionSuitePanel.tsx`/`RunComparisonView.tsx` (new) plus an
+"Evaluation" section in `RunDetailView.tsx`. Live-verified: 324 backend
+tests (317 existing + 7 new) against a real Postgres test DB, plus a clean
+`tsc -b` + `vite build` + 104-test `vitest` pass on the frontend -- see
+`planning/decision-log.md`'s 2026-09-29 entry.
 
 Goal: Replace today's single binary pass/fail-plus-deviations grading
 (`app/twin/engine.py`'s `grade_run`, reused by the orchestrator) with named,

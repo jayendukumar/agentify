@@ -2064,3 +2064,137 @@ Epic 17 is data-model/execution-plumbing, not new UI (Epic 18 owns
 observability), but shipping a backend capability with *zero* way to
 reach it from the product would make US17.3/17.4 untestable end-to-end
 through the real app.
+
+## 2026-09-29 -- Epic 18, Live Observability: Synchronized Views, Inspector & Replay
+
+Implemented all five user stories: a live step list for both twin and
+orchestration runs (US18.1, replacing the flat "N step(s)" count),
+`StepInspector.tsx` (US18.2), a Process/Agent/Technical view switch over
+one shared step list with synchronized selection (US18.3), BPMN-canvas
+highlighting of the live/selected node for orchestration runs (US18.4),
+and a replay scrubber with a running cost/token/elapsed readout for
+terminal runs (US18.5). Live-verified against the real running stack
+(real Postgres, real LLM via OpenRouter -> Qwen) through an actual browser
+session (Claude in Chrome), not just component tests.
+
+### Twin runs get the same Process/Agent/Technical treatment, with a static subject line instead of a canvas
+
+The epic's own Notes left open whether a twin run (single agent, no
+process graph to walk) needs a separate 2-pane layout. Resolved by reusing
+the artifact's existing `primary_node_id` as a static "Agent: X -- node: Y"
+header in place of a live canvas -- the Process/Agent/Technical *view
+switch* itself and the inspector are identical code paths for both kinds,
+only the canvas-vs-static-header choice differs. No schema change needed:
+the node reference already existed on `AgentArtifact`.
+
+### Per-step tokens/cost is additive, not a new source of truth
+
+`RunStep` gained `tokens`/`cost_usd`, populated at `MODEL_INVOKED`,
+proxy-mode `TOOL_EXECUTED`, and `AGENT_DELEGATED`'s data-adapter call --
+but the run-level `total_cost_usd`/`total_tokens` (Epic 17) remain the
+only aggregate anything computes from; nothing sums the new per-step
+fields to reproduce that total, deliberately avoiding a second
+source of truth that could drift out of sync. Old (pre-Epic-18) `RunStep`
+rows and every step type with no LLM call of its own (a static-mode tool
+response, a human decision) simply have `null` here -- verified in
+`test_run_scenario_end_to_end_pass` (static match: `tokens is None`) and
+`test_run_scenario_proxy_mode_tool_call_carries_step_usage` (Proxy mode:
+`tokens == 2`).
+
+### Three views over one step list, not three simultaneous panes
+
+The requirements describe three *synchronized views*; this app's existing
+layout language is compact single-pane-at-a-time (tabs, one `aside` detail
+panel), not a triple-pane desktop layout. Implemented Process/Agent/
+Technical as three pure filters (`frontend/src/lib/runSteps.ts`) over the
+same `RunStep[]`, switched via a tab control, sharing one lifted
+`selectedSeq` -- selecting a step in any view drives the same inspector
+and the same canvas marker. This is "synchronized" in the sense that
+matters (one source of truth, no state to keep in sync across panes)
+without a layout rebuild the rest of the app doesn't use anywhere else.
+
+### Real defect found via live testing: a resumed manual checkpoint re-emitted its own request step
+
+(Carried over from Epic 17 live-testing, fixed in this same session before
+Epic 18 began: resuming a `WAITING_FOR_HUMAN` run re-emitted a duplicate
+`HUMAN_APPROVAL_REQUESTED` for the call it had already asked about before
+suspending. Fixed in `app/twin/engine.py`'s `process_calls` -- the first
+pending call on a resume no longer re-requests approval it already
+requested in the prior leg. Regression-covered in
+`test_run_scenario_manual_checkpoint_suspends_and_resumes`.)
+
+### Live testing surfaced two pre-existing, unrelated flakiness points (not Epic 18 defects)
+
+Running a real scenario against HROnboarding (18 steps, 13 generated
+agents) twice hit the same Proxy-mode simulation flakiness Epic 17's own
+live testing found ("LLM returned invalid JSON/no content while simulating
+a response") -- confirmed this lands as a graceful `FAILED` run with a
+clear deviation (Epic 17's decision 4), not a crash, exactly as designed;
+the live step list and inspector rendered the failure correctly (a
+`TOOL_FAILED` step narrated as "Failed calling HRIS API", the inspector
+showing the `RUN_COMPLETED` step's `{"status": "FAILED"}` result). Separately,
+`execute_orchestration_run_background`'s node-artifact schema-inference
+pass (one real LLM call per automatable node, sequential, before the walk
+itself starts) took several minutes for this 13-agent process -- an
+existing Epic 16 characteristic, not something Epic 18 touches, but worth
+flagging: that setup phase isn't a cooperative-cancellation checkpoint
+either (`RunCancelled` is only observed once `run_orchestration`'s own
+`on_step` starts firing), so a cancel requested during schema inference
+has no effect until the walk actually begins. Noted for a future epic,
+not fixed here -- out of Epic 18's scope.
+
+## 2026-09-29 -- Epic 19, Evaluation Dimensions, Regression Suites & Version Comparison
+
+Implemented all five user stories: twelve named evaluation dimensions
+(US19.1, `app/twin/evaluation.py`), regression suites bound to an agent
+definition or process (US19.2, `RegressionSuiteModel`), suite execution
+with an aggregate pass count (US19.3, `RegressionSuiteRunModel`), run-vs-run
+comparison (US19.4, `app/twin/comparison.py`), and `AgentArtifact.version`
+(US19.5, bumped on every regenerate). 324 backend tests (317 existing + 7
+new in `tests/test_api_evaluation.py`) pass against the real Postgres test
+DB; frontend `tsc -b`, `vite build`, and 104 `vitest` tests all green.
+
+### Evaluation computed in the repository layer, not threaded through RunOutcome
+
+`evaluate_run`'s `latency` dimension needs concrete `started_at`/
+`completed_at` timestamps, which only exist as real values once a
+`SimulationRunModel` row has been created and (on completion) stamped --
+`app/twin/engine.py`'s `run_scenario`/`app/twin/orchestrator.py`'s
+`run_orchestration` never touch the DB row directly. Rather than thread
+timestamps through `RunOutcome`/`OrchestrationOutcome` just for this,
+`repository.execute_twin_run_background`/`execute_orchestration_run_background`
+call `evaluate_run` themselves, right after setting `run_model.completed_at`
+-- everything else the dimensions need (`steps`, `deviations`,
+`graded_passed`, cost/tokens) was already on `outcome`. Orchestration runs
+have no single owning artifact, so they use a default `RuntimeGuardrails()`
+as the threshold reference for efficiency/latency/token_usage/cost, the
+same "no single owner" reasoning behind `RegressionSuiteModel.agent_artifact_id`
+being nullable for `kind="orchestration"` suites.
+
+### Two dimensions honestly flagged as structural-proxy-only, not faked
+
+`tool_argument_correctness` and `grounding` have no real structural signal
+to check against today: `TwinExpectedStep` records an expected tool
+*target*, not expected *arguments*, and nothing fact-checks a final
+output's content against the tool results that fed it. Rather than
+approximate a check that would silently claim more rigor than it has,
+both dimensions always pass with a `detail` string that says exactly what
+isn't being verified -- same "flag the gap explicitly" precedent Epic 20
+set for its own coverage gaps (sensitive-data masking, tool-argument
+side-effect classification).
+
+### Real defect found via testing: naive/aware datetime subtraction in the latency dimension
+
+`SimulationRunModel.started_at`, once loaded from Postgres, comes back as
+a naive `datetime` (the column has no timezone), while `completed_at` is
+often still the tz-aware value `app.ids.utcnow()` just produced in the
+same request, before a commit round-trip through Postgres would strip it.
+Subtracting the two raised `TypeError: can't subtract offset-naive and
+offset-aware datetimes` -- invisible in isolation (nothing before this
+epic ever subtracted these two fields against each other in the same
+process), and only surfaced once the real `pytest` suite ran the epic's
+own code end-to-end against a real background-task/DB round-trip, not
+from reading the code. Fixed in `app/twin/evaluation.py`'s `_latency` by
+normalizing both sides to naive before subtracting, rather than changing
+either column's declared type (a wider change with no other epic asking
+for it).

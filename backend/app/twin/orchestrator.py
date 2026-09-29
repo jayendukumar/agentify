@@ -274,12 +274,17 @@ async def run_orchestration(
                     llm, to_node_id=node.id, target_fields=artifact.definition.input_schema,
                     current_data=current_data, mode=mapping_mode,
                 )
+                adapter_tokens: int | None = None
+                adapter_cost: float | None = None
                 if adapter_usage is not None:
-                    account(*adapter_usage)
+                    usage, model = adapter_usage
+                    account(usage, model)
+                    adapter_tokens = usage.total_tokens
+                    adapter_cost = estimate_cost_usd(model, usage)
                 await emit(
                     "AGENT_DELEGATED", node_id=node.id, target=node.id,
                     arguments={"from_node_id": last_node_id, "mode": mapping_mode, "input_before": current_data},
-                    result={"input_after": mapped_input},
+                    result={"input_after": mapped_input}, tokens=adapter_tokens, cost_usd=adapter_cost,
                 )
                 node_scenario = TwinScenario(
                     id="orchestration-inline", agent_artifact_id=artifact.artifact_id, name=node.label,

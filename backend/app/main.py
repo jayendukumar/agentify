@@ -11,6 +11,7 @@ from app.api import (
     bpmn,
     chat,
     documents,
+    evaluation,
     gap_analysis,
     orchestration,
     processes,
@@ -92,6 +93,7 @@ app.include_router(agents.router)
 app.include_router(registries.router)
 app.include_router(twin.router)
 app.include_router(orchestration.router)
+app.include_router(evaluation.router)
 app.include_router(publish.router)
 
 

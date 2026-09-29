@@ -19,7 +19,11 @@ import type {
   RegistryEntry,
   RegistrySearchResult,
   RegistryStatus,
+  RegressionSuite,
+  RegressionSuiteCreate,
+  RegressionSuiteRun,
   Role,
+  RunComparison,
   TwinBaseline,
   TwinExpectedStep,
   TwinHumanCheckpointConfig,
@@ -473,5 +477,32 @@ export function markPublicationDeployed(
   return request(
     `/api/processes/${processId}/agent-artifacts/${artifactId}/publications/${publicationId}/mark-deployed`,
     { method: 'POST' },
+  )
+}
+
+// Epic 19: regression suites (US19.2/US19.3) and run comparison (US19.4)
+export function listRegressionSuites(processId: string): Promise<RegressionSuite[]> {
+  return request(`/api/processes/${processId}/regression-suites`)
+}
+
+export function createRegressionSuite(processId: string, body: RegressionSuiteCreate): Promise<RegressionSuite> {
+  return request(`/api/processes/${processId}/regression-suites`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function deleteRegressionSuite(processId: string, suiteId: string): Promise<void> {
+  return request(`/api/processes/${processId}/regression-suites/${suiteId}`, { method: 'DELETE' })
+}
+
+export function startRegressionSuiteRun(processId: string, suiteId: string): Promise<RegressionSuiteRun> {
+  return request(`/api/processes/${processId}/regression-suites/${suiteId}/run`, { method: 'POST' })
+}
+
+export function getRegressionSuiteRun(processId: string, suiteRunId: string): Promise<RegressionSuiteRun> {
+  return request(`/api/processes/${processId}/regression-suite-runs/${suiteRunId}`)
+}
+
+export function compareRuns(processId: string, runAId: string, runBId: string): Promise<RunComparison> {
+  return request(
+    `/api/processes/${processId}/runs/compare?run_a=${encodeURIComponent(runAId)}&run_b=${encodeURIComponent(runBId)}`,
   )
 }

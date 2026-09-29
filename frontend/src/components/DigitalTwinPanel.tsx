@@ -23,6 +23,9 @@ import type {
 import type { AgentGroup } from '../lib/blueprintLabels'
 import { isTerminalRunStatus, runStatusBadgeClass } from '../lib/runStatus'
 import { handleTabKeyDown } from '../lib/tabKeyboard'
+import RegressionSuitePanel from './RegressionSuitePanel'
+import RunComparisonView from './RunComparisonView'
+import RunDetailView from './RunDetailView'
 
 const DEFAULT_HUMAN_CHECKPOINT_CONFIG = '{"mode": "probability", "approve_probability": 1.0}'
 
@@ -48,14 +51,19 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
   useEffect(() => {
     if (!selectedArtifactId && artifacts.length > 0) setSelectedArtifactId(artifacts[0].id)
   }, [artifacts, selectedArtifactId])
+  const selectedArtifact = artifacts.find((a) => a.id === selectedArtifactId) ?? null
 
   const [scenarios, setScenarios] = useState<TwinScenario[]>([])
   const [runsByScenario, setRunsByScenario] = useState<Record<string, TwinRun>>({})
+  // Epic 19, US19.4: the full run history (not just the latest-per-scenario
+  // map above) so RunComparisonView has more than one run to pick from.
+  const [allRuns, setAllRuns] = useState<TwinRun[]>([])
   const [summary, setSummary] = useState<TwinSummary | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [runningId, setRunningId] = useState<string | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
+  const [viewingScenarioId, setViewingScenarioId] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [inputsJson, setInputsJson] = useState('{}')
@@ -81,6 +89,7 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
       try {
         const run = await getTwinRun(processId, runId)
         setRunsByScenario((prev) => ({ ...prev, [scenarioId]: run }))
+        setAllRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)])
         if (isTerminalRunStatus(run.status)) {
           clearInterval(timer)
           delete pollTimers.current[scenarioId]
@@ -119,6 +128,7 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
           twinSummary.baseline?.error_rate != null ? (twinSummary.baseline.error_rate * 100).toString() : '',
         )
         setBaselineNotes(twinSummary.baseline?.notes ?? '')
+        setAllRuns(runList)
         // listTwinRuns returns most-recent-first (see repository.list_twin_runs) --
         // keep only the first (latest) run seen per scenario.
         const latestByScenario: Record<string, TwinRun> = {}
@@ -227,6 +237,7 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
     try {
       const run = await startTwinRun(processId, scenarioId)
       setRunsByScenario((prev) => ({ ...prev, [scenarioId]: run }))
+      setAllRuns((prev) => [run, ...prev.filter((r) => r.id !== run.id)])
       startPolling(scenarioId, run.id)
     } catch (err) {
       setRunError(err instanceof ApiError ? err.message : 'Failed to run scenario')
@@ -376,6 +387,15 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
                   <button type="button" className="button-secondary" onClick={() => handleDelete(scenario.id)}>
                     Delete
                   </button>
+                  {lastRun && (
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => setViewingScenarioId((prev) => (prev === scenario.id ? null : scenario.id))}
+                    >
+                      {viewingScenarioId === scenario.id ? 'Hide run' : 'View run'}
+                    </button>
+                  )}
                 </div>
                 {lastRun && (
                   <div data-testid="twin-run-result">
@@ -392,6 +412,16 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
                       {lastRun.steps.length} step(s) -- {lastRun.turns_used} turn(s) --{' '}
                       {lastRun.total_cost_usd !== null ? `$${lastRun.total_cost_usd.toFixed(4)}` : 'cost unknown'}
                     </p>
+                    {viewingScenarioId === scenario.id && (
+                      <RunDetailView
+                        run={lastRun}
+                        staticSubjectLabel={
+                          selectedArtifact
+                            ? `Agent: ${selectedArtifact.definition.name} -- node: ${selectedArtifact.primary_node_id}`
+                            : undefined
+                        }
+                      />
+                    )}
                   </div>
                 )}
               </li>
@@ -400,6 +430,24 @@ export default function DigitalTwinPanel({ processId, groups }: { processId: str
         </ul>
       )}
       {runError && <p className="error" role="alert">{runError}</p>}
+
+      {selectedArtifactId && (
+        <RegressionSuitePanel
+          processId={processId}
+          kind="twin"
+          agentArtifactId={selectedArtifactId}
+          availableScenarios={scenarios.map((s) => ({ id: s.id, name: s.name }))}
+        />
+      )}
+
+      <h3>Compare runs</h3>
+      <RunComparisonView
+        processId={processId}
+        runs={allRuns.map((r) => ({
+          id: r.id,
+          label: `${scenarios.find((s) => s.id === r.scenario_id)?.name ?? r.scenario_id} -- ${r.status} -- ${new Date(r.started_at).toLocaleString()}`,
+        }))}
+      />
 
       <h3>New scenario</h3>
       <form className="twin-scenario-form" onSubmit={handleCreateScenario}>

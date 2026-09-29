@@ -21,6 +21,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from .evaluation import EvaluationResult
+
 RunKind = Literal["twin", "orchestration"]
 
 RunStatus = Literal[
@@ -81,7 +83,18 @@ class RunStep(BaseModel):
     """One typed event in a run's execution trace. `node_id` tags which
     orchestration node this step happened inside (Epic 16); it's always
     None for a standalone twin run (Epic 14) and for an orchestration run's
-    own walk-level events (gateway decisions, node delegation)."""
+    own walk-level events (gateway decisions, node delegation).
+
+    Epic 18, US18.2: `tokens`/`cost_usd` are the LLM usage *this specific
+    step* caused (a MODEL_INVOKED turn, a proxy-simulated TOOL_EXECUTED
+    response, or an AGENT_DELEGATED data-adapter reshape) -- None for a
+    step with no LLM call of its own (e.g. a static-mode tool response, a
+    human decision), and always None on a step mapped from a pre-Epic-18
+    historical row (app/db/repository.py's `_legacy_trace_to_steps`,
+    which never recorded this). Run-level `total_tokens`/`total_cost_usd`
+    (RunBase below) remain the authoritative aggregate; these are additive
+    detail for the step inspector, not a second source of truth to keep in
+    sync by hand -- nothing sums these to produce the run-level total."""
 
     seq: int
     type: StepType
@@ -93,6 +106,8 @@ class RunStep(BaseModel):
     reason: str | None = None
     denied: bool = False
     static_fallback: bool = False
+    tokens: int | None = None
+    cost_usd: float | None = None
     occurred_at: datetime
 
 
@@ -111,6 +126,10 @@ class RunBase(BaseModel):
     final_output: dict[str, Any] | None = None
     deviations: list[TwinDeviation] = []
     graded_passed: bool | None = None
+    # Epic 19, US19.1: computed once alongside graded_passed (see
+    # app/twin/evaluation.py) -- None for a non-terminal or ungraded run,
+    # and for every run persisted before this epic.
+    evaluation: EvaluationResult | None = None
     total_cost_usd: float | None = None
     total_tokens: int = 0
     started_at: datetime

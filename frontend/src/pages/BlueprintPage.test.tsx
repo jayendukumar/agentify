@@ -53,6 +53,12 @@ const listTwinRuns = vi.fn()
 const getTwinSummary = vi.fn()
 const setTwinBaseline = vi.fn()
 const deleteTwinBaseline = vi.fn()
+const listRegressionSuites = vi.fn()
+const createRegressionSuite = vi.fn()
+const deleteRegressionSuite = vi.fn()
+const startRegressionSuiteRun = vi.fn()
+const getRegressionSuiteRun = vi.fn()
+const compareRuns = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -84,6 +90,12 @@ vi.mock('../api/client', () => ({
   getTwinSummary: (...args: unknown[]) => getTwinSummary(...args),
   setTwinBaseline: (...args: unknown[]) => setTwinBaseline(...args),
   deleteTwinBaseline: (...args: unknown[]) => deleteTwinBaseline(...args),
+  listRegressionSuites: (...args: unknown[]) => listRegressionSuites(...args),
+  createRegressionSuite: (...args: unknown[]) => createRegressionSuite(...args),
+  deleteRegressionSuite: (...args: unknown[]) => deleteRegressionSuite(...args),
+  startRegressionSuiteRun: (...args: unknown[]) => startRegressionSuiteRun(...args),
+  getRegressionSuiteRun: (...args: unknown[]) => getRegressionSuiteRun(...args),
+  compareRuns: (...args: unknown[]) => compareRuns(...args),
 }))
 
 // BlueprintCanvas depends on real bpmn-js/SVG layout -- stubbed here so
@@ -183,6 +195,7 @@ describe('BlueprintPage', () => {
   beforeEach(() => {
     listAgentArtifacts.mockResolvedValue([])
     listRegistries.mockResolvedValue([])
+    listRegressionSuites.mockResolvedValue([])
     getPublishStatus.mockResolvedValue({
       agent_artifact_id: 'agent-1',
       lifecycle_status: 'generated',
@@ -295,6 +308,7 @@ describe('BlueprintPage', () => {
       node_ids: ['Task_a'],
       primary_node_id: 'Task_a',
       status: 'generated',
+      version: 1,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
@@ -338,6 +352,7 @@ describe('BlueprintPage', () => {
         node_ids: ['Task_a'],
         primary_node_id: 'Task_a',
         status: 'stale',
+        version: 1,
         definition: {
           name: 'Request Reviewer Agent',
           purpose: 'Reviews incoming requests against policy.',
@@ -370,6 +385,7 @@ describe('BlueprintPage', () => {
       node_ids: ['Task_a'],
       primary_node_id: 'Task_a',
       status: 'generated',
+      version: 1,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
@@ -418,6 +434,7 @@ describe('BlueprintPage', () => {
       node_ids: ['Task_a'],
       primary_node_id: 'Task_a',
       status: 'generated',
+      version: 1,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
@@ -554,6 +571,7 @@ describe('BlueprintPage', () => {
       node_ids: ['Task_a'],
       primary_node_id: 'Task_a',
       status: 'generated',
+      version: 1,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
@@ -590,10 +608,22 @@ describe('BlueprintPage', () => {
       scenario_id: 'twinsc-1',
       agent_artifact_id: 'agent-1',
       status: 'COMPLETED',
-      steps: [],
+      steps: [
+        {
+          seq: 0, type: 'RUN_STARTED', node_id: null, target: null, arguments: {}, result: null,
+          decision: null, reason: null, denied: false, static_fallback: false, tokens: null, cost_usd: null,
+          occurred_at: '2026-01-03T00:00:00Z',
+        },
+        {
+          seq: 1, type: 'FINAL_RESPONSE', node_id: null, target: null, arguments: {}, result: { confirmation: 'sent' },
+          decision: null, reason: null, denied: false, static_fallback: false, tokens: 10, cost_usd: 0.001,
+          occurred_at: '2026-01-03T00:00:01Z',
+        },
+      ],
       final_output: {},
       deviations: [],
       graded_passed: true,
+      evaluation: null,
       total_cost_usd: 0.001,
       total_tokens: 10,
       turns_used: 1,
@@ -628,12 +658,21 @@ describe('BlueprintPage', () => {
     await user.click(screen.getByRole('tab', { name: /digital twin simulation/i }))
 
     const twinPanel = within(await screen.findByTestId('digital-twin-panel'))
-    expect(await twinPanel.findByText('Happy path')).toBeInTheDocument()
+    const scenarioCard = within(await twinPanel.findByTestId('twin-scenario-card'))
+    expect(scenarioCard.getByText('Happy path')).toBeInTheDocument()
 
     await user.click(twinPanel.getByRole('button', { name: /^run$/i }))
 
     await waitFor(() => expect(startTwinRun).toHaveBeenCalledWith('proc-1', 'twinsc-1'))
     expect(await twinPanel.findByText('COMPLETED')).toBeInTheDocument()
+
+    // Epic 18: the run detail view surfaces the actual steps, not just a count.
+    await user.click(twinPanel.getByRole('button', { name: /view run/i }))
+    expect(await twinPanel.findByText('Run started')).toBeInTheDocument()
+    expect(twinPanel.getByText('Produced the final result')).toBeInTheDocument()
+    // The latest step is auto-selected -- its detail shows in the inspector.
+    expect(twinPanel.getByText(/final response/i)).toBeInTheDocument()
+    expect(twinPanel.getByText('Tokens: 10')).toBeInTheDocument()
   })
 
   it('saves a manual baseline on the Digital Twin Simulation tab (US14.5)', async () => {
@@ -644,6 +683,7 @@ describe('BlueprintPage', () => {
       node_ids: ['Task_a'],
       primary_node_id: 'Task_a',
       status: 'generated',
+      version: 1,
       definition: {
         name: 'Request Reviewer Agent',
         purpose: 'Reviews incoming requests against policy.',
