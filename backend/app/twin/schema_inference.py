@@ -55,7 +55,7 @@ async def infer_tool_schemas(llm: LLMClient, artifact: AgentDefinition) -> dict[
         [ChatMessage(role="system", content=_build_system_prompt(artifact))],
         operation="twin_tool_schema_inference",
         response_format={"type": "json_object"},
-        max_tokens=4000,
+        max_tokens=16000,
     )
 
     if not result.text:
