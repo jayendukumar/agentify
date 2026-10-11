@@ -640,6 +640,9 @@ describe('BlueprintPage', () => {
       human_checkpoint_config: { mode: 'probability', approve_probability: 1, seed: null, rule: null },
       expected_steps: [],
       expected_outputs: {},
+      faults: {},
+      step_match: 'exact',
+      story: null,
       created_at: '2026-01-03T00:00:00Z',
       created_by: null,
       created_by_name: null,
@@ -700,6 +703,9 @@ describe('BlueprintPage', () => {
     await user.click(screen.getByRole('tab', { name: /digital twin simulation/i }))
 
     const twinPanel = within(await screen.findByTestId('digital-twin-panel'))
+    // Epic 24: the tab opens on the guided builder; the original JSON form
+    // lives under "Advanced".
+    await user.click(twinPanel.getByRole('button', { name: 'Advanced' }))
     const scenarioCard = within(await twinPanel.findByTestId('twin-scenario-card'))
     expect(scenarioCard.getByText('Happy path')).toBeInTheDocument()
 
@@ -776,6 +782,9 @@ describe('BlueprintPage', () => {
     await user.click(screen.getByRole('tab', { name: /digital twin simulation/i }))
 
     const twinPanel = within(await screen.findByTestId('digital-twin-panel'))
+    // Epic 24: the tab opens on the guided builder; the original JSON form
+    // lives under "Advanced".
+    await user.click(twinPanel.getByRole('button', { name: 'Advanced' }))
     await user.type(twinPanel.getByLabelText(/typical time to complete/i), '300')
     await user.type(twinPanel.getByLabelText(/error rate/i), '20')
     await user.click(twinPanel.getByRole('button', { name: /save baseline/i }))

@@ -17,7 +17,7 @@ from app.schemas.twin import (
     TwinScenario,
     TwinSystemStub,
 )
-from app.twin.engine import grade_run, run_scenario
+from app.twin.engine import _parse_json_object, grade_run, run_scenario
 from app.twin.errors import TwinServiceError
 from app.twin.simulators import resolve_human_decision, resolve_tool_call
 
@@ -619,3 +619,111 @@ async def test_run_scenario_cancelled_via_on_step():
     )
 
     assert outcome.status == "CANCELLED"
+
+
+# -- Epic 24: in-order grading and per-scenario faults ---------------------------
+
+
+def test_grade_run_in_order_tolerates_extra_steps_between_expected_ones():
+    scenario = _scenario(
+        step_match="in_order",
+        expected_steps=[
+            TwinExpectedStep(kind="tool_call", target="CRM system"),
+            TwinExpectedStep(kind="human_checkpoint", expected_decision="approve"),
+        ],
+    )
+    steps = [
+        _step("TOOL_FAILED", target="CRM system"),
+        _step("TOOL_EXECUTED", target="CRM system"),  # a retry -- "exact" would flag this
+        _step("TOOL_EXECUTED", target="ERP"),
+        _step("HUMAN_APPROVED", decision="approve"),
+    ]
+    passed, deviations = grade_run(steps, {}, scenario)
+    assert passed, deviations
+
+
+def test_grade_run_in_order_missing_step_does_not_cascade():
+    """A missed expected step doesn't consume the cursor -- later expected
+    steps can still match, so one miss reports one deviation."""
+    scenario = _scenario(
+        step_match="in_order",
+        expected_steps=[
+            TwinExpectedStep(kind="human_checkpoint", expected_decision="reject"),
+            TwinExpectedStep(kind="tool_call", target="CRM system"),
+        ],
+    )
+    steps = [_step("TOOL_EXECUTED", target="CRM system"), _step("HUMAN_APPROVED", decision="approve")]
+    passed, deviations = grade_run(steps, {}, scenario)
+    assert not passed
+    assert [d.reason for d in deviations] == ["Expected a reviewer to be asked and to reject, but that didn't happen"]
+
+
+def test_grade_run_in_order_reports_wrong_order():
+    scenario = _scenario(
+        step_match="in_order",
+        expected_steps=[
+            TwinExpectedStep(kind="tool_call", target="CRM system"),
+            TwinExpectedStep(kind="human_checkpoint", expected_decision="approve"),
+        ],
+    )
+    steps = [_step("HUMAN_APPROVED", decision="approve"), _step("TOOL_EXECUTED", target="CRM system")]
+    passed, deviations = grade_run(steps, {}, scenario)
+    assert not passed
+    assert [d.reason for d in deviations] == ["Expected a reviewer to be asked and to approve, but that didn't happen"]
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_scenario_fault_applies_without_an_environment():
+    artifact = AgentDefinition(
+        name="Refund Agent", purpose="x", trigger="x", system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"], model="test-model",
+    )
+    scenario = _scenario(faults={"CRM system": [FaultConfig(type="dependency_unavailable", probability=1.0)]})
+    llm = AsyncMock()
+    llm.complete.side_effect = [
+        _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "123"})]),
+        _llm_result(text='{"confirmation": "escalated"}'),
+    ]
+
+    outcome = await run_scenario(
+        llm, artifact=artifact, tool_schemas={"CRM system": _crm_schema()}, scenario=scenario, max_turns=5
+    )
+
+    tool_step = next(s for s in outcome.steps if s.type == "TOOL_FAILED")
+    assert tool_step.reason == "Simulated fault: dependency_unavailable"
+    assert llm.complete.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_scenario_fault_takes_precedence_over_environment_fault():
+    artifact = AgentDefinition(
+        name="Refund Agent", purpose="x", trigger="x", system_prompt="You are Refund Agent.",
+        tools_systems_needed=["CRM system"], model="test-model",
+    )
+    scenario = _scenario(faults={"CRM system": [FaultConfig(type="timeout", probability=1.0)]})
+    environment = _environment(faults={"CRM system": [FaultConfig(type="http_500", probability=1.0)]})
+    llm = AsyncMock()
+    llm.complete.side_effect = [
+        _llm_result(tool_calls=[ToolCall(id="c1", name="lookup_customer", arguments={"id": "123"})]),
+        _llm_result(text='{"confirmation": "x"}'),
+    ]
+
+    outcome = await run_scenario(
+        llm, artifact=artifact, tool_schemas={"CRM system": _crm_schema()}, scenario=scenario,
+        environment=environment, max_turns=5,
+    )
+
+    assert next(s for s in outcome.steps if s.type == "TOOL_FAILED").reason == "Simulated fault: timeout"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ['{"a": 1}', '```json\n{"a": 1}\n```', '```\n{"a": 1}\n```', '  ```JSON {"a": 1} ```  '],
+)
+def test_parse_json_object_accepts_plain_and_fenced_json(text):
+    assert _parse_json_object(text) == {"a": 1}
+
+
+@pytest.mark.parametrize("text", [None, "", "Done!", "```json\n[1, 2]\n```", 'Here you go: {"a": 1}'])
+def test_parse_json_object_rejects_non_objects(text):
+    assert _parse_json_object(text) is None

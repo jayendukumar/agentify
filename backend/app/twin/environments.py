@@ -51,12 +51,18 @@ def _build_fault_outcome(fault: FaultConfig) -> FaultOutcome:
     return FaultOutcome(type=fault.type, result=result, is_error=is_error)
 
 
+def roll_faults(faults: list[FaultConfig], rng: random.Random) -> FaultOutcome | None:
+    """Rolls each fault in the order listed, returning the first one whose
+    probability hits -- `None` means no fault triggered."""
+    for fault in faults:
+        if rng.random() < fault.probability:
+            return _build_fault_outcome(fault)
+    return None
+
+
 def roll_fault(environment: TwinEnvironment, system_name: str, rng: random.Random) -> FaultOutcome | None:
     """US21.2: rolls each of `system_name`'s declared faults in the order
     they're listed, returning the first one whose probability hits --
     `None` means no fault triggered and the call should be resolved
     normally (Epic 14's existing Proxy/Static mechanism, unaffected)."""
-    for fault in environment.faults.get(system_name, []):
-        if rng.random() < fault.probability:
-            return _build_fault_outcome(fault)
-    return None
+    return roll_faults(environment.faults.get(system_name, []), rng)

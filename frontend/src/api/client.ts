@@ -8,7 +8,9 @@ import type {
   BlueprintVerdict,
   BPMNDocument,
   ChatMessageResult,
+  DataMode,
   DocumentSummary,
+  GeneratedRecord,
   GapFinding,
   GapFindingStatus,
   OrchestrationRun,
@@ -22,18 +24,19 @@ import type {
   RegressionSuite,
   RegressionSuiteCreate,
   RegressionSuiteRun,
+  ReviewerPersona,
   Role,
   RunComparison,
   RunSnapshotView,
+  Situation,
+  TestBuilderContext,
   TwinBaseline,
   TwinEnvironment,
   TwinEnvironmentCreate,
-  TwinExpectedStep,
-  TwinHumanCheckpointConfig,
   TwinRun,
   TwinScenario,
+  TwinScenarioCreate,
   TwinSummary,
-  TwinSystemStub,
   User,
   VersionDetail,
   VersionDiffResult,
@@ -353,23 +356,72 @@ export function listScenarios(processId: string, artifactId: string): Promise<Tw
   return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/scenarios`)
 }
 
-export function createScenario(
-  processId: string,
-  artifactId: string,
-  body: {
-    name: string
-    inputs?: Record<string, unknown>
-    system_stubs?: Record<string, TwinSystemStub>
-    human_checkpoint_config?: TwinHumanCheckpointConfig
-    expected_steps?: TwinExpectedStep[]
-    expected_outputs?: Record<string, unknown>
-    environment_id?: string | null
-  },
-): Promise<TwinScenario> {
+export function createScenario(processId: string, artifactId: string, body: TwinScenarioCreate): Promise<TwinScenario> {
   return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/scenarios`, {
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+// Epics 24/25: the guided test builder. `getTestBuilderContext` is a
+// deterministic read; the rest are paid LLM drafting calls that persist
+// nothing -- confirmed situations are saved through `createScenario`,
+// generated data/personas through the environment endpoints.
+function testBuilderPath(processId: string, artifactId: string, suffix: string): string {
+  return `/api/processes/${processId}/agent-artifacts/${artifactId}/test-builder/${suffix}`
+}
+
+export function getTestBuilderContext(processId: string, artifactId: string): Promise<TestBuilderContext> {
+  return request(testBuilderPath(processId, artifactId, 'context'))
+}
+
+export async function suggestSituations(
+  processId: string,
+  artifactId: string,
+  body: { count?: number; focus?: string | null; already_covered?: string[] },
+): Promise<Situation[]> {
+  const result = await request<{ situations: Situation[] }>(testBuilderPath(processId, artifactId, 'suggest'), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return result.situations
+}
+
+export function describeSituation(processId: string, artifactId: string, description: string): Promise<Situation> {
+  return request(testBuilderPath(processId, artifactId, 'describe'), {
+    method: 'POST',
+    body: JSON.stringify({ description }),
+  })
+}
+
+export async function generateTestData(
+  processId: string,
+  artifactId: string,
+  body: {
+    mode: DataMode
+    count?: number
+    prompt?: string | null
+    seed_record?: Record<string, unknown> | null
+    sample_text?: string | null
+  },
+): Promise<GeneratedRecord[]> {
+  const result = await request<{ records: GeneratedRecord[] }>(testBuilderPath(processId, artifactId, 'data'), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return result.records
+}
+
+export async function generateReviewerPersonas(
+  processId: string,
+  artifactId: string,
+  body: { count?: number; prompt?: string | null },
+): Promise<ReviewerPersona[]> {
+  const result = await request<{ personas: ReviewerPersona[] }>(testBuilderPath(processId, artifactId, 'personas'), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return result.personas
 }
 
 export function deleteScenario(processId: string, scenarioId: string): Promise<void> {

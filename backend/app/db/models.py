@@ -529,6 +529,12 @@ class TwinScenarioModel(Base):
         ForeignKey("twin_environments.id", ondelete="SET NULL"), nullable=True
     )
     environment_version: Mapped[int | None] = mapped_column(nullable=True)
+    # Epic 24, US24.4/US24.6: additive -- per-scenario faults (offered
+    # before the environment's), the grading match mode, and the
+    # business-readable story the guided builder authored it from.
+    faults: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    step_match: Mapped[str] = mapped_column(String, nullable=False, default="exact", server_default="exact")
+    story: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 

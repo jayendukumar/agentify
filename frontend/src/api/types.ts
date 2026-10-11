@@ -639,9 +639,110 @@ export interface TwinScenario {
   // environment reference (every scenario created before this epic).
   environment_id: string | null
   environment_version: number | null
+  // Epic 24, US24.4/US24.6: per-scenario faults (offered before the
+  // environment's), grading match mode, and the business-readable story a
+  // guided-builder scenario was authored from (null for JSON-authored ones).
+  faults: Record<string, FaultConfig[]>
+  step_match: TwinStepMatch
+  story: ScenarioStory | null
   created_at: string
   created_by: string | null
   created_by_name: string | null
+}
+
+export type TwinStepMatch = 'exact' | 'in_order'
+
+export interface TwinScenarioCreate {
+  name: string
+  inputs?: Record<string, unknown>
+  system_stubs?: Record<string, TwinSystemStub>
+  human_checkpoint_config?: TwinHumanCheckpointConfig
+  expected_steps?: TwinExpectedStep[]
+  expected_outputs?: Record<string, unknown>
+  environment_id?: string | null
+  faults?: Record<string, FaultConfig[]>
+  step_match?: TwinStepMatch
+  story?: ScenarioStory | null
+}
+
+// Epics 24/25: the guided test builder -- see backend/app/schemas/
+// twin_builder.py and twin.py's ScenarioStory.
+export type CoverageKind = 'happy_path' | 'gateway_branch' | 'checkpoint' | 'system_failure' | 'data_quality' | 'custom'
+export type SystemBehaviour = 'normal' | 'down' | 'timeout' | 'denied' | 'bad_data' | 'no_record' | 'custom_data'
+export type ReviewerBehaviour = 'none' | 'approve' | 'reject' | 'threshold'
+
+export interface CoverageTarget {
+  id: string
+  kind: CoverageKind
+  label: string
+}
+
+export interface ReviewerSetup {
+  behaviour: ReviewerBehaviour
+  field: string | null
+  threshold: number | null
+  persona_name: string | null
+}
+
+export interface SituationExpectation {
+  systems_used: string[]
+  review_decision: 'approve' | 'reject' | null
+  output_fields: string[]
+}
+
+export interface ScenarioStory {
+  title: string
+  given: string
+  when: string
+  then: string
+  covers: string[]
+  source: 'suggested' | 'described' | 'manual'
+  system_behaviour: Record<string, SystemBehaviour>
+  system_data: Record<string, Record<string, unknown>>
+  reviewer: ReviewerSetup
+  expect: SituationExpectation
+}
+
+export interface Situation {
+  story: ScenarioStory
+  inputs: Record<string, unknown>
+}
+
+export interface GatewayContext {
+  id: string
+  label: string
+  branches: { target_id: string; target_label: string; condition: string | null }[]
+}
+
+export interface TestBuilderContext {
+  artifact_id: string
+  agent_name: string
+  purpose: string
+  trigger: string
+  step_labels: string[]
+  input_fields: AgentIOField[]
+  output_fields: AgentIOField[]
+  systems: string[]
+  human_checkpoint: HumanCheckpoint
+  success_criteria: string
+  completion_conditions: string
+  gateways: GatewayContext[]
+  coverage_targets: CoverageTarget[]
+}
+
+export type DataMode = 'typical' | 'edge' | 'messy' | 'describe' | 'mutate' | 'clone'
+
+export interface GeneratedRecord {
+  label: string
+  note: string
+  record: Record<string, unknown>
+}
+
+export interface ReviewerPersona {
+  name: string
+  role: string
+  description: string
+  reviewer: ReviewerSetup
 }
 
 export interface TwinDeviation {

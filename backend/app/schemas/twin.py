@@ -17,6 +17,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from .environment import FaultConfig
 from .run import RunBase, TwinDeviation
 
 SystemStubMode = Literal["proxy", "static"]
@@ -31,6 +32,13 @@ RuleOperator = Literal["eq", "ne", "gt", "gte", "lt", "lte"]
 # declare an *expected* step (US14.3's grading), not the runtime's own
 # sixteen-value execution trace.
 TraceStepKind = Literal["tool_call", "human_checkpoint"]
+# Epic 24, US24.4: "exact" is Epic 14's original pairwise comparison (every
+# actual step must line up with an expected one, extras are deviations);
+# "in_order" only requires the expected steps to appear as an in-order
+# subsequence of the actual ones -- what a business user can actually
+# state ("the CRM gets checked, then the manager is asked") without having
+# to predict every retry or extra lookup the agent makes.
+StepMatchMode = Literal["exact", "in_order"]
 
 
 class StaticResponseRule(BaseModel):
@@ -82,6 +90,55 @@ class TwinExpectedStep(BaseModel):
     expected_decision: Literal["approve", "reject"] | None = None
 
 
+CoverageKind = Literal["happy_path", "gateway_branch", "checkpoint", "system_failure", "data_quality", "custom"]
+SystemBehaviour = Literal["normal", "down", "timeout", "denied", "bad_data", "no_record", "custom_data"]
+ReviewerBehaviour = Literal["none", "approve", "reject", "threshold"]
+
+
+class CoverageTarget(BaseModel):
+    """Epic 24, US24.5: one thing about an agent worth testing, derived
+    deterministically from its blueprint (never by the LLM) -- the
+    denominator of the coverage meter. `id` is stable for a given artifact
+    + baseline so a saved scenario's `covers` keeps pointing at the same
+    target across page loads."""
+
+    id: str
+    kind: CoverageKind
+    label: str
+
+
+class ReviewerSetup(BaseModel):
+    behaviour: ReviewerBehaviour = "none"
+    field: str | None = None
+    threshold: float | None = None
+    persona_name: str | None = None
+
+
+class SituationExpectation(BaseModel):
+    systems_used: list[str] = []
+    review_decision: Literal["approve", "reject"] | None = None
+    output_fields: list[str] = []
+
+
+class ScenarioStory(BaseModel):
+    """Epic 24, US24.6: the business-readable form a guided-builder
+    scenario was authored in, persisted alongside the compiled
+    engine-facing fields so the UI can always re-render (and re-edit) the
+    story rather than the JSON. Purely descriptive at execution time --
+    the engine only reads the compiled fields."""
+
+    title: str
+    given: str = ""
+    when: str = ""
+    then: str = ""
+    covers: list[str] = []
+    source: Literal["suggested", "described", "manual"] = "manual"
+    system_behaviour: dict[str, SystemBehaviour] = {}
+    system_data: dict[str, dict[str, Any]] = {}
+    reviewer: ReviewerSetup = ReviewerSetup()
+    expect: SituationExpectation = SituationExpectation()
+
+
 class TwinScenarioCreate(BaseModel):
     name: str
     inputs: dict[str, Any] = {}
@@ -94,6 +151,12 @@ class TwinScenarioCreate(BaseModel):
     # `system_stubs` resolution -- see app/schemas/environment.py.
     environment_id: str | None = None
     environment_version: int | None = None
+    # Epic 24, US24.6: per-scenario faults, offered before the
+    # environment's own catalog -- lets "the ERP is down" be part of the
+    # situation itself rather than needing a dedicated environment.
+    faults: dict[str, list[FaultConfig]] = {}
+    step_match: StepMatchMode = "exact"
+    story: ScenarioStory | None = None
 
 
 class TwinScenario(TwinScenarioCreate):

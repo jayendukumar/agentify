@@ -2365,3 +2365,96 @@ raises `TwinServiceError`) surfaced this immediately as an unhandled
 `resume_run` and `app/api/orchestration.py`'s `start_run`/`resume_run`
 already used elsewhere in the same file, rather than inventing a new
 error-handling shape.
+
+## 2026-10-09 to 2026-10-10 -- Epics 24-26, Guided Digital Twin Test Builder & Test Data Kitchen
+
+### Hybrid design: wizard backbone + story cards + describe-it, path painter cut
+
+Four alternatives were explored for making the twin tab usable by business
+users: (A) a step-by-step wizard, (B) LLM-drafted Given/When/Then "story
+cards", (C) painting the test path on the BPMN canvas, (D) a chat copilot.
+Built: A as the backbone, B as the content of its "Choose situations" step,
+D as a "describe your own situation" box. C was cut to a read-only
+plain-language "Expected path" line, because the interactive painter was the
+largest build for the least gain over A+B. Everything compiles down to
+ordinary `TwinScenario`s (`frontend/src/lib/twinSituations.ts`), so the run
+engine, evaluation, regression suites, and the original JSON form (now
+"Advanced") are untouched. See `planning/epics/24-guided-twin-test-builder.md`.
+
+### Compile in the frontend, persist the story on the scenario
+
+The business-level situation (behaviours, reviewer, expectations) is stored
+verbatim as `TwinScenario.story`, and the deterministic mapping to
+faults/stubs/checkpoint config/expected steps is a pure TS function. The
+alternative was a server-side compile endpoint, which would have added an
+API with no behaviour the client can't do, and made the mapping harder to
+unit-test next to the UI that edits it. Server-side, the LLM's output is
+still sanitised against known system, field, and coverage-target names
+(`app/twin/test_builder.py`), using the same "never trust the echo-back"
+rule as `schema_inference.py`.
+
+### New `step_match="in_order"` grading mode -- exact pairwise grading is unusable for business-stated expectations
+
+Epic 14's grader compares actual vs. expected steps pairwise, so any retry
+or extra lookup fails the run. A business user can say "the CRM gets
+checked, then the manager approves", but can't predict retries. The live
+run confirmed this: on a simulated timeout the agent retried three times.
+`in_order` requires the expected steps only as an in-order subsequence.
+The default stays `exact`, so every existing scenario grades as before. A
+missed step does not advance the cursor, so one miss reports one
+deviation, not a cascade.
+
+### Per-scenario `faults`, ahead of the environment's
+
+"The ERP is down" belongs to a situation, not to a whole environment.
+Epic 21's decision (no separate fault-set overlay) left only "make an
+environment per situation", which bloats the environment list. Added
+additive `twin_scenarios.faults` (+ `step_match`, `story`), all with server
+defaults. The engine offers scenario faults first, then the environment's.
+Generated data and personas still go to a per-agent "<Agent> test kit"
+environment (Epic 21's existing `datasets`/`personas` fields), so nothing
+new was needed for storage.
+
+### Live defect: Proxy-mode system simulator capped at `max_tokens=1000`
+
+Every live guided run failed with "LLM returned no content while
+simulating a response". The usage log showed `output_tokens: 1000/1000`:
+Qwen's reasoning tokens use up the cap before any text is emitted. This is
+the same failure as the `schema_inference.py` 4000->16000 fix committed
+just before this work, in a second call site (`app/twin/simulators.py`).
+It was invisible to mocked tests by construction, and earlier live passes
+evidently had shorter simulated responses. Raised to 8000.
+
+### Live defect: the agent's final answer arrived in a ```json fence
+
+With the simulator fixed, runs still failed: "Final response was not a
+valid JSON object". A replay through the engine with a spy client showed
+a valid object wrapped in a ```` ```json ```` fence. The final turn runs
+with tools attached, so JSON mode is off. `_parse_json_object` in
+`app/twin/engine.py` now unwraps a single fenced object and still rejects
+prose and non-objects. This affected every twin run on this model, not
+only guided ones.
+
+### Live finding: an unconstrained model picked an output field for a threshold reviewer
+
+Persona casting produced "rejects when `Readiness Score/Flag` > 3", an
+*output* field the agent would never put in its approval request. The
+engine (by design, Epic 14) raises when a rule's field is absent, so that
+run could never finish. Threshold reviewers are now limited to the agent's
+numeric *input* fields, in the prompt and enforced server-side. An
+uncheckable threshold degrades to "rejects", the nearest faithful
+behaviour for a strict reviewer.
+
+### Release-gate refusal surfaced up front
+
+Live, 12 of 13 dev agents (generated before Epic 20) are refused by Epic
+23's SIMULATION_READY gate. The guided flow would only have shown that
+after "Save & run". Step 1's agent cards now list the unmet checklist
+items, excluding "test scenarios", which the builder itself satisfies.
+
+### Observed, not fixed: a brand-new user's first request after login can 401
+
+While scripting the live checks, a request right after `POST
+/api/auth/login` sometimes returned 401, consistent with the session row
+committing after the response is sent. It predates this work and is
+outside its scope. Noted here so it isn't lost.

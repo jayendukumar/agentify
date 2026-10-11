@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Literal
 
@@ -53,9 +54,9 @@ from app.llm import ChatMessage, LLMClient, ToolCall, ToolDefinition, Usage, est
 from app.schemas.agents import AgentDefinition
 from app.schemas.environment import TwinEnvironment
 from app.schemas.run import RunStatus, RunStep, StepType, TwinDeviation
-from app.schemas.twin import InferredToolSchema, TwinScenario, TwinSystemStub
+from app.schemas.twin import InferredToolSchema, TwinExpectedStep, TwinScenario, TwinSystemStub
 
-from .environments import roll_fault
+from .environments import roll_fault, roll_faults
 from .errors import TwinServiceError
 from .gateway import GuardrailExceeded, GuardrailTracker, check_tool_permission
 from .simulators import resolve_human_decision, resolve_tool_call
@@ -136,14 +137,56 @@ def _twin_instructions(*, has_checkpoint: bool, output_fields: list[str]) -> str
     return "\n".join(lines)
 
 
+_JSON_FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL | re.IGNORECASE)
+
+
 def _parse_json_object(text: str | None) -> dict[str, Any] | None:
     if not text:
         return None
+    # The final turn runs with tools attached, so JSON mode is off and the
+    # model sometimes wraps an otherwise valid object in a ```json fence --
+    # found live (every guided-builder run failed on it).
+    fenced = _JSON_FENCE.match(text)
+    if fenced:
+        text = fenced.group(1)
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def _grade_steps_in_order(
+    expected: list[TwinExpectedStep], actionable: list[RunStep], actual_kind: Callable[[RunStep], str]
+) -> list[TwinDeviation]:
+    """Epic 24, US24.4: `step_match="in_order"` -- each expected step must
+    be matched by a later actual step than the previous match; extra
+    actual steps in between (retries, extra lookups) are fine."""
+    deviations: list[TwinDeviation] = []
+    cursor = 0
+    for exp in expected:
+        match_index = None
+        for j in range(cursor, len(actionable)):
+            act = actionable[j]
+            if actual_kind(act) != exp.kind:
+                continue
+            if exp.kind == "tool_call" and act.target != exp.target:
+                continue
+            if exp.kind == "human_checkpoint" and exp.expected_decision is not None and act.decision != exp.expected_decision:
+                continue
+            match_index = j
+            break
+        if match_index is None:
+            if exp.kind == "tool_call":
+                reason = f"Expected the agent to use '{exp.target}', but it didn't (at that point in the run)"
+            elif exp.expected_decision is not None:
+                reason = f"Expected a reviewer to be asked and to {exp.expected_decision}, but that didn't happen"
+            else:
+                reason = "Expected a reviewer to be asked, but the agent never asked"
+            deviations.append(TwinDeviation(reason=reason))
+        else:
+            cursor = match_index + 1
+    return deviations
 
 
 def grade_run(
@@ -167,6 +210,11 @@ def grade_run(
 
     def actual_kind(step: RunStep) -> str:
         return "tool_call" if step.type in ("TOOL_EXECUTED", "TOOL_FAILED") else "human_checkpoint"
+
+    if scenario.step_match == "in_order":
+        deviations.extend(_grade_steps_in_order(expected, actionable, actual_kind))
+        expected = []
+        actionable = []
 
     for i in range(max(len(expected), len(actionable))):
         exp = expected[i] if i < len(expected) else None
@@ -349,7 +397,11 @@ async def run_scenario(
                     # Epic 14's Proxy/Static resolution ever runs -- the
                     # environment's fault catalog is a layer in front of
                     # that mechanism, not a replacement for it.
-                    fault = roll_fault(environment, system_name, rng) if environment is not None else None
+                    # Epic 24, US24.6: the scenario's own faults are
+                    # offered first, then the environment's catalog.
+                    fault = roll_faults(scenario.faults.get(system_name, []), rng)
+                    if fault is None and environment is not None:
+                        fault = roll_fault(environment, system_name, rng)
                     if fault is not None:
                         tool_response = fault.result
                         await emit(

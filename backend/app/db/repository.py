@@ -878,6 +878,9 @@ def _to_pydantic_twin_scenario(session: Session, scenario: TwinScenarioModel) ->
         expected_outputs=scenario.expected_outputs,
         environment_id=scenario.environment_id,
         environment_version=scenario.environment_version,
+        faults=scenario.faults or {},
+        step_match=scenario.step_match or "exact",
+        story=scenario.story,
         created_at=scenario.created_at,
         created_by=scenario.created_by,
         created_by_name=_resolve_user_name(session, scenario.created_by),
@@ -998,6 +1001,9 @@ def create_twin_scenario(
         expected_outputs=data.expected_outputs,
         environment_id=data.environment_id,
         environment_version=environment_version,
+        faults={name: [f.model_dump() for f in faults] for name, faults in data.faults.items()},
+        step_match=data.step_match,
+        story=data.story.model_dump() if data.story is not None else None,
         created_by=created_by,
     )
     session.add(scenario)

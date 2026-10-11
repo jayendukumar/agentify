@@ -19,6 +19,7 @@ from app.api import (
     publish,
     registries,
     twin,
+    twin_builder,
     versions,
 )
 from app.config import get_settings
@@ -93,6 +94,7 @@ app.include_router(gap_analysis.router)
 app.include_router(agents.router)
 app.include_router(registries.router)
 app.include_router(twin.router)
+app.include_router(twin_builder.router)
 app.include_router(orchestration.router)
 app.include_router(environments.router)
 app.include_router(evaluation.router)

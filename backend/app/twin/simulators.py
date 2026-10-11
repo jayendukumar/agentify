@@ -56,7 +56,10 @@ async def _fabricate_proxy_response(
         [ChatMessage(role="system", content=prompt)],
         operation="twin_system_simulation",
         response_format={"type": "json_object"},
-        max_tokens=1000,
+        # Was 1000 -- the model's reasoning tokens count against this cap,
+        # and live runs hit exactly 1000/1000 with an empty reply. Same
+        # failure (and fix) as schema_inference.py's max_tokens.
+        max_tokens=8000,
     )
     if not result.text:
         raise TwinServiceError(f"LLM returned no content while simulating a response from '{system_name}'")
