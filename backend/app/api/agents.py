@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.agents.generation import AgentGenerationError
+from app.context.compliance import ComplianceEvidence, compliance_evidence, evidence_markdown, unevidenced_controls
 from app.db import repository
 from app.schemas.agents import AgentArtifact, AgentGovernanceUpdate
 
@@ -38,10 +39,60 @@ def update_agent_governance(
 
 @router.post("/agent-artifacts/{artifact_id}/mark-release-candidate", response_model=AgentArtifact)
 def mark_agent_release_candidate(process_id: str, artifact_id: str, db: DbDep, user: EditorDep) -> AgentArtifact:
-    """Epic 23, US23.4: editor-only, same tier as governance/publish."""
+    """Epic 23, US23.4: editor-only, same tier as governance/publish.
+
+    Epic 30, US30.6: refused while any applicable, testable control lacks a
+    passing situation on the current agent version and pinned context."""
     del user
     repository.get_process(db, process_id)  # 404s if missing
+    artifact = repository.get_agent_artifact(db, process_id, artifact_id)
+    missing = unevidenced_controls(db, artifact)
+    if missing:
+        names = "; ".join(f"{c.code or c.name} ({c.status.replace('_', ' ')})" for c in missing)
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Every rule this agent follows needs a passing test on its current version first -- {names}",
+        )
+    # Epic 35, US35.7: the statistical gate, when this agent has criteria.
+    if artifact.release_criteria:
+        from app.batches.results import ReleaseCriteria, gate
+
+        result = gate(db, artifact, ReleaseCriteria.model_validate(artifact.release_criteria))
+        if not result.passed:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Release criteria not met -- " + "; ".join(result.reasons))
     return repository.mark_agent_release_candidate(db, process_id, artifact_id)
+
+
+@router.get("/agent-artifacts/{artifact_id}/compliance-evidence", response_model=ComplianceEvidence)
+def get_compliance_evidence(process_id: str, artifact_id: str, db: DbDep, user: CurrentUserDep) -> ComplianceEvidence:
+    """Epic 30, US30.7."""
+    del user
+    return compliance_evidence(db, repository.get_agent_artifact(db, process_id, artifact_id))
+
+
+@router.get("/agent-artifacts/{artifact_id}/compliance-evidence/export")
+def export_compliance_evidence(
+    process_id: str,
+    artifact_id: str,
+    db: DbDep,
+    user: CurrentUserDep,
+    format: str = Query("markdown", pattern="^(markdown)$"),
+) -> Response:
+    del format
+    process = repository.get_process(db, process_id)
+    evidence = compliance_evidence(db, repository.get_agent_artifact(db, process_id, artifact_id))
+    # Epic 31, US31.10: an evidence export carries rule and policy text out.
+    from app.context.audit import record
+
+    record(
+        db, actor_type="user", actor=user.id, action="export_evidence", process_id=process_id,
+        entity_ids=[c.control_id for c in evidence.controls], detail=f"agent {artifact_id}",
+    )
+    return Response(
+        content=evidence_markdown(evidence, process_name=process.name),
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="compliance-evidence-{artifact_id}.md"'},
+    )
 
 
 @router.post("/agent-artifacts/{artifact_id}/approve", response_model=AgentArtifact)

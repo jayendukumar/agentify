@@ -1,6 +1,13 @@
 # Epic 34 -- Batch Execution at Volume
 
-**Status: groomed, not started.** Groomed 2026-10-11 alongside Epic 32.
+**Status: implemented (2026-10-11).** Groomed 2026-10-11 alongside Epic 32.
+Built in `app/batches/service.py` (sampling, estimates, start/control,
+budget gate, trace retention, replay, schedules), the `twin_run` and
+`load_batch` job handlers in `app/connectors/jobs.py`, per-run seeds and
+simulated latency in the twin executor/engine, throttling and cache
+marking in `app/llm/client.py`, `app/api/batches.py`, and migration
+`e3f4a5b6c7d8`. Frontend: the "Run at volume" panel on the Golden cases
+page. Provider batch APIs (Notes) are not used, as the epic anticipated.
 
 Goal: run a scenario against hundreds or thousands of dataset rows,
 several times each, reliably, within a known budget, and reproducibly,

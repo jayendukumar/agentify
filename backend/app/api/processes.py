@@ -1,8 +1,10 @@
 from fastapi import APIRouter, status
 from sqlalchemy.orm import Session
 
+from app.context import repository as context_repository
 from app.db import repository
 from app.db.models import ProcessModel
+from app.schemas.context import ProcessScope
 from app.schemas.processes import ProcessCreateRequest, ProcessDetail, ProcessSummary
 
 from .deps import CurrentUserDep, DbDep, EditorDep
@@ -19,6 +21,12 @@ def _to_summary(process: ProcessModel, db: Session) -> ProcessSummary:
         finalized_version_count=len(repository.list_versions(db, process.id)),  # US6.1's own table now
         created_at=process.created_at,
         updated_at=process.updated_at,
+        scope=ProcessScope(
+            business_unit_id=process.business_unit_id,
+            jurisdictions=list(process.jurisdictions or []),
+            process_type=process.process_type,
+            data_classes=list(process.data_classes or []),
+        ),
     )
 
 
@@ -26,6 +34,8 @@ def _to_summary(process: ProcessModel, db: Session) -> ProcessSummary:
 def create_process(body: ProcessCreateRequest, db: DbDep, user: EditorDep) -> ProcessSummary:
     del user
     process = repository.create_process(db, name=body.name)
+    if body.scope is not None:
+        context_repository.set_process_scope(db, process.id, body.scope)
     return _to_summary(process, db)
 
 

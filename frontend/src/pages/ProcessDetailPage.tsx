@@ -4,6 +4,8 @@ import { ApiError, deleteDocument, generateBpmn, getBlueprint, getProcess, listD
 import type { DocumentSummary, ProcessDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import ProcessSchemaView from '../components/ProcessSchemaView'
+import ProcessScopeEditor from '../components/ProcessScopeEditor'
+import SystemResolutionPanel from '../components/SystemResolutionPanel'
 import ProcessStepper, { type StepperStep } from '../components/ProcessStepper'
 
 function buildSteps(process: ProcessDetail, hasBlueprint: boolean): StepperStep[] {
@@ -168,12 +170,26 @@ export default function ProcessDetailPage() {
       </p>
       <h1>{process.name}</h1>
       <p className="meta">Build a reviewed process baseline, then explore its automation opportunities.</p>
+      {process.scope && (
+        <ProcessScopeEditor
+          processId={processId}
+          scope={process.scope}
+          canEdit={user?.role === 'editor'}
+          onSaved={(scope) => setProcess({ ...process, scope })}
+        />
+      )}
       {loadError && <div><p className="error" role="alert">{loadError}</p><button type="button" onClick={refresh}>Try again</button></div>}
 
       <nav className="page-actions" aria-label="Process navigation">
       {process.has_draft_bpmn && (
         <p>
           <Link className="button-link button-link-primary" to={`/processes/${processId}/diagram`}>Open diagram &rarr;</Link>
+        </p>
+      )}
+
+      {process.finalized_version_count > 0 && (
+        <p>
+          <Link to={`/processes/${processId}/datasets`}>Golden cases &rarr;</Link>
         </p>
       )}
 
@@ -283,6 +299,8 @@ export default function ProcessDetailPage() {
           </li>
         ))}
       </ul>
+
+      {process.document_count > 0 && <SystemResolutionPanel processId={processId} canEdit={user?.role === 'editor'} />}
 
       {process.process_schema && <ProcessSchemaView schema={process.process_schema} />}
     </div>

@@ -25,6 +25,8 @@ def _artifact_snapshot(artifact: AgentArtifactModel) -> dict[str, Any]:
         "guardrails": definition.get("guardrails"),
         "escalation_policy": definition.get("escalation_policy"),
         "knowledge_sources": definition.get("knowledge_sources", []),
+        # Epic 28, US28.2: which organization context the agent was built with.
+        "context_pack_id": artifact.context_pack_id,
     }
 
 

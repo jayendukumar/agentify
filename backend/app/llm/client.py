@@ -14,11 +14,13 @@ from .exceptions import (
     LLMAuthenticationError,
     LLMBadRequestError,
     LLMError,
+    LLMPolicyError,
     LLMRateLimitError,
     LLMServerError,
     LLMTimeoutError,
 )
-from .types import ChatCompletionResult, ChatMessage, ToolCall, ToolDefinition, Usage
+from .routing import LlmRoute, current_route, redact
+from .types import ChatCompletionResult, ChatMessage, TextContent, ToolCall, ToolDefinition, Usage
 from .usage import UsageTracker
 
 logger = logging.getLogger("app.llm")
@@ -60,6 +62,59 @@ class LLMClient:
 
         log_path = self._settings.usage_log_path if self._settings.llm_usage_log_enabled else None
         self.usage_tracker = UsageTracker(log_path=log_path)
+        self._routed_clients: dict[tuple[str, str | None], openai.AsyncOpenAI] = {}
+        self._slots: dict[tuple[str, str], asyncio.Semaphore] = {}
+
+    def _slot(self, base_url: str, model: str) -> asyncio.Semaphore:
+        """Epic 34, US34.4: per endpoint+model concurrency bound -- distinct
+        from the twin's *simulated* 429 faults, which hit the agent's tools,
+        not its own model calls."""
+        key = (base_url, model)
+        if key not in self._slots:
+            self._slots[key] = asyncio.Semaphore(self._settings.llm_max_concurrency)
+        return self._slots[key]
+
+    def _mark_cacheable(self, payload: dict[str, Any]) -> None:
+        """Epic 34, US34.5: across a batch, the system prompt (agent
+        instructions, organization context) is identical for every row. For
+        providers that need an explicit marker (Anthropic models, including
+        via OpenRouter), mark it cacheable; OpenAI-compatible providers that
+        cache prefixes automatically need nothing -- keeping the stable part
+        first, as every call site here already does, is what they need."""
+        model = str(payload.get("model", "")).lower()
+        if not self._settings.llm_prompt_cache or not ("anthropic/" in model or model.startswith("claude")):
+            return
+        first = payload["messages"][0] if payload.get("messages") else None
+        if first and first.get("role") == "system" and isinstance(first.get("content"), str):
+            first["content"] = [{"type": "text", "text": first["content"], "cache_control": {"type": "ephemeral"}}]
+
+    def _client_for(self, route: LlmRoute | None) -> openai.AsyncOpenAI:
+        """Epic 31, US31.8: a self-hosted OpenAI-compatible endpoint when the
+        business unit's policy names one, else the default provider."""
+        if route is None or not route.base_url:
+            return self._client
+        key = (route.base_url, route.api_key_env)
+        if key not in self._routed_clients:
+            import os
+
+            self._routed_clients[key] = openai.AsyncOpenAI(
+                api_key=os.environ.get(route.api_key_env or "", "") or "not-needed",
+                base_url=route.base_url,
+                timeout=self._settings.llm_request_timeout_seconds,
+            )
+        return self._routed_clients[key]
+
+    @staticmethod
+    def _redacted(messages: list[ChatMessage]) -> list[ChatMessage]:
+        result = []
+        for message in messages:
+            content = message.content
+            if isinstance(content, str):
+                content = redact(content)
+            elif isinstance(content, list):
+                content = [TextContent(text=redact(c.text)) if isinstance(c, TextContent) else c for c in content]
+            result.append(message.model_copy(update={"content": content}))
+        return result
 
     async def complete(
         self,
@@ -78,7 +133,19 @@ class LLMClient:
         "bpmn_generation", "chat_edit", "blueprint_evaluation") logged
         alongside token usage, so Epic 10 (US10.3) cost tracking can
         attribute spend back to a call site.
+
+        Epic 31, US31.8: honours the business-unit LLM policy in effect
+        (app/llm/routing.py) -- refuses a disallowed provider, routes to a
+        self-hosted endpoint, and redacts personal data when required.
         """
+        route = current_route.get()
+        if route is not None and route.blocked_reason:
+            raise LLMPolicyError(route.blocked_reason)
+        if route is not None and route.redact_pii:
+            messages = self._redacted(messages)
+        if route is not None and route.model:
+            model = route.model
+        client = self._client_for(route)
         payload = self._build_payload(
             messages,
             tools=tools,
@@ -88,10 +155,13 @@ class LLMClient:
             model=model,
         )
 
+        self._mark_cacheable(payload)
+        slot = self._slot(str(client.base_url), str(payload.get("model")))
         last_error: Exception | None = None
         for attempt in range(1, self._settings.llm_max_retries + 1):
             try:
-                response = await self._client.chat.completions.create(**payload)
+                async with slot:
+                    response = await client.chat.completions.create(**payload)
                 return self._parse_response(response, operation=operation)
             except openai.AuthenticationError as exc:
                 raise LLMAuthenticationError(str(exc)) from exc

@@ -28,6 +28,30 @@ class GatewayContext(BaseModel):
     branches: list[GatewayBranch] = []
 
 
+class RuleTarget(BaseModel):
+    """Epic 30, US30.1: an applicable, testable control the agent must
+    obey -- the source of a "Rules" coverage target."""
+
+    id: str  # coverage target id, "ctl:<entity id>"
+    entity_id: str
+    version: int
+    code: str | None = None
+    name: str
+    description: str = ""
+    requires_human_review: bool = False
+    review_role: str | None = None
+    required_guardrails: list[str] = []
+
+
+class AuthorityInfo(BaseModel):
+    """Epic 30, US30.3: one row of the approval-authority matrix."""
+
+    role: str
+    decision_type: str
+    limit_amount: float | None = None
+    currency: str = ""
+
+
 class TestBuilderContext(BaseModel):
     """Everything the guided builder needs to know about one agent,
     derived deterministically from its artifact and the baseline BPMN it
@@ -48,6 +72,11 @@ class TestBuilderContext(BaseModel):
     completion_conditions: str = ""
     gateways: list[GatewayContext] = []
     coverage_targets: list[CoverageTarget] = []
+    # Epic 30.
+    rules: list[RuleTarget] = []
+    approval_authorities: list[AuthorityInfo] = []
+    jurisdictions: list[str] = []
+    data_classifications: list[str] = []
 
 
 class Situation(BaseModel):
@@ -75,7 +104,9 @@ class SituationList(BaseModel):
     situations: list[Situation]
 
 
-DataMode = Literal["typical", "edge", "messy", "describe", "mutate", "clone"]
+# Epic 30, US30.4: "near_miss" -- records built to trip screening controls
+# (names one letter off a listed party, amounts just over a limit).
+DataMode = Literal["typical", "edge", "messy", "describe", "mutate", "clone", "near_miss"]
 
 
 class GenerateDataRequest(BaseModel):

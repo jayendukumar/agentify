@@ -20,3 +20,8 @@ class LLMTimeoutError(LLMError):
 
 class LLMServerError(LLMError):
     """Provider-side failure (5xx) or connection error. Raised only after retries are exhausted."""
+
+
+class LLMPolicyError(LLMError):
+    """Epic 31, US31.8: the business unit's model/provider policy forbids
+    this call (provider not allowed, or residency not met)."""

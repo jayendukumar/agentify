@@ -1,7 +1,15 @@
 # Epic 29 -- Application & Data Catalog
 
-**Status: groomed, not started.** Groomed 2026-10-11 from
+**Status: implemented (2026-10-11).** Groomed 2026-10-11 from
 [enterprise-context-strategy.md](../enterprise-context-strategy.md).
+Built in `app/catalog/` (`service.py` -- resolution, CSV import, specs,
+permissions from data classes, register; `openapi.py`; `endpoints.py` --
+production safety), `app/api/catalog.py`, `app/twin/simulators.py` (API
+mode), and migration `a9b0c1d2e3f4` (`process_system_links`).
+Applications and data assets are context entities (kinds `application`
+and `data_asset`). Frontend: the "Applications & data" tab and the
+process page's "Systems" panel. API mode was verified against a mocked
+transport, not a real sandbox service.
 
 Goal: replace free-text system names (`tools_systems_needed:
 list[str]`, used everywhere from extraction to the twin) with references to

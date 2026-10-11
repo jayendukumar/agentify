@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CitationList } from './org/ContextCitations'
 import type { AgentArtifact, BlueprintNodeResult, BlueprintVerdict } from '../api/types'
 import { STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
 import AgentArtifactActions from './AgentArtifactActions'
@@ -70,6 +71,7 @@ export default function BlueprintDetailPanel({
         </div>
         <div className="element-meta">{STEP_TYPE_LABELS[node.step_type] ?? node.step_type}</div>
         <div className="element-meta">{node.rationale}</div>
+        <CitationList citations={node.citations ?? []} heading="Applicable rules" />
 
         {node.overridden && node.override_justification && (
           <div className="element-meta">

@@ -1,7 +1,16 @@
 # Epic 31 -- Enterprise Connectors & Federation
 
-**Status: groomed, not started.** Groomed 2026-10-11 from
+**Status: implemented (2026-10-11)**, with standards-based connectors in
+place of per-vendor ones (see the decision log). Groomed 2026-10-11 from
 [enterprise-context-strategy.md](../enterprise-context-strategy.md).
+Built in `app/jobs/` (Postgres queue + worker, started from the API
+lifespan), `app/connectors/` (MCP, folder, HTTP JSON/CSV, OSCAL, SCIM;
+sync with impact), `app/context/access.py` (federation),
+`app/llm/routing.py` (per-unit model policy, residency, redaction),
+`app/context/audit.py`, `app/api/connectors.py`, and migration
+`b0c1d2e3f4a5`. Frontend: the Organization page's "Connectors" and
+"Changes & access" tabs. Connectors were tested against mocked
+transports; none was run against a real vendor tenant.
 
 Goal: let mid-size and large organizations keep context current
 automatically, from the systems of record they already run, while each

@@ -1,8 +1,13 @@
 # Epic 32 -- Labelled Datasets & Ground Truth Management
 
-**Status: groomed, not started.** Groomed 2026-10-11 from a discussion of
-how the industry handles ground truth for agent evaluation and what volume
-testing would need.
+**Status: implemented (2026-10-11).** Groomed 2026-10-11 from a
+discussion of how the industry handles ground truth for agent evaluation
+and what volume testing would need. Built in `app/datasets/`
+(`service.py` -- revisioned rows, import with local pseudonymization,
+review, ambiguity, diff, holdout, promote-from-run; `runtime.py` --
+applying a row to a run), `app/api/datasets.py`, decision grading in
+`app/twin/engine.py`, and migration `c1d2e3f4a5b6`. Frontend: the
+"Golden cases" page and "Add to golden cases" on run details.
 
 Goal: let one twin scenario be run against a whole dataset, where every
 row carries its own inputs *and* its own expected results, and treat that

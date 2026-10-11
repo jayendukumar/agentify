@@ -33,7 +33,7 @@ label describing what looks like the same step differently. Only flag this when 
 genuinely conflicting, not just differently worded for the same thing extracted once.
 
 ##DOCUMENT_COUNT_NOTE##
-
+##POLICY_KIND##
 Do NOT flag: an element with a real, legitimate start/end event already accounting for it; minor \
 wording differences with no structural implication; an element that simply has no source_refs \
 (that alone is not evidence of anything -- e.g. it may have been added through chat editing, \
@@ -77,9 +77,9 @@ just the JSON object):
 {
   "findings": [
     {
-      "kind": "structural" | "cross_document",
+      "kind": "structural" | "cross_document"##POLICY_KIND_ENUM##,
       "question": "string -- plain English, no internal ids",
-      "target_element_ids": ["<existing element or flow id>", "..."],
+      "target_element_ids": ["<existing element or flow id>", "..."],##CITATIONS_FIELD##
       "options": [
         {
           "label": "string -- plain English description of this resolution",
@@ -130,7 +130,36 @@ def _document_count_note(schema: ProcessSchema) -> str:
     )
 
 
-def build_system_prompt(schema: ProcessSchema) -> str:
+_POLICY_KIND = """
+Epic 28 -- a third kind applies because organization rules are listed in the Organization \
+context section at the end:
+
+- "policy": a rule listed there (a required human review, consent record, escalation, approval \
+limit, or record keeping) that the process as modelled does not satisfy -- for example no step \
+records consent, or a step the rule says needs a named reviewer has no review. Phrase the \
+question so a Process Analyst can answer it, and name the rule by its code or name in it (never \
+by its bracketed label). Put the labels of the rules it rests on in "citations" (required for \
+this kind); a structural finding that rests on a listed rule should cite it too. target_element_ids holds the \
+steps the rule should apply to, or is empty when it concerns the process as a whole. Only raise \
+a policy finding for a rule that is actually listed; never from general knowledge.
+"""
+
+
+def build_system_prompt(schema: ProcessSchema, context_text: str = "") -> str:
+    """Epic 28, US28.4: with a rendered Context Pack, the model may also
+    raise "policy" findings citing pack labels; without one the prompt is
+    unchanged from Epic 11."""
     schema_json = json.dumps(schema.model_dump(by_alias=True), indent=2)
     prompt = _INSTRUCTIONS.replace("##DOCUMENT_COUNT_NOTE##", _document_count_note(schema))
-    return prompt.replace("##SCHEMA_JSON##", f"Current process schema (JSON):\n{schema_json}")
+    if context_text:
+        prompt = (
+            prompt.replace("##POLICY_KIND##", _POLICY_KIND)
+            .replace("##POLICY_KIND_ENUM##", ' | "policy"')
+            .replace("##CITATIONS_FIELD##", '\n      "citations": ["<label, e.g. C2 -- required for policy findings, and for any finding resting on a listed rule>"],')
+        )
+    else:
+        prompt = (
+            prompt.replace("##POLICY_KIND##", "").replace("##POLICY_KIND_ENUM##", "").replace("##CITATIONS_FIELD##", "")
+        )
+    prompt = prompt.replace("##SCHEMA_JSON##", f"Current process schema (JSON):\n{schema_json}")
+    return prompt + ("\n" + context_text + "\n" if context_text else "")

@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock
 os.environ.setdefault("OPENROUTER_API_KEY", "sk-or-v1-test-key")
 os.environ.setdefault("LLM_USAGE_LOG_ENABLED", "false")
 os.environ.setdefault("DOCUMENT_STORAGE_PATH", ".data/test-uploads")
+# Epic 31: tests drain the job queue explicitly (app.jobs.worker.run_pending)
+# rather than racing a background worker.
+os.environ.setdefault("JOB_WORKER_ENABLED", "false")
 # A dedicated test database, not the dev one -- see docker-compose.yml. Must
 # already exist with migrations applied (`alembic upgrade head` against
 # this URL); tests truncate its tables between runs but don't create it.

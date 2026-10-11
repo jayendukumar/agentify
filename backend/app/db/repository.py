@@ -7,6 +7,7 @@ and Epic 15's publish history -- see app/db/models.py's module docstring.
 
 from __future__ import annotations
 
+import contextlib
 import secrets
 from datetime import timedelta
 
@@ -16,12 +17,19 @@ from sqlalchemy.orm import Session
 from app.agents.generation import build_agent_definition, group_key_for, resolve_group
 from app.agents.validation import compute_checklist
 from app.bpmn.nodes import FlowNodeInfo, extract_flow_nodes
+from app.catalog.service import apply_catalog_to_definition, spec_tool_schemas
 from app.config import Settings, get_settings
+from app.datasets.runtime import apply_dataset_row
+from app.datasets.service import row_at
+from app.context.consumers import apply_agent_context
+from app.context.resolver import is_pack_stale
 from app.ids import new_id, utcnow
 from app.ingestion.embeddings import embed_texts
 from app.ingestion.extractors import ExtractedBlock
 from app.ingestion.merge import merge_process_schemas
 from app.llm import LLMClient
+from app.llm.routing import current_route as current_llm_route
+from app.llm.routing import route_for_scope
 from app.registry.base import RegistryConnector
 from app.schemas.agents import AgentArtifact, AgentDefinition, AgentGovernanceUpdate, RuntimeGuardrails
 from app.schemas.blueprint import BlueprintNodeResult, BlueprintOverlay
@@ -37,6 +45,7 @@ from app.schemas.evaluation import (
     RegressionSuiteScenarioResult,
     RunComparison,
 )
+from app.schemas.context import Citation
 from app.schemas.gap_analysis import GapFinding, GapFindingOption
 from app.schemas.orchestration import (
     NodeRun,
@@ -73,7 +82,10 @@ from .models import (
     AgentPublicationModel,
     BlueprintOverlayModel,
     BPMNDraftModel,
+    BatchRunModel,
     ChatMessageModel,
+    ContextPackModel,
+    LabelledDatasetModel,
     DocumentEmbeddingModel,
     DocumentModel,
     GapFindingModel,
@@ -500,22 +512,35 @@ def _to_pydantic_blueprint_overlay(session: Session, overlay: BlueprintOverlayMo
         baseline_version_id=overlay.baseline_version_id,
         nodes=nodes,
         generated_at=overlay.generated_at,
+        context_pack_id=overlay.context_pack_id,
+        context_stale=is_pack_stale(session, overlay.context_pack_id),
     )
 
 
 def set_blueprint_overlay(
-    session: Session, process_id: str, baseline_version_id: str, nodes: list[BlueprintNodeResult]
+    session: Session,
+    process_id: str,
+    baseline_version_id: str,
+    nodes: list[BlueprintNodeResult],
+    *,
+    context_pack_id: str | None = None,
 ) -> BlueprintOverlay:
     get_process(session, process_id)  # 404s if missing
     node_dicts = [node.model_dump() for node in nodes]
     overlay = session.get(BlueprintOverlayModel, process_id)
     if overlay is None:
-        overlay = BlueprintOverlayModel(process_id=process_id, baseline_version_id=baseline_version_id, nodes=node_dicts)
+        overlay = BlueprintOverlayModel(
+            process_id=process_id,
+            baseline_version_id=baseline_version_id,
+            nodes=node_dicts,
+            context_pack_id=context_pack_id,
+        )
         session.add(overlay)
     else:
         overlay.baseline_version_id = baseline_version_id
         overlay.nodes = node_dicts
         overlay.generated_at = utcnow()
+        overlay.context_pack_id = context_pack_id
     session.flush()
     return _to_pydantic_blueprint_overlay(session, overlay)
 
@@ -612,16 +637,19 @@ def _to_pydantic_agent_artifact(session: Session, artifact: AgentArtifactModel, 
     )
     checklist = compute_checklist(definition, has_scenarios=has_scenarios)
     checklist_complete = all(item.satisfied for item in checklist)
+    context_stale = is_pack_stale(session, artifact.context_pack_id)
     return AgentArtifact(
         id=artifact.id,
         process_id=artifact.process_id,
         group_key=artifact.group_key,
         node_ids=artifact.node_ids,
         primary_node_id=artifact.primary_node_id,
-        status="stale" if is_stale else "generated",
+        status="stale" if is_stale or context_stale else "generated",
         version=artifact.version,
         definition=definition,
         baseline_version_id=artifact.source_baseline_version_id,
+        context_pack_id=artifact.context_pack_id,
+        context_stale=context_stale,
         lifecycle_status=_compute_agent_lifecycle_status(session, artifact, checklist_complete=checklist_complete),
         checklist=checklist,
         marked_release_candidate_at=artifact.marked_release_candidate_at,
@@ -664,6 +692,15 @@ def generate_agent_artifact(
     node_ids = sorted(node.node_id for node in group)
     group_key = group_key_for(node_ids)
     definition = build_agent_definition(group, primary_node_id=node_id)
+    # Epic 28, US28.6: the overlay's pinned pack is what this agent's rules
+    # come from, and what it pins in turn.
+    pack = session.get(ContextPackModel, overlay_model.context_pack_id) if overlay_model.context_pack_id else None
+    definition = apply_agent_context(session, definition, group, pack)
+    # Epic 29, US29.3/US29.7: tool contracts link to catalog applications and
+    # take their permissions from the data those applications hold.
+    primary_spec = next(n for n in group if n.node_id == node_id).agent_spec
+    if primary_spec is not None:
+        definition = apply_catalog_to_definition(session, process_id, definition, primary_spec)
     snapshot = [dict(node) for node in overlay_model.nodes if node.get("node_id") in node_ids]
 
     artifact = session.scalar(
@@ -682,6 +719,7 @@ def generate_agent_artifact(
             source_baseline_version_id=overlay.baseline_version_id,
             source_node_snapshot=snapshot,
             generated_by=generated_by,
+            context_pack_id=overlay_model.context_pack_id,
         )
         session.add(artifact)
     else:
@@ -695,6 +733,7 @@ def generate_agent_artifact(
         artifact.source_node_snapshot = snapshot
         artifact.generated_by = generated_by
         artifact.generated_at = utcnow()
+        artifact.context_pack_id = overlay_model.context_pack_id
         # Epic 19, US19.5: every regenerate of an existing row is a new
         # version to key runs/suites/comparisons against.
         artifact.version += 1
@@ -881,6 +920,8 @@ def _to_pydantic_twin_scenario(session: Session, scenario: TwinScenarioModel) ->
         faults=scenario.faults or {},
         step_match=scenario.step_match or "exact",
         story=scenario.story,
+        dataset_id=scenario.dataset_id,
+        decision_field=scenario.decision_field or "decision",
         created_at=scenario.created_at,
         created_by=scenario.created_by,
         created_by_name=_resolve_user_name(session, scenario.created_by),
@@ -975,6 +1016,11 @@ def _to_pydantic_sim_twin_run(session: Session, run: SimulationRunModel) -> Twin
         completed_at=run.completed_at,
         run_by=run.run_by,
         run_by_name=_resolve_user_name(session, run.run_by),
+        dataset_id=run.dataset_id,
+        dataset_version=run.dataset_version,
+        row_key=run.row_key,
+        trial=run.trial,
+        batch_id=run.batch_id,
     )
 
 
@@ -1004,6 +1050,8 @@ def create_twin_scenario(
         faults={name: [f.model_dump() for f in faults] for name, faults in data.faults.items()},
         step_match=data.step_match,
         story=data.story.model_dump() if data.story is not None else None,
+        dataset_id=data.dataset_id,
+        decision_field=data.decision_field,
         created_by=created_by,
     )
     session.add(scenario)
@@ -1046,11 +1094,18 @@ async def _get_or_infer_tool_schemas(
     comparing the cached schema's keys against the artifact's current
     definition rather than a separate stored flag."""
     definition = AgentDefinition.model_validate(artifact.definition)
+    # Epic 29, US29.4: systems linked to a catalog application with an
+    # OpenAPI spec use the real operations, rebuilt on every call (no LLM,
+    # and a re-attached spec takes effect immediately); only the rest are
+    # inferred and cached.
+    from_specs = spec_tool_schemas(session, artifact.process_id, definition.tools_systems_needed)
+    to_infer = [name for name in definition.tools_systems_needed if name not in from_specs]
     cached = session.get(TwinToolSchemaModel, artifact.id)
-    if cached is not None and set(cached.schemas) == set(definition.tools_systems_needed):
-        return {name: InferredToolSchema.model_validate(value) for name, value in cached.schemas.items()}
+    if cached is not None and set(cached.schemas) == set(to_infer):
+        inferred = {name: InferredToolSchema.model_validate(value) for name, value in cached.schemas.items()}
+        return {**inferred, **from_specs}
 
-    schemas = await infer_tool_schemas(llm, definition)
+    schemas = await infer_tool_schemas(llm, definition.model_copy(update={"tools_systems_needed": to_infer}))
     dumped = {name: schema.model_dump() for name, schema in schemas.items()}
     if cached is None:
         session.add(TwinToolSchemaModel(agent_artifact_id=artifact.id, schemas=dumped))
@@ -1058,10 +1113,20 @@ async def _get_or_infer_tool_schemas(
         cached.schemas = dumped
         cached.generated_at = utcnow()
     session.flush()
-    return schemas
+    return {**schemas, **from_specs}
 
 
-def start_twin_run(session: Session, process_id: str, scenario_id: str, *, run_by: str | None = None) -> TwinRun:
+def start_twin_run(
+    session: Session,
+    process_id: str,
+    scenario_id: str,
+    *,
+    run_by: str | None = None,
+    row_key: str | None = None,
+    dataset_version: int | None = None,
+    trial: int | None = None,
+    batch_id: str | None = None,
+) -> TwinRun:
     """Epic 17, US17.6: creates the run row in status="CREATED" and returns
     immediately -- the caller (app/api/twin.py) commits this and enqueues
     `execute_twin_run_background` as a FastAPI BackgroundTask, the same
@@ -1089,13 +1154,60 @@ def start_twin_run(session: Session, process_id: str, scenario_id: str, *, run_b
             kind="twin", scenario_id=scenario_model.id, agent_artifacts=[artifact], environment=environment_model
         ),
         run_by=run_by,
+        trial=trial,
+        batch_id=batch_id,
     )
+    if row_key is not None:
+        # Epic 32, US32.2/US32.6: a data-driven run pins the dataset version.
+        if not scenario_model.dataset_id:
+            raise TwinServiceError("This scenario has no dataset, so it can't run a dataset row")
+        dataset = session.get(LabelledDatasetModel, scenario_model.dataset_id)
+        if dataset is None:
+            raise TwinServiceError("This scenario's dataset no longer exists")
+        version = dataset_version or dataset.version
+        row_at(session, dataset.id, row_key, version)  # 404s if the row isn't in that version
+        run.dataset_id = dataset.id
+        run.dataset_version = version
+        run.row_key = row_key
+        run.snapshot = {**(run.snapshot or {}), "dataset": {"dataset_id": dataset.id, "version": version, "row_key": row_key}}
     session.add(run)
     session.flush()
     return _to_pydantic_sim_twin_run(session, run)
 
 
+@contextlib.contextmanager
+def _llm_route_for_run(run_id: str):
+    """Epic 31, US31.8: a background run applies its process's business-unit
+    model policy to every LLM call it makes (agent turns, simulated
+    systems, schema inference)."""
+    from app.db.session import get_session_factory
+
+    session = get_session_factory()()
+    try:
+        run_model = session.get(SimulationRunModel, run_id)
+        route = route_for_scope(session, _scope_unit(session, run_model.process_id)) if run_model else None
+    finally:
+        session.close()
+    token = current_llm_route.set(route)
+    try:
+        yield
+    finally:
+        current_llm_route.reset(token)
+
+
+def _scope_unit(session: Session, process_id: str) -> str | None:
+    process = session.get(ProcessModel, process_id)
+    return process.business_unit_id if process is not None else None
+
+
 async def execute_twin_run_background(
+    run_id: str, llm: LLMClient, settings: Settings | None = None, human_decision: str | None = None
+) -> None:
+    with _llm_route_for_run(run_id):
+        await _execute_twin_run(run_id, llm, settings, human_decision)
+
+
+async def _execute_twin_run(
     run_id: str, llm: LLMClient, settings: Settings | None = None, human_decision: str | None = None
 ) -> None:
     """US17.6: the FastAPI BackgroundTask entry point for a twin run.
@@ -1133,6 +1245,18 @@ async def execute_twin_run_background(
             session.commit()
             return
         scenario = _to_pydantic_twin_scenario(session, scenario_model)
+        if run_model.row_key and run_model.dataset_id:
+            scenario = apply_dataset_row(
+                scenario, row_at(session, run_model.dataset_id, run_model.row_key, run_model.dataset_version or 1)
+            )
+        # Epic 34, US34.6/US34.10: a batch run's own seed, and simulated
+        # system latency when it's part of a load batch.
+        if run_model.seed is not None:
+            scenario.human_checkpoint_config = scenario.human_checkpoint_config.model_copy(update={"seed": run_model.seed})
+        if run_model.batch_id:
+            batch_model = session.get(BatchRunModel, run_model.batch_id)
+            if batch_model is not None and batch_model.mode == "load":
+                scenario.stub_latency_ms = int((batch_model.load_settings or {}).get("stub_latency_ms", 0))
         # Epic 21, US21.3: resolved at execution time (not pinned to the
         # scenario's own environment_version) -- the environment's own
         # fields are already "current state, version bumped in place"
@@ -1644,6 +1768,13 @@ async def _build_node_artifacts(
 async def execute_orchestration_run_background(
     run_id: str, llm: LLMClient, settings: Settings | None = None, human_decision: str | None = None
 ) -> None:
+    with _llm_route_for_run(run_id):
+        await _execute_orchestration_run(run_id, llm, settings, human_decision)
+
+
+async def _execute_orchestration_run(
+    run_id: str, llm: LLMClient, settings: Settings | None = None, human_decision: str | None = None
+) -> None:
     """US16.2-16.7: the FastAPI BackgroundTask entry point for a rehearsal
     run. Opens its own DB session/connection -- same reasoning as
     app/ingestion/pipeline.py's process_document, since a BackgroundTask
@@ -2108,6 +2239,8 @@ def _to_pydantic_gap_finding(session: Session, finding: GapFindingModel) -> GapF
         decided_at=finding.decided_at,
         decided_by=finding.decided_by,
         decided_by_name=_resolve_user_name(session, finding.decided_by),
+        citations=[Citation.model_validate(c) for c in finding.citations or []],
+        context_pack_id=finding.context_pack_id,
     )
 
 
@@ -2119,6 +2252,8 @@ def add_gap_finding(
     question: str,
     target_element_ids: list[str],
     options: list[GapFindingOption],
+    citations: list[Citation] | None = None,
+    context_pack_id: str | None = None,
 ) -> GapFinding:
     get_process(session, process_id)  # 404s if missing
     finding = GapFindingModel(
@@ -2128,6 +2263,8 @@ def add_gap_finding(
         question=question,
         target_element_ids=target_element_ids,
         options=[option.model_dump() for option in options],
+        citations=[c.model_dump() for c in citations or []],
+        context_pack_id=context_pack_id,
     )
     session.add(finding)
     session.flush()

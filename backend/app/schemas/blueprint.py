@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from .context import Citation
+
 Verdict = Literal["automatable", "partial", "not_automatable"]
 StepType = Literal[
     "data_retrieval_transformation",
@@ -47,6 +49,10 @@ class BlueprintNodeResult(BaseModel):
     override_justification: str | None = None
     overridden_by: str | None = None
     overridden_by_name: str | None = None
+    # Epic 28, US28.3/US28.5: the organization-context labels the model
+    # cited for this step (pack-specific), resolved to citations.
+    applicable_rules: list[str] = []
+    citations: list[Citation] = []
 
 
 class BlueprintOverlay(BaseModel):
@@ -54,6 +60,9 @@ class BlueprintOverlay(BaseModel):
     baseline_version_id: str
     nodes: list[BlueprintNodeResult]
     generated_at: datetime
+    # Epic 28, US28.2/US28.8.
+    context_pack_id: str | None = None
+    context_stale: bool = False
 
 
 class BlueprintGenerateRequest(BaseModel):

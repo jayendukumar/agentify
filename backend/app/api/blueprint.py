@@ -2,7 +2,11 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.blueprint.service import BlueprintServiceError, evaluate_blueprint
 from app.bpmn.nodes import extract_flow_nodes
+from app.catalog.service import auto_link
+from app.context.consumers import apply_blueprint_context
+from app.context.resolver import render_pack, resolve_for_process
 from app.db import repository
+from app.llm.routing import llm_route_for
 from app.schemas.blueprint import BlueprintGenerateRequest, BlueprintOverlay, BlueprintOverrideRequest
 
 from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
@@ -30,12 +34,23 @@ async def generate_blueprint(
     if not flow_nodes:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Finalized diagram has no steps to evaluate")
 
+    # Epic 28, US28.5: the steps' labels and lanes are the retrieval query.
+    pack = resolve_for_process(
+        db,
+        process_id,
+        purpose="blueprint_evaluation",
+        query_text="\n".join(f"{n.label} ({n.lane_name or ''})" for n in flow_nodes),
+    )
     try:
-        nodes = await evaluate_blueprint(llm, flow_nodes=flow_nodes)
+        with llm_route_for(db, process_id=process_id):
+            nodes = await evaluate_blueprint(llm, flow_nodes=flow_nodes, context_text=render_pack(pack))
     except BlueprintServiceError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    return repository.set_blueprint_overlay(db, process_id, version.id, nodes)
+    nodes = apply_blueprint_context(db, nodes, pack)
+    overlay = repository.set_blueprint_overlay(db, process_id, version.id, nodes, context_pack_id=pack.id)
+    auto_link(db, process_id)  # Epic 29, US29.3
+    return overlay
 
 
 @router.get("", response_model=BlueprintOverlay)

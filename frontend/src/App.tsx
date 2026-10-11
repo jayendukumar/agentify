@@ -4,8 +4,11 @@ import { AuthProvider, useAuth } from './auth/AuthContext'
 import LoginPage from './auth/LoginPage'
 import BrandLogo from './components/BrandLogo'
 import ErrorBoundary from './components/ErrorBoundary'
+import BatchResultsPage from './pages/BatchResultsPage'
+import DatasetsPage from './pages/DatasetsPage'
 import GapReviewPage from './pages/GapReviewPage'
 import ProcessDetailPage from './pages/ProcessDetailPage'
+import OrganizationPage from './pages/OrganizationPage'
 import ProcessListPage from './pages/ProcessListPage'
 import RegistriesPage from './pages/RegistriesPage'
 import VersionsPage from './pages/VersionsPage'
@@ -45,6 +48,9 @@ function AppHeader() {
         <>
           <nav className="app-header-nav" aria-label="Main navigation">
             <Link to="/" aria-current={pathname === '/' || pathname.startsWith('/processes/') ? 'page' : undefined} className="app-header-nav-link">Processes</Link>
+            <NavLink to="/organization" className="app-header-nav-link">
+              Organization
+            </NavLink>
             <NavLink to="/registries" className="app-header-nav-link">
               Registries
             </NavLink>
@@ -74,11 +80,14 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<ProcessListPage />} />
       <Route path="/registries" element={<RegistriesPage />} />
+      <Route path="/organization" element={<OrganizationPage />} />
       <Route path="/processes/:processId" element={<ProcessDetailPage />} />
       <Route path="/processes/:processId/diagram" element={<DiagramPage />} />
       <Route path="/processes/:processId/versions" element={<VersionsPage />} />
       <Route path="/processes/:processId/blueprint" element={<BlueprintPage />} />
       <Route path="/processes/:processId/gaps" element={<GapReviewPage />} />
+      <Route path="/processes/:processId/datasets" element={<DatasetsPage />} />
+      <Route path="/processes/:processId/batches/:batchId" element={<BatchResultsPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )

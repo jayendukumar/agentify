@@ -3,10 +3,12 @@ import { Link, useParams } from 'react-router-dom'
 import { analyzeGaps, ApiError, dismissGapFinding, listGapFindings, resolveGapFinding } from '../api/client'
 import type { GapFinding } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { CitationList } from '../components/org/ContextCitations'
 
 const KIND_LABELS: Record<string, string> = {
   structural: 'Structural',
   cross_document: 'Cross-document',
+  policy: 'Policy',
 }
 
 function GapFindingCard({
@@ -28,6 +30,7 @@ function GapFindingCard({
         <span className="badge">{KIND_LABELS[finding.kind] ?? finding.kind}</span>
         <span className="gap-finding-question">{finding.question}</span>
       </div>
+      <CitationList citations={finding.citations ?? []} heading="Why we're asking" />
       {finding.status === 'open' ? (
         <div className="gap-finding-actions">
           {finding.options.map((option, index) => (

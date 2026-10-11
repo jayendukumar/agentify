@@ -1,5 +1,60 @@
 import type {
   AgentArtifact,
+  BatchComparison,
+  BatchResults,
+  GateResult,
+  ReleaseCriteria,
+  BatchEstimate,
+  BatchRequest,
+  BatchSchedule,
+  BatchTier,
+  BatchView,
+  DecisionRule,
+  GenerateResult,
+  JudgeRubric,
+  MetamorphicRelation,
+  OracleConflict,
+  OracleLabelResult,
+  ReviewItem,
+  ColumnMapping,
+  DatasetDiff,
+  DatasetRow,
+  DatasetRowInput,
+  DatasetRowPage,
+  DatasetSummary,
+  ImportPreview,
+  RowLabels,
+  AccessLogEntry,
+  Connector,
+  ConnectorConfig,
+  ConnectorRun,
+  ContextChange,
+  LlmPolicy,
+  MemberAccess,
+  Membership,
+  SyncStarted,
+  ComplianceEvidence,
+  ApiSpecResult,
+  ApplicationEndpoint,
+  ApplicationImportResult,
+  SystemResolution,
+  ThirdPartyRegisterRow,
+  ApplicableContext,
+  ContextImpact,
+  ContextPack,
+  BulkConfirmResult,
+  ContextDocument,
+  ContextEntity,
+  ContextEntityCreate,
+  ContextEntityVersion,
+  ContextKind,
+  Organization,
+  OrganizationProfileAnswers,
+  PolicyPassage,
+  ProcessScope,
+  ProfileResult,
+  StarterPackApplyResult,
+  StarterPackSummary,
   AgentGovernanceUpdate,
   AgentPublication,
   AgentPublishStatus,
@@ -431,8 +486,9 @@ export function deleteScenario(processId: string, scenarioId: string): Promise<v
 // Epic 17, US17.6: twin runs now execute in the background -- this returns
 // immediately with the run in status="CREATED"; poll `getTwinRun` for
 // progress, same pattern as `startOrchestrationRun`/`getOrchestrationRun`.
-export function startTwinRun(processId: string, scenarioId: string): Promise<TwinRun> {
-  return request(`/api/processes/${processId}/scenarios/${scenarioId}/run`, { method: 'POST' })
+export function startTwinRun(processId: string, scenarioId: string, rowKey?: string): Promise<TwinRun> {
+  const query = rowKey ? `?row_key=${encodeURIComponent(rowKey)}` : ''
+  return request(`/api/processes/${processId}/scenarios/${scenarioId}/run${query}`, { method: 'POST' })
 }
 
 export function getTwinRun(processId: string, runId: string): Promise<TwinRun> {
@@ -601,4 +657,458 @@ export function deleteTwinEnvironment(processId: string, environmentId: string):
 // Epic 22: per-run execution snapshots and reproducibility tiers
 export function getRunSnapshot(processId: string, runId: string): Promise<RunSnapshotView> {
   return request(`/api/processes/${processId}/runs/${runId}/snapshot`)
+}
+
+// Epic 27 -- organization context
+export function getOrganization(): Promise<Organization> {
+  return request('/api/organization')
+}
+
+export function updateOrganization(body: { name: string; industry: string | null; size: string | null }): Promise<Organization> {
+  return request('/api/organization', { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function applyOrganizationProfile(answers: OrganizationProfileAnswers): Promise<ProfileResult> {
+  return request('/api/organization/profile', { method: 'POST', body: JSON.stringify(answers) })
+}
+
+export function listStarterPacks(): Promise<StarterPackSummary[]> {
+  return request('/api/organization/starter-packs')
+}
+
+export function applyStarterPack(packId: string): Promise<StarterPackApplyResult> {
+  return request(`/api/organization/starter-packs/${packId}/apply`, { method: 'POST' })
+}
+
+export function listContextEntities(kind?: ContextKind | null, status: string = 'confirmed'): Promise<ContextEntity[]> {
+  const params = new URLSearchParams({ status })
+  if (kind) params.set('kind', kind)
+  return request(`/api/organization/entities?${params.toString()}`)
+}
+
+export function createContextEntity(body: ContextEntityCreate): Promise<ContextEntity> {
+  return request('/api/organization/entities', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function updateContextEntity(
+  entityId: string,
+  body: Partial<ContextEntityCreate> & { change_note?: string },
+): Promise<ContextEntity> {
+  return request(`/api/organization/entities/${entityId}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function retireContextEntity(entityId: string): Promise<ContextEntity> {
+  return request(`/api/organization/entities/${entityId}`, { method: 'DELETE' })
+}
+
+export function listContextEntityVersions(entityId: string): Promise<ContextEntityVersion[]> {
+  return request(`/api/organization/entities/${entityId}/versions`)
+}
+
+export function confirmContextEntity(entityId: string, acknowledgeRelaxation = false): Promise<ContextEntity> {
+  return request(`/api/organization/entities/${entityId}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ acknowledge_relaxation: acknowledgeRelaxation }),
+  })
+}
+
+export function dismissContextEntity(entityId: string): Promise<ContextEntity> {
+  return request(`/api/organization/entities/${entityId}/dismiss`, { method: 'POST' })
+}
+
+export function bulkConfirmContextEntities(ids?: string[]): Promise<BulkConfirmResult> {
+  return request('/api/organization/entities/bulk-confirm', { method: 'POST', body: JSON.stringify(ids ? { ids } : {}) })
+}
+
+export async function uploadPolicyDocument(
+  file: File,
+  fields: { title: string; code: string; business_unit_id: string; jurisdictions: string; effective_date: string },
+): Promise<ContextDocument> {
+  const formData = new FormData()
+  formData.append('file', file)
+  for (const [key, value] of Object.entries(fields)) formData.append(key, value)
+  const response = await fetch(`${API_BASE_URL}/api/organization/documents`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  })
+  if (!response.ok) {
+    const detail = await readErrorDetail(response)
+    if (response.status === 401) unauthorizedListener?.()
+    throw new ApiError(response.status, detail)
+  }
+  return (await response.json()) as ContextDocument
+}
+
+export function listPolicyDocuments(): Promise<ContextDocument[]> {
+  return request('/api/organization/documents')
+}
+
+export function listPolicyPassages(documentId: string): Promise<PolicyPassage[]> {
+  return request(`/api/organization/documents/${documentId}/passages`)
+}
+
+export function getApplicableContext(scope: Partial<ProcessScope>): Promise<ApplicableContext> {
+  const params = new URLSearchParams()
+  if (scope.business_unit_id) params.set('business_unit_id', scope.business_unit_id)
+  if (scope.jurisdictions?.length) params.set('jurisdictions', scope.jurisdictions.join(','))
+  if (scope.process_type) params.set('process_type', scope.process_type)
+  if (scope.data_classes?.length) params.set('data_classes', scope.data_classes.join(','))
+  return request(`/api/organization/applicable?${params.toString()}`)
+}
+
+export function getProcessScope(processId: string): Promise<ProcessScope> {
+  return request(`/api/processes/${processId}/scope`)
+}
+
+export function setProcessScope(processId: string, scope: ProcessScope): Promise<ProcessScope> {
+  return request(`/api/processes/${processId}/scope`, { method: 'PUT', body: JSON.stringify(scope) })
+}
+
+// Epic 28 -- context packs
+export function getContextPack(packId: string): Promise<ContextPack> {
+  return request(`/api/context-packs/${packId}`)
+}
+
+export function previewContextPack(processId: string, purpose: string, query = ''): Promise<ContextPack> {
+  const params = new URLSearchParams({ purpose, query })
+  return request(`/api/processes/${processId}/scope/context-pack?${params.toString()}`)
+}
+
+export function getContextImpact(entityId: string): Promise<ContextImpact> {
+  return request(`/api/organization/entities/${entityId}/impact`)
+}
+
+export function rerunAffectedSuites(entityId: string): Promise<ContextImpact> {
+  return request(`/api/organization/entities/${entityId}/rerun-affected`, { method: 'POST' })
+}
+
+// Epic 29 -- application and data catalog
+async function uploadForm<T>(path: string, method: string, form: FormData): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { method, credentials: 'include', body: form })
+  if (!response.ok) {
+    const detail = await readErrorDetail(response)
+    if (response.status === 401) unauthorizedListener?.()
+    throw new ApiError(response.status, detail)
+  }
+  return (await response.json()) as T
+}
+
+export function importApplicationsCsv(file: File, dryRun: boolean): Promise<ApplicationImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  return uploadForm(`/api/organization/applications/import?dry_run=${dryRun}`, 'POST', form)
+}
+
+export function attachApiSpec(applicationId: string, file: File): Promise<ApiSpecResult> {
+  const form = new FormData()
+  form.append('file', file)
+  return uploadForm(`/api/organization/applications/${applicationId}/api-spec`, 'PUT', form)
+}
+
+export function setApplicationEndpoints(applicationId: string, endpoints: ApplicationEndpoint[]): Promise<ContextEntity> {
+  return request(`/api/organization/applications/${applicationId}/endpoints`, { method: 'PUT', body: JSON.stringify(endpoints) })
+}
+
+export function getThirdPartyRegister(): Promise<ThirdPartyRegisterRow[]> {
+  return request('/api/organization/applications/register')
+}
+
+export function listSystemResolutions(processId: string): Promise<SystemResolution[]> {
+  return request(`/api/processes/${processId}/systems`)
+}
+
+export function linkSystem(processId: string, systemName: string, applicationId: string | null): Promise<SystemResolution[]> {
+  return request(`/api/processes/${processId}/systems/${encodeURIComponent(systemName)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ application_id: applicationId }),
+  })
+}
+
+// Epic 30 -- compliance-aware testing and release
+export async function getAuthorityPersonas(processId: string, artifactId: string): Promise<ReviewerPersona[]> {
+  const result = await request<{ personas: ReviewerPersona[] }>(testBuilderPath(processId, artifactId, 'authority-personas'))
+  return result.personas
+}
+
+export function getComplianceEvidence(processId: string, artifactId: string): Promise<ComplianceEvidence> {
+  return request(`/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/compliance-evidence`)
+}
+
+export async function exportComplianceEvidence(processId: string, artifactId: string): Promise<string> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/compliance-evidence/export`,
+    { credentials: 'include' },
+  )
+  if (!response.ok) {
+    const detail = await readErrorDetail(response)
+    if (response.status === 401) unauthorizedListener?.()
+    throw new ApiError(response.status, detail)
+  }
+  return response.text()
+}
+
+// Epic 31 -- connectors, federation, model policy, audit
+export function listConnectorTypes(): Promise<{ type: string; description: string }[]> {
+  return request('/api/organization/connectors/types')
+}
+
+export function listConnectors(): Promise<Connector[]> {
+  return request('/api/organization/connectors')
+}
+
+export function createConnector(body: ConnectorConfig): Promise<Connector> {
+  return request('/api/organization/connectors', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function deleteConnector(connectorId: string): Promise<void> {
+  return request(`/api/organization/connectors/${connectorId}`, { method: 'DELETE' })
+}
+
+export function syncConnector(connectorId: string): Promise<SyncStarted> {
+  return request(`/api/organization/connectors/${connectorId}/sync`, { method: 'POST' })
+}
+
+export function listConnectorRuns(connectorId: string): Promise<ConnectorRun[]> {
+  return request(`/api/organization/connectors/${connectorId}/runs`)
+}
+
+export function listMembers(): Promise<MemberAccess[]> {
+  return request('/api/organization/members')
+}
+
+export function setMemberships(userId: string, memberships: Membership[]): Promise<MemberAccess> {
+  return request(`/api/organization/members/${userId}`, { method: 'PUT', body: JSON.stringify(memberships) })
+}
+
+export function setOrganizationLlmPolicy(policy: LlmPolicy): Promise<Organization> {
+  return request('/api/organization/llm-policy', { method: 'PUT', body: JSON.stringify(policy) })
+}
+
+export function listContextChanges(): Promise<ContextChange[]> {
+  return request('/api/organization/changes')
+}
+
+export function listAuditLog(): Promise<AccessLogEntry[]> {
+  return request('/api/organization/audit-log?limit=100')
+}
+
+// Epic 32 -- labelled datasets
+function datasetPath(processId: string, datasetId?: string, path = ''): string {
+  return `/api/processes/${processId}/datasets${datasetId ? `/${datasetId}` : ''}${path}`
+}
+
+export function listDatasets(processId: string): Promise<DatasetSummary[]> {
+  return request(datasetPath(processId))
+}
+
+export function createDataset(processId: string, body: { name: string; description?: string; agent_artifact_id?: string | null }): Promise<DatasetSummary> {
+  return request(datasetPath(processId), { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function getDataset(processId: string, datasetId: string): Promise<DatasetSummary> {
+  return request(datasetPath(processId, datasetId))
+}
+
+export function listDatasetRows(
+  processId: string,
+  datasetId: string,
+  params: { version?: number; segment?: string; only?: string; include_holdout?: boolean; offset?: number; limit?: number } = {},
+): Promise<DatasetRowPage> {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== '') query.set(key, String(value))
+  return request(datasetPath(processId, datasetId, `/rows?${query.toString()}`))
+}
+
+export function addDatasetRows(processId: string, datasetId: string, rows: DatasetRowInput[]): Promise<DatasetSummary> {
+  return request(datasetPath(processId, datasetId, '/rows'), { method: 'POST', body: JSON.stringify(rows) })
+}
+
+export function updateDatasetRow(
+  processId: string,
+  datasetId: string,
+  rowKey: string,
+  body: { labels?: RowLabels; segment?: string; critical?: boolean; confirm?: boolean },
+): Promise<DatasetRow> {
+  return request(datasetPath(processId, datasetId, `/rows/${rowKey}`), { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+export function setRowAmbiguity(
+  processId: string,
+  datasetId: string,
+  rowKey: string,
+  body: { ambiguous: boolean; note?: string | null; second_labels?: RowLabels | null },
+): Promise<DatasetRow> {
+  return request(datasetPath(processId, datasetId, `/rows/${rowKey}/ambiguity`), { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function removeDatasetRow(processId: string, datasetId: string, rowKey: string): Promise<DatasetSummary> {
+  return request(datasetPath(processId, datasetId, `/rows/${rowKey}`), { method: 'DELETE' })
+}
+
+export function getDatasetDiff(processId: string, datasetId: string, from: number, to?: number): Promise<DatasetDiff> {
+  return request(datasetPath(processId, datasetId, `/diff?from=${from}${to ? `&to=${to}` : ''}`))
+}
+
+export function splitDatasetHoldout(processId: string, datasetId: string, fraction: number, seed = 7): Promise<DatasetSummary> {
+  return request(datasetPath(processId, datasetId, '/holdout'), { method: 'POST', body: JSON.stringify({ fraction, seed }) })
+}
+
+export async function previewDatasetImport(processId: string, datasetId: string, file: File): Promise<ImportPreview> {
+  const form = new FormData()
+  form.append('file', file)
+  return uploadForm(datasetPath(processId, datasetId, '/import/preview'), 'POST', form)
+}
+
+export async function importDatasetRows(
+  processId: string,
+  datasetId: string,
+  file: File,
+  mapping: ColumnMapping[],
+): Promise<{ version: number; added: number; skipped: number }> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('mapping', JSON.stringify(mapping))
+  return uploadForm(datasetPath(processId, datasetId, '/import'), 'POST', form)
+}
+
+export function promoteRunToDataset(
+  processId: string,
+  datasetId: string,
+  body: { run_id: string; labels: RowLabels; segment?: string; critical?: boolean },
+): Promise<DatasetRow> {
+  return request(datasetPath(processId, datasetId, '/rows/from-run'), { method: 'POST', body: JSON.stringify(body) })
+}
+
+// Epic 33 -- oracles
+export function listDecisionRules(processId: string): Promise<DecisionRule[]> {
+  return request(`/api/processes/${processId}/decision-rules`)
+}
+
+export function proposeDecisionRules(processId: string): Promise<DecisionRule[]> {
+  return request(`/api/processes/${processId}/decision-rules/propose`, { method: 'POST' })
+}
+
+export function updateDecisionRule(
+  processId: string,
+  ruleId: string,
+  body: { expression?: Record<string, unknown>; outcome?: string; confirm?: boolean; is_default?: boolean },
+): Promise<DecisionRule> {
+  return request(`/api/processes/${processId}/decision-rules/${ruleId}`, { method: 'PATCH', body: JSON.stringify(body) })
+}
+
+export function labelWithOracle(processId: string, datasetId: string): Promise<OracleLabelResult> {
+  return request(datasetPath(processId, datasetId, '/oracle/label'), { method: 'POST' })
+}
+
+export function listOracleConflicts(processId: string, datasetId: string): Promise<OracleConflict[]> {
+  return request(datasetPath(processId, datasetId, '/oracle/conflicts'))
+}
+
+export function reportRulesGap(processId: string, datasetId: string, rowKeys: string[]): Promise<{ gap_finding_id: string }> {
+  return request(datasetPath(processId, datasetId, '/oracle/conflicts/report-gap'), { method: 'POST', body: JSON.stringify({ row_keys: rowKeys }) })
+}
+
+export function generateLabelFirst(
+  processId: string,
+  datasetId: string,
+  body: { total: number; mix: Record<string, number>; messy_fraction?: number },
+): Promise<{ queued: boolean; job_id: string | null; result: GenerateResult | null }> {
+  return request(datasetPath(processId, datasetId, '/generate'), { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function listRelations(processId: string, datasetId: string): Promise<MetamorphicRelation[]> {
+  return request(datasetPath(processId, datasetId, '/relations'))
+}
+
+export function createRelation(
+  processId: string,
+  datasetId: string,
+  body: { name: string; kind: string; field: string; perturbation: Record<string, unknown>; direction?: string | null },
+): Promise<MetamorphicRelation> {
+  return request(datasetPath(processId, datasetId, '/relations'), { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function generateVariants(processId: string, datasetId: string, relationId: string): Promise<{ variants: number }> {
+  return request(datasetPath(processId, datasetId, `/relations/${relationId}/variants`), { method: 'POST' })
+}
+
+export function getReviewQueue(processId: string, datasetId: string): Promise<ReviewItem[]> {
+  return request(datasetPath(processId, datasetId, '/review-queue'))
+}
+
+export function listJudgeRubrics(processId: string): Promise<JudgeRubric[]> {
+  return request(`/api/processes/${processId}/judge-rubrics`)
+}
+
+export function createJudgeRubric(
+  processId: string,
+  body: { name: string; field: string; rubric: string; min_agreement?: number; min_samples?: number },
+): Promise<JudgeRubric> {
+  return request(`/api/processes/${processId}/judge-rubrics`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function calibrateJudge(processId: string, rubricId: string, datasetId: string): Promise<JudgeRubric> {
+  return request(`/api/processes/${processId}/judge-rubrics/${rubricId}/calibrate/${datasetId}`, { method: 'POST' })
+}
+
+// Epic 34 -- batches
+export function estimateBatch(processId: string, scenarioId: string, body: BatchRequest): Promise<{ row_keys: string[]; estimate: BatchEstimate }> {
+  return request(`/api/processes/${processId}/scenarios/${scenarioId}/batches/estimate`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function startBatch(processId: string, scenarioId: string, body: BatchRequest): Promise<BatchView> {
+  return request(`/api/processes/${processId}/scenarios/${scenarioId}/batches`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function listBatches(processId: string, scenarioId?: string): Promise<BatchView[]> {
+  return request(`/api/processes/${processId}/batches${scenarioId ? `?scenario_id=${scenarioId}` : ''}`)
+}
+
+export function controlBatch(processId: string, batchId: string, action: 'pause' | 'resume' | 'cancel'): Promise<BatchView> {
+  return request(`/api/processes/${processId}/batches/${batchId}/control`, { method: 'POST', body: JSON.stringify({ action }) })
+}
+
+export function listBatchSchedules(processId: string): Promise<BatchSchedule[]> {
+  return request(`/api/processes/${processId}/batch-schedules`)
+}
+
+export function createBatchSchedule(
+  processId: string,
+  body: { scenario_id: string; tier: BatchTier; trials: number; every_minutes?: number | null; budget_usd?: number | null },
+): Promise<BatchSchedule> {
+  return request(`/api/processes/${processId}/batch-schedules`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function deleteBatchSchedule(processId: string, scheduleId: string): Promise<void> {
+  return request(`/api/processes/${processId}/batch-schedules/${scheduleId}`, { method: 'DELETE' })
+}
+
+// Epic 35 -- results at volume
+export function getBatchResults(processId: string, batchId: string): Promise<BatchResults> {
+  return request(`/api/processes/${processId}/batches/${batchId}/results`)
+}
+
+export function getBatch(processId: string, batchId: string): Promise<BatchView> {
+  return request(`/api/processes/${processId}/batches/${batchId}`)
+}
+
+export function compareBatches(processId: string, a: string, b: string): Promise<BatchComparison> {
+  return request(`/api/processes/${processId}/batch-comparison?a=${a}&b=${b}`)
+}
+
+export function getBatchEvidence(processId: string, batchId: string): Promise<Record<string, unknown>> {
+  return request(`/api/processes/${processId}/batches/${batchId}/evidence`)
+}
+
+export async function getReleaseCriteria(processId: string, artifactId: string): Promise<ReleaseCriteria | null> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/release-criteria`)
+}
+
+export function setReleaseCriteria(processId: string, artifactId: string, body: ReleaseCriteria): Promise<ReleaseCriteria> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/release-criteria`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function getReleaseGate(processId: string, artifactId: string): Promise<GateResult> {
+  return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/release-gate`)
 }

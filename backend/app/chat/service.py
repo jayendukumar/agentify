@@ -90,9 +90,10 @@ async def handle_chat_message(
     history: list[ChatMessageResult],
     selected_element_id: str | None,
     text: str,
+    context_text: str = "",
 ) -> ParsedChatReply:
     selected_label = _element_label(schema, selected_element_id) if selected_element_id else None
-    system_prompt = build_system_prompt(schema, selected_label)
+    system_prompt = build_system_prompt(schema, selected_label, context_text)
 
     messages = [
         ChatMessage(role="system", content=system_prompt),

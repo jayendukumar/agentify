@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Index, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, ForeignKey, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -53,6 +53,15 @@ class ProcessModel(Base):
     # from "there are open findings", since a never-run process was never
     # actually checked at all.
     gap_analysis_completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Epic 27, US27.2: which part of the organization this process belongs
+    # to. Null business unit + empty jurisdictions = organization-wide
+    # scope, which is what every pre-existing process gets.
+    business_unit_id: Mapped[str | None] = mapped_column(
+        ForeignKey("context_entities.id", ondelete="SET NULL"), nullable=True
+    )
+    jurisdictions: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    process_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    data_classes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
 
     documents: Mapped[list["DocumentModel"]] = relationship(back_populates="process", cascade="all, delete-orphan")
     actors: Mapped[list["ActorModel"]] = relationship(back_populates="process", cascade="all, delete-orphan")
@@ -286,6 +295,8 @@ class BlueprintOverlayModel(Base):
     baseline_version_id: Mapped[str] = mapped_column(String, nullable=False)
     nodes: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
     generated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    # Epic 28, US28.2: the Context Pack this overlay was evaluated with.
+    context_pack_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     process: Mapped[ProcessModel] = relationship(back_populates="blueprint_overlay")
 
@@ -316,6 +327,10 @@ class GapFindingModel(Base):
     chosen_option_label: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Epic 28, US28.3/US28.4: policy-grounded findings cite the pack entries
+    # behind "why we're asking".
+    citations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
+    context_pack_id: Mapped[str | None] = mapped_column(String, nullable=True)
     # Epic 9/10, US9.9: who resolved/dismissed this finding.
     decided_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -402,6 +417,12 @@ class AgentArtifactModel(Base):
     marked_release_candidate_at: Mapped[datetime | None] = mapped_column(nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(nullable=True)
     approved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Epic 28, US28.2/US28.6: the Context Pack this definition was built
+    # from (the blueprint overlay's pack at generation time).
+    context_pack_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Epic 35, US35.7: statistical release criteria (app/batches/results.py's
+    # ReleaseCriteria). None = no statistical gate for this agent.
+    release_criteria: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     process: Mapped[ProcessModel] = relationship(back_populates="agent_artifacts")
 
@@ -529,6 +550,11 @@ class TwinScenarioModel(Base):
         ForeignKey("twin_environments.id", ondelete="SET NULL"), nullable=True
     )
     environment_version: Mapped[int | None] = mapped_column(nullable=True)
+    # Epic 32, US32.2: a data-driven scenario runs once per row of this
+    # dataset, each row graded against its own labels; a row's decision
+    # label is compared with the agent output field `decision_field`.
+    dataset_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    decision_field: Mapped[str] = mapped_column(String, nullable=False, default="decision", server_default="decision")
     # Epic 24, US24.4/US24.6: additive -- per-scenario faults (offered
     # before the environment's), the grading match mode, and the
     # business-readable story the guided builder authored it from.
@@ -714,6 +740,16 @@ class SimulationRunModel(Base):
     final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     graded_passed: Mapped[bool | None] = mapped_column(nullable=True)
+    # Epic 32/34: the dataset row (at a pinned dataset version) this run
+    # executed, its trial number, and the batch it belongs to.
+    dataset_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    dataset_version: Mapped[int | None] = mapped_column(nullable=True)
+    row_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    trial: Mapped[int | None] = mapped_column(nullable=True)
+    batch_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # Epic 34, US34.6: the seed every random choice in this run used
+    # (faults, probabilistic reviewers), so one row can be replayed exactly.
+    seed: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Epic 19, US19.1: the twelve-dimension EvaluationResult (app/schemas/
     # evaluation.py), computed once alongside graded_passed/deviations --
     # None for a still-running or non-COMPLETED run, and for every run
@@ -778,3 +814,446 @@ class RegressionSuiteRunModel(Base):
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     started_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class OrganizationModel(Base):
+    """Epic 27, US27.1: the one organization this deployment serves (hard
+    multi-tenancy is out of scope -- see the epic's Notes). `profile`
+    keeps the wizard's raw answers plus which starter packs were applied
+    at which version."""
+
+    __tablename__ = "organizations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    industry: Mapped[str | None] = mapped_column(String, nullable=True)
+    size: Mapped[str | None] = mapped_column(String, nullable=True)
+    profile: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class ContextEntityModel(Base):
+    """Epic 27: every organization-context entity -- business units,
+    jurisdictions, roles, approval authorities, regulations, obligations,
+    controls, policies, glossary terms (and Epic 29's applications/data
+    classes) -- in one table keyed by `kind`, with kind-specific fields in
+    `data` (validated by app/schemas/context.py). One table rather than
+    ten because every kind shares the same lifecycle: `applies_to` scope,
+    proposed -> confirmed confirmation, citations, source, and in-place
+    versioning with history rows (ContextEntityVersionModel). See
+    planning/decision-log.md (2026-10-11)."""
+
+    __tablename__ = "context_entities"
+    __table_args__ = (Index("ix_context_entities_kind_status", "kind", "status"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    code: Mapped[str | None] = mapped_column(String, nullable=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    applies_to: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # proposed | confirmed | dismissed | retired
+    status: Mapped[str] = mapped_column(String, nullable=False, default="confirmed")
+    confidence: Mapped[float | None] = mapped_column(nullable=True)
+    citations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    source: Mapped[str] = mapped_column(String, nullable=False, default="manual")
+    parent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("context_entities.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # A proposal that would update an existing confirmed entity on confirm
+    # (US27.6), and whether that update loosens it (Notes: never
+    # bulk-confirmable).
+    supersedes_id: Mapped[str | None] = mapped_column(
+        ForeignKey("context_entities.id", ondelete="CASCADE"), nullable=True
+    )
+    relaxes: Mapped[bool] = mapped_column(nullable=False, default=False, server_default="false")
+    # Epic 31, US31.7: the business unit that stewards this entity. Null =
+    # group-wide.
+    owner_business_unit_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Epic 31, US31.2: the record's id in the system of record a connector
+    # synced it from (with `source` = "connector:<name>").
+    external_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    version: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    confirmed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ContextEntityVersionModel(Base):
+    """Epic 27 Notes: history rows for ContextEntityModel. One row per
+    version ever confirmed, holding the full entity as it was -- Epic 28's
+    packs pin (entity_id, version) and need to read the content back."""
+
+    __tablename__ = "context_entity_versions"
+    __table_args__ = (UniqueConstraint("entity_id", "version"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    entity_id: Mapped[str] = mapped_column(ForeignKey("context_entities.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    change_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    changed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class ContextDocumentModel(Base):
+    """Epic 27, US27.6: an uploaded policy document. Separate from
+    DocumentModel, which belongs to one process -- a policy belongs to the
+    organization."""
+
+    __tablename__ = "context_documents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    filename: Mapped[str] = mapped_column(String, nullable=False)
+    content_type: Mapped[str] = mapped_column(String, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False, default=0)
+    # pending | processing | done | failed
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    policy_entity_id: Mapped[str | None] = mapped_column(
+        ForeignKey("context_entities.id", ondelete="SET NULL"), nullable=True
+    )
+    proposal_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    content_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class PolicyPassageModel(Base):
+    """Epic 27 Notes: policy/regulation clause text in pgvector, with the
+    scope metadata Epic 28's filtered retrieval matches against. `version`
+    is the owning policy entity's version when the passage was written --
+    re-ingesting a policy writes new passages rather than mutating old
+    ones, so a pinned pack can still cite the clause text it used."""
+
+    __tablename__ = "policy_passages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    document_id: Mapped[str | None] = mapped_column(
+        ForeignKey("context_documents.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    policy_entity_id: Mapped[str | None] = mapped_column(
+        ForeignKey("context_entities.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    policy_version: Mapped[int] = mapped_column(nullable=False, default=1)
+    ordinal: Mapped[int] = mapped_column(nullable=False, default=0)
+    clause_ref: Mapped[str] = mapped_column(String, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM), nullable=False)
+    applies_to: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    current: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ContextPackModel(Base):
+    """Epic 28, US28.1/US28.2: one resolved, versioned Context Pack -- the
+    exact entity versions and passages an LLM call was given. Immutable:
+    identical content resolves to the same row (`content_hash`), so a pack
+    id is a stable version identifier that blueprint overlays, agent
+    artifacts, gap findings, and run snapshots can pin."""
+
+    __tablename__ = "context_packs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    content_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    purpose: Mapped[str] = mapped_column(String, nullable=False)
+    scope: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    process_id: Mapped[str | None] = mapped_column(ForeignKey("processes.id", ondelete="SET NULL"), nullable=True)
+    # [{label, entity_id, kind, code, name, version, text}]
+    entries: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    # [{label, passage_id, policy_entity_id, policy_version, clause_ref, text, score}]
+    passages: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    token_estimate: Mapped[int] = mapped_column(nullable=False, default=0)
+    budget: Mapped[int] = mapped_column(nullable=False, default=0)
+    truncated: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ProcessSystemLinkModel(Base):
+    """Epic 29, US29.3: which catalog application a free-text system name
+    means within one process. One row per (process, system name) rather
+    than an `application_id` field added to every JSON blob that holds a
+    system string (process elements, blueprint agent specs, agent
+    definitions): the strings stay as they are, and every consumer resolves
+    them through this table. `auto` marks links made on an exact alias
+    match; a person's choice is never overwritten by an auto-link."""
+
+    __tablename__ = "process_system_links"
+
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), primary_key=True)
+    system_name: Mapped[str] = mapped_column(String, primary_key=True)
+    application_id: Mapped[str | None] = mapped_column(
+        ForeignKey("context_entities.id", ondelete="CASCADE"), nullable=True
+    )
+    auto: Mapped[bool] = mapped_column(nullable=False, default=False)
+    linked_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    linked_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class JobModel(Base):
+    """Epic 31, US31.1: a durable background job -- Postgres-backed so it
+    survives restarts and needs no extra infrastructure. Workers claim jobs
+    with SELECT ... FOR UPDATE SKIP LOCKED (app/jobs/queue.py)."""
+
+    __tablename__ = "jobs"
+    __table_args__ = (Index("ix_jobs_status_run_after", "status", "run_after"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # queued | running | succeeded | failed | cancelled
+    status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
+    priority: Mapped[int] = mapped_column(nullable=False, default=100, server_default="100")
+    attempts: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(nullable=False, default=3, server_default="3")
+    run_after: Mapped[datetime] = mapped_column(server_default=func.now())
+    locked_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # At most one queued-or-running job per key (e.g. one sync per connector).
+    dedupe_key: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ConnectorModel(Base):
+    """Epic 31, US31.2: a configured, read-only connector to a system of
+    record. `config` never holds a secret -- only the *name* of the
+    environment variable that does (`token_env`)."""
+
+    __tablename__ = "connectors"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    enabled: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
+    schedule_minutes: Mapped[int | None] = mapped_column(nullable=True)
+    owner_business_unit_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class ConnectorRunModel(Base):
+    __tablename__ = "connector_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    connector_id: Mapped[str] = mapped_column(ForeignKey("connectors.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="running")
+    stats: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    impacts: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class UserBusinessUnitModel(Base):
+    """Epic 31, US31.7: which business units a user belongs to, and whether
+    they steward (may confirm/edit) that unit's context. A user with no
+    rows is unrestricted -- the single-unit default."""
+
+    __tablename__ = "user_business_units"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    business_unit_id: Mapped[str] = mapped_column(
+        ForeignKey("context_entities.id", ondelete="CASCADE"), primary_key=True
+    )
+    steward: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+
+class ContextAccessLogModel(Base):
+    """Epic 31, US31.10: who and what read which context."""
+
+    __tablename__ = "context_access_log"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    actor_type: Mapped[str] = mapped_column(String, nullable=False)  # user | llm | connector
+    actor: Mapped[str] = mapped_column(String, nullable=False)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    process_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    pack_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    entity_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    business_unit_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class LabelledDatasetModel(Base):
+    """Epic 32, US32.1: a labelled dataset -- the cases (inputs plus
+    expected labels) a data-driven scenario is graded against, kept
+    separate from the scenario's test logic. `version` bumps on every
+    change to its rows (US32.6)."""
+
+    __tablename__ = "labelled_datasets"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    agent_artifact_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    version: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class DatasetRowModel(Base):
+    """Epic 32: one revision of one case. Rows are never edited in place:
+    a change closes the current revision (`valid_to_version`) and opens a
+    new one, so the dataset as it was at any version can be read back
+    exactly -- what a run pins (US32.6) and what a diff compares."""
+
+    __tablename__ = "dataset_rows"
+    __table_args__ = (Index("ix_dataset_rows_dataset_key", "dataset_id", "row_key"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("labelled_datasets.id", ondelete="CASCADE"), index=True)
+    row_key: Mapped[str] = mapped_column(String, nullable=False)
+    valid_from_version: Mapped[int] = mapped_column(nullable=False)
+    valid_to_version: Mapped[int | None] = mapped_column(nullable=True)
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # {"outputs": {field: value}, "checkpoint_decision": "approve"|"reject"|null}
+    labels: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    segment: Mapped[str] = mapped_column(String, nullable=False, default="typical")
+    # historical | synthetic | expert | oracle
+    provenance: Mapped[str] = mapped_column(String, nullable=False, default="expert")
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    ambiguous: Mapped[bool] = mapped_column(nullable=False, default=False)
+    ambiguity_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    second_labels: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    holdout: Mapped[bool] = mapped_column(nullable=False, default=False)
+    critical: Mapped[bool] = mapped_column(nullable=False, default=False)
+    source_run_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    confirmed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class DecisionRuleModel(Base):
+    """Epic 33, US33.1: one gateway branch's condition as an executable
+    rule over the process's input fields -- drafted by the LLM from the
+    BPMN condition text, confirmed (or edited) by a person. `expression` is
+    a small typed JSON AST (app/oracles/rules.py), never code."""
+
+    __tablename__ = "decision_rules"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    gateway_id: Mapped[str] = mapped_column(String, nullable=False)
+    gateway_label: Mapped[str] = mapped_column(String, nullable=False, default="")
+    branch_target_id: Mapped[str] = mapped_column(String, nullable=False)
+    branch_label: Mapped[str] = mapped_column(String, nullable=False, default="")
+    condition_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    expression: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String, nullable=True)  # approve | reject | escalate
+    priority: Mapped[int] = mapped_column(nullable=False, default=100)
+    is_default: Mapped[bool] = mapped_column(nullable=False, default=False)
+    # proposed | confirmed | unstructurable
+    status: Mapped[str] = mapped_column(String, nullable=False, default="proposed")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    control_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    version: Mapped[int] = mapped_column(nullable=False, default=1)
+    confirmed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class MetamorphicRelationModel(Base):
+    """Epic 33, US33.5: an invariant over a dataset's cases -- perturbing
+    `field` must leave the decision unchanged (invariance) or move it in a
+    stated direction (directional)."""
+
+    __tablename__ = "metamorphic_relations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("labelled_datasets.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # invariance | directional
+    field: Mapped[str] = mapped_column(String, nullable=False)
+    perturbation: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    direction: Mapped[str | None] = mapped_column(String, nullable=True)  # toward_approve | toward_reject | toward_escalate
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class JudgeRubricModel(Base):
+    """Epic 33, US33.6: a rubric an LLM judge grades one free-text output
+    field against. Gate-eligible only after calibration against human
+    verdicts reaches `min_agreement`; any change to the rubric or judge
+    model resets that."""
+
+    __tablename__ = "judge_rubrics"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    field: Mapped[str] = mapped_column(String, nullable=False)
+    rubric: Mapped[str] = mapped_column(Text, nullable=False)
+    judge_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    version: Mapped[int] = mapped_column(nullable=False, default=1)
+    min_agreement: Mapped[float] = mapped_column(nullable=False, default=0.85)
+    min_samples: Mapped[int] = mapped_column(nullable=False, default=20)
+    calibration: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class BatchRunModel(Base):
+    """Epic 34, US34.2: one execution of a data-driven scenario over a
+    dataset version -- rows x trials runs, executed through the job queue
+    (correctness mode) or by an in-process load driver (load mode)."""
+
+    __tablename__ = "batch_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    scenario_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    agent_artifact_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    agent_version: Mapped[int] = mapped_column(nullable=False, default=1)
+    dataset_id: Mapped[str] = mapped_column(String, nullable=False)
+    dataset_version: Mapped[int] = mapped_column(nullable=False)
+    mode: Mapped[str] = mapped_column(String, nullable=False, default="correctness")  # correctness | load
+    tier: Mapped[str] = mapped_column(String, nullable=False, default="custom")
+    trials: Mapped[int] = mapped_column(nullable=False, default=1)
+    sample: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    row_keys: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    # queued | running | paused | cancelled | completed | stopped_budget
+    status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
+    budget_usd: Mapped[float | None] = mapped_column(nullable=True)
+    estimate: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    load_settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    keep_traces: Mapped[str] = mapped_column(String, nullable=False, default="failed_and_sampled")
+    schedule_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class BatchScheduleModel(Base):
+    """Epic 34, US34.9: run a tier of a data-driven scenario on a schedule,
+    and/or whenever its dataset or the agent's pinned context changes."""
+
+    __tablename__ = "batch_schedules"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    scenario_id: Mapped[str] = mapped_column(String, nullable=False)
+    tier: Mapped[str] = mapped_column(String, nullable=False, default="full")
+    trials: Mapped[int] = mapped_column(nullable=False, default=1)
+    every_minutes: Mapped[int | None] = mapped_column(nullable=True)
+    on_dataset_change: Mapped[bool] = mapped_column(nullable=False, default=True)
+    on_context_change: Mapped[bool] = mapped_column(nullable=False, default=True)
+    budget_usd: Mapped[float | None] = mapped_column(nullable=True)
+    enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_dataset_version: Mapped[int | None] = mapped_column(nullable=True)
+    last_context_pack_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())

@@ -6,6 +6,7 @@ export interface ProcessSummary {
   finalized_version_count: number
   created_at: string
   updated_at: string
+  scope?: ProcessScope
 }
 
 export type Confidence = 'high' | 'medium' | 'low'
@@ -185,6 +186,9 @@ export interface BlueprintNodeResult {
   override_justification: string | null
   overridden_by: string | null
   overridden_by_name: string | null
+  // Epic 28, US28.3/US28.5
+  applicable_rules?: string[]
+  citations?: Citation[]
 }
 
 export interface BlueprintOverlay {
@@ -192,6 +196,9 @@ export interface BlueprintOverlay {
   baseline_version_id: string
   nodes: BlueprintNodeResult[]
   generated_at: string
+  // Epic 28, US28.2/US28.8
+  context_pack_id?: string | null
+  context_stale?: boolean
 }
 
 // Epic 12
@@ -229,6 +236,9 @@ export interface EscalationPolicy {
 export interface KnowledgeSourceRef {
   id: string
   version: number
+  // Epic 28, US28.6
+  name?: string
+  kind?: string
 }
 
 export type ToolSandboxMode = 'proxy' | 'static' | 'api'
@@ -271,6 +281,8 @@ export interface AgentDefinition {
   // Epic 23, US23.2
   success_criteria: string
   completion_conditions: string
+  // Epic 28, US28.6
+  policy_guardrails?: string[]
 }
 
 export interface AgentGovernanceUpdate {
@@ -338,6 +350,9 @@ export interface AgentArtifact {
   version: number
   definition: AgentDefinition
   baseline_version_id: string
+  // Epic 28, US28.2/US28.8
+  context_pack_id?: string | null
+  context_stale?: boolean
   // Epic 23, US23.1/US23.2
   lifecycle_status: LifecycleStatus
   checklist: ChecklistItem[]
@@ -350,7 +365,7 @@ export interface AgentArtifact {
   generated_by_name: string | null
 }
 
-export type GapKind = 'structural' | 'cross_document'
+export type GapKind = 'structural' | 'cross_document' | 'policy'
 export type GapFindingStatus = 'open' | 'resolved' | 'dismissed'
 
 export interface GapFindingOption {
@@ -371,6 +386,9 @@ export interface GapFinding {
   decided_at: string | null
   decided_by: string | null
   decided_by_name: string | null
+  // Epic 28, US28.4
+  citations?: Citation[]
+  context_pack_id?: string | null
 }
 
 // Epic 13
@@ -585,7 +603,8 @@ export interface RunSnapshotView {
 }
 
 // Epic 14 (core slice)
-export type TwinSystemStubMode = 'proxy' | 'static'
+// Epic 29, US29.5: 'api' calls the linked application's sandbox endpoint.
+export type TwinSystemStubMode = 'proxy' | 'static' | 'api'
 export type TwinHumanCheckpointMode = 'probability' | 'rule' | 'manual'
 export type TwinRuleOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte'
 
@@ -645,6 +664,9 @@ export interface TwinScenario {
   faults: Record<string, FaultConfig[]>
   step_match: TwinStepMatch
   story: ScenarioStory | null
+  // Epic 32, US32.2: a data-driven scenario's dataset.
+  dataset_id?: string | null
+  decision_field?: string
   created_at: string
   created_by: string | null
   created_by_name: string | null
@@ -663,11 +685,14 @@ export interface TwinScenarioCreate {
   faults?: Record<string, FaultConfig[]>
   step_match?: TwinStepMatch
   story?: ScenarioStory | null
+  // Epic 32, US32.2
+  dataset_id?: string | null
+  decision_field?: string
 }
 
 // Epics 24/25: the guided test builder -- see backend/app/schemas/
 // twin_builder.py and twin.py's ScenarioStory.
-export type CoverageKind = 'happy_path' | 'gateway_branch' | 'checkpoint' | 'system_failure' | 'data_quality' | 'custom'
+export type CoverageKind = 'happy_path' | 'gateway_branch' | 'checkpoint' | 'system_failure' | 'data_quality' | 'custom' | 'control'
 export type SystemBehaviour = 'normal' | 'down' | 'timeout' | 'denied' | 'bad_data' | 'no_record' | 'custom_data'
 export type ReviewerBehaviour = 'none' | 'approve' | 'reject' | 'threshold'
 
@@ -684,10 +709,20 @@ export interface ReviewerSetup {
   persona_name: string | null
 }
 
+// Epic 30, US30.5
+export interface ComplianceAssertion {
+  control_id: string
+  kind: 'escalated' | 'blocked' | 'reviewed' | 'logged'
+  role: string | null
+  system: string | null
+  field: string | null
+}
+
 export interface SituationExpectation {
   systems_used: string[]
   review_decision: 'approve' | 'reject' | null
   output_fields: string[]
+  compliance?: ComplianceAssertion[]
 }
 
 export interface ScenarioStory {
@@ -728,9 +763,13 @@ export interface TestBuilderContext {
   completion_conditions: string
   gateways: GatewayContext[]
   coverage_targets: CoverageTarget[]
+  // Epic 30
+  rules?: { id: string; code: string | null; name: string; description: string; review_role: string | null }[]
+  approval_authorities?: { role: string; decision_type: string; limit_amount: number | null; currency: string }[]
+  jurisdictions?: string[]
 }
 
-export type DataMode = 'typical' | 'edge' | 'messy' | 'describe' | 'mutate' | 'clone'
+export type DataMode = 'typical' | 'edge' | 'messy' | 'describe' | 'mutate' | 'clone' | 'near_miss'
 
 export interface GeneratedRecord {
   label: string
@@ -929,4 +968,729 @@ export interface User {
 
 export interface ApiErrorBody {
   detail: string
+}
+
+// Epic 27 -- organization context
+export type ContextKind =
+  | 'business_unit'
+  | 'jurisdiction'
+  | 'role'
+  | 'approval_authority'
+  | 'regulation'
+  | 'obligation'
+  | 'control'
+  | 'policy'
+  | 'glossary_term'
+  | 'application'
+  | 'data_class'
+  | 'data_asset'
+
+export type ContextStatus = 'proposed' | 'confirmed' | 'dismissed' | 'retired'
+
+export interface AppliesTo {
+  business_units: string[]
+  jurisdictions: string[]
+  data_classes: string[]
+  process_types: string[]
+  systems: string[]
+}
+
+export interface Citation {
+  passage_id: string | null
+  policy_id: string | null
+  clause_ref: string | null
+  quote: string
+}
+
+export interface ContextEntity {
+  id: string
+  kind: ContextKind
+  name: string
+  code: string | null
+  data: Record<string, unknown>
+  applies_to: AppliesTo
+  status: ContextStatus
+  confidence: number | null
+  citations: Citation[]
+  source: string
+  parent_id: string | null
+  supersedes_id: string | null
+  relaxes: boolean
+  owner_business_unit_id: string | null
+  version: number
+  created_at: string
+  updated_at: string
+  confirmed_by: string | null
+  confirmed_at: string | null
+}
+
+export interface ContextEntityCreate {
+  kind: ContextKind
+  name: string
+  code?: string | null
+  data?: Record<string, unknown>
+  applies_to?: Partial<AppliesTo>
+  parent_id?: string | null
+}
+
+export interface ContextEntityVersion {
+  entity_id: string
+  version: number
+  snapshot: Record<string, unknown>
+  change_note: string | null
+  changed_at: string
+  changed_by: string | null
+}
+
+export interface Organization {
+  id: string
+  name: string
+  industry: string | null
+  size: string | null
+  profile: Record<string, unknown>
+  applied_packs: Record<string, string>
+  created_at: string
+  updated_at: string
+}
+
+export interface ApprovalRuleAnswer {
+  role: string
+  decision_type: string
+  limit_amount: number | null
+  currency: string
+}
+
+export interface OrganizationProfileAnswers {
+  name: string
+  industry: string | null
+  size: string | null
+  countries: string[]
+  business_units: string[]
+  applications: string[]
+  approval_rules: ApprovalRuleAnswer[]
+  apply_packs: string[]
+}
+
+export interface ProfileResult {
+  organization: Organization
+  created: Record<string, number>
+  applied_packs: string[]
+  suggested_packs: string[]
+}
+
+export interface StarterPackSummary {
+  id: string
+  version: string
+  title: string
+  description: string
+  disclaimer: string
+  industries: string[]
+  jurisdictions: string[]
+  obligation_count: number
+  control_count: number
+  applied_version: string | null
+  suggested: boolean
+}
+
+export interface StarterPackApplyResult {
+  pack_id: string
+  version: string
+  created: number
+  updated: number
+  unchanged: number
+}
+
+export interface ContextDocument {
+  id: string
+  filename: string
+  content_type: string
+  size_bytes: number
+  status: 'pending' | 'processing' | 'done' | 'failed'
+  error_message: string | null
+  policy_entity_id: string | null
+  proposal_count: number
+  created_at: string
+}
+
+export interface PolicyPassage {
+  id: string
+  document_id: string | null
+  policy_entity_id: string | null
+  policy_version: number
+  clause_ref: string
+  text: string
+  applies_to: AppliesTo
+  current: boolean
+}
+
+export interface BulkConfirmResult {
+  confirmed: string[]
+  skipped: Record<string, string>
+}
+
+export interface ProcessScope {
+  business_unit_id: string | null
+  jurisdictions: string[]
+  process_type: string | null
+  data_classes: string[]
+}
+
+export interface ApplicableContext {
+  scope: ProcessScope
+  entities: Partial<Record<ContextKind, ContextEntity[]>>
+}
+
+// Epic 28 -- context packs
+export interface ContextPackEntry {
+  label: string
+  entity_id: string
+  kind: ContextKind
+  code: string | null
+  name: string
+  version: number
+  text: string
+}
+
+export interface ContextPackPassage {
+  label: string
+  passage_id: string
+  policy_entity_id: string | null
+  policy_version: number
+  clause_ref: string
+  text: string
+  score: number | null
+}
+
+export interface StaleEntry {
+  entity_id: string
+  kind: string
+  name: string
+  pinned_version: number
+  current_version: number | null
+  current_status: string | null
+}
+
+export interface ContextPack {
+  id: string
+  purpose: string
+  scope: ProcessScope
+  process_id: string | null
+  entries: ContextPackEntry[]
+  passages: ContextPackPassage[]
+  token_estimate: number
+  budget: number
+  truncated: number
+  created_at: string
+  stale_entries: StaleEntry[]
+  rendered: string
+}
+
+export interface ContextImpact {
+  entity_id: string
+  entity_name: string
+  pack_ids: string[]
+  blueprint_process_ids: string[]
+  agent_artifact_ids: string[]
+  regression_suite_ids: string[]
+  summary: string
+}
+
+// Epic 29 -- application and data catalog
+export type EndpointEnvironment = 'sandbox' | 'test' | 'dev' | 'staging' | 'mock' | 'production'
+export type Classification = 'Public' | 'Internal' | 'Confidential' | 'Confidential-PII' | 'Restricted'
+
+export interface ApplicationEndpoint {
+  url: string
+  environment: EndpointEnvironment
+  description?: string
+}
+
+export interface ApiOperation {
+  operation_id: string
+  method: string
+  path: string
+  summary: string
+}
+
+export interface SystemResolution {
+  system_name: string
+  status: 'linked' | 'matched' | 'ambiguous' | 'unmatched'
+  application_id: string | null
+  application_name: string | null
+  auto: boolean
+  candidates: { id: string; name: string }[]
+  used_in: string[]
+}
+
+export interface ApplicationImportRow {
+  row: number
+  name: string
+  aliases: string[]
+  action: 'create' | 'update' | 'skip' | 'error'
+  matched_application_id: string | null
+  message: string
+}
+
+export interface ApplicationImportResult {
+  dry_run: boolean
+  rows: ApplicationImportRow[]
+  created: number
+  updated: number
+}
+
+export interface ApiSpecResult {
+  application_id: string
+  title: string
+  version: string
+  operations: ApiOperation[]
+}
+
+export interface ThirdPartyRegisterRow {
+  application_id: string
+  application: string
+  vendor: string
+  criticality: string | null
+  hosting_region: string
+  classifications: string[]
+  agents: { id: string; name: string; process_id: string }[]
+  processes: { id: string; name: string }[]
+}
+
+// Epic 30 -- compliance evidence
+export interface SituationEvidence {
+  scenario_id: string
+  scenario_name: string
+  run_id: string | null
+  run_at: string | null
+  passed: boolean | null
+  agent_version: number | null
+  context_pack_id: string | null
+  current: boolean
+}
+
+export interface ControlEvidence {
+  target_id: string
+  control_id: string
+  code: string | null
+  name: string
+  version: number
+  status: 'evidenced' | 'out_of_date' | 'failing' | 'missing'
+  situations: SituationEvidence[]
+}
+
+export interface ComplianceEvidence {
+  artifact_id: string
+  agent_name: string
+  agent_version: number
+  context_pack_id: string | null
+  context_stale: boolean
+  pinned_versions: { name: string; kind: string; version: number }[]
+  controls: ControlEvidence[]
+  evidenced: number
+  total: number
+  disclaimer: string
+  generated_at: string
+}
+
+// Epic 31 -- connectors, federation, model policy, audit
+export interface ConnectorConfig {
+  name: string
+  type: string
+  config: Record<string, unknown>
+  enabled: boolean
+  schedule_minutes: number | null
+  owner_business_unit_id: string | null
+}
+
+export interface Connector extends ConnectorConfig {
+  id: string
+  last_sync_at: string | null
+  last_status: string | null
+  last_error: string | null
+}
+
+export interface ConnectorRun {
+  id: string
+  status: string
+  stats: Record<string, number>
+  impacts: ContextImpact[]
+  error: string | null
+  started_at: string
+  finished_at: string | null
+}
+
+export interface SyncStarted {
+  queued: boolean
+  job_id: string | null
+  run: ConnectorRun | null
+}
+
+export interface Membership {
+  business_unit_id: string
+  steward: boolean
+}
+
+export interface MemberAccess {
+  user_id: string
+  name: string
+  role: string
+  memberships: Membership[]
+}
+
+export interface LlmPolicy {
+  allowed_providers: string[]
+  residency: string[]
+  base_url: string | null
+  api_key_env: string | null
+  provider_name: string | null
+  provider_region: string | null
+  model: string | null
+  redact_pii: boolean
+}
+
+export interface ContextChange {
+  entity_id: string
+  kind: string
+  name: string
+  version: number
+  change_note: string | null
+  changed_at: string
+  impact: ContextImpact
+}
+
+export interface AccessLogEntry {
+  id: string
+  at: string
+  actor_type: string
+  actor: string
+  action: string
+  process_id: string | null
+  pack_id: string | null
+  entity_ids: string[]
+  business_unit_id: string | null
+  detail: string | null
+}
+
+// Epic 32 -- labelled datasets
+export type Provenance = 'historical' | 'synthetic' | 'expert' | 'oracle'
+export type RowDecision = 'approve' | 'reject' | 'escalate'
+
+export interface RowLabels {
+  outputs: Record<string, unknown>
+  decision: RowDecision | null
+}
+
+export interface DatasetRowInput {
+  inputs: Record<string, unknown>
+  labels?: RowLabels
+  segment?: string
+  provenance?: Provenance
+  tags?: string[]
+  critical?: boolean
+  row_key?: string
+}
+
+export interface DatasetRow {
+  row_key: string
+  revision_id: string
+  valid_from_version: number
+  inputs: Record<string, unknown>
+  labels: RowLabels | null
+  segment: string
+  provenance: Provenance
+  tags: string[]
+  critical: boolean
+  ambiguous: boolean
+  ambiguity_note: string | null
+  second_labels: RowLabels | null
+  holdout: boolean
+  source_run_id: string | null
+  confirmed_by: string | null
+  confirmed_at: string | null
+}
+
+export interface DatasetSummary {
+  id: string
+  process_id: string
+  agent_artifact_id: string | null
+  name: string
+  description: string
+  version: number
+  row_count: number
+  holdout_count: number
+  ambiguous_count: number
+  confirmed_count: number
+  segments: Record<string, number>
+  provenance: Record<string, number>
+  agreement_rate: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DatasetRowPage {
+  version: number
+  total: number
+  rows: DatasetRow[]
+}
+
+export interface RowChange {
+  row_key: string
+  change: 'added' | 'removed' | 'relabelled' | 'edited'
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+}
+
+export interface DatasetDiff {
+  from_version: number
+  to_version: number
+  added: number
+  removed: number
+  relabelled: number
+  edited: number
+  changes: RowChange[]
+}
+
+export type ColumnRole = 'input' | 'label' | 'decision' | 'segment' | 'tag' | 'ignore'
+export type PseudonymMode = 'keep' | 'hash' | 'fake'
+
+export interface ColumnMapping {
+  column: string
+  role: ColumnRole
+  field: string | null
+  pseudonymize: PseudonymMode
+}
+
+export interface ImportPreview {
+  columns: string[]
+  suggested: ColumnMapping[]
+  sample: Record<string, string | null>[]
+  total_rows: number
+  mapped_sample: DatasetRowInput[]
+}
+
+// Epic 33 -- oracles
+export interface DecisionRule {
+  id: string
+  gateway_id: string
+  gateway_label: string
+  branch_target_id: string
+  branch_label: string
+  condition_text: string
+  expression: Record<string, unknown> | null
+  rendered: string
+  outcome: 'approve' | 'reject' | 'escalate' | null
+  priority: number
+  is_default: boolean
+  status: 'proposed' | 'confirmed' | 'unstructurable'
+  note: string | null
+  control_id: string | null
+  version: number
+}
+
+export interface OracleLabelResult {
+  version: number
+  labelled: number
+  agreed: number
+  conflicts: number
+  undetermined: number
+}
+
+export interface OracleConflict {
+  row_key: string
+  inputs: Record<string, unknown>
+  label: string | null
+  label_provenance: string
+  oracle: string
+  fired_rules: string[]
+}
+
+export interface GenerateResult {
+  requested: number
+  kept: number
+  discarded: number
+  by_decision: Record<string, number>
+  version: number
+}
+
+export interface MetamorphicRelation {
+  id: string
+  dataset_id: string
+  name: string
+  kind: 'invariance' | 'directional'
+  field: string
+  perturbation: Record<string, unknown>
+  direction: string | null
+}
+
+export interface ReviewItem {
+  row_key: string
+  inputs: Record<string, unknown>
+  label: string | null
+  oracle: string | null
+  agent: string | null
+  critical: boolean
+  disagreements: string[]
+  score: number
+}
+
+export interface JudgeRubric {
+  id: string
+  name: string
+  field: string
+  rubric: string
+  judge_model: string | null
+  min_agreement: number
+  min_samples: number
+  version: number
+  calibration: { samples: number; agreement: number | null; kappa: number | null; gate_eligible: boolean } | null
+  gate_eligible: boolean
+}
+
+// Epic 34 -- batches
+export type BatchTier = 'smoke' | 'regression' | 'full' | 'custom'
+
+export interface BatchRequest {
+  tier: BatchTier
+  sample_size?: number | null
+  sample_fraction?: number | null
+  trials: number
+  budget_usd?: number | null
+  mode: 'correctness' | 'load'
+  target_concurrency?: number
+  stub_latency_ms?: number
+}
+
+export interface BatchEstimate {
+  rows: number
+  trials: number
+  runs: number
+  cost_per_run_usd: number
+  seconds_per_run: number
+  total_cost_usd: number
+  total_minutes: number
+  basis: string
+}
+
+export interface BatchView {
+  id: string
+  scenario_id: string
+  agent_artifact_id: string
+  agent_version: number
+  dataset_id: string
+  dataset_version: number
+  mode: string
+  tier: string
+  trials: number
+  rows: number
+  status: 'queued' | 'running' | 'paused' | 'cancelled' | 'completed' | 'stopped_budget'
+  budget_usd: number | null
+  spent_usd: number
+  estimate: BatchEstimate & { trigger?: string }
+  load_settings: Record<string, number>
+  progress: { total: number; finished: number; passed: number; failed: number; errored: number; cancelled: number }
+  created_at: string
+  finished_at: string | null
+}
+
+export interface BatchSchedule {
+  id: string
+  scenario_id: string
+  tier: BatchTier
+  trials: number
+  every_minutes: number | null
+  on_dataset_change: boolean
+  on_context_change: boolean
+  budget_usd: number | null
+  enabled: boolean
+  last_run_at: string | null
+}
+
+// Epic 35 -- results at volume
+export interface Rate {
+  passed: number
+  total: number
+  rate: number | null
+  low: number | null
+  high: number | null
+}
+
+export interface SegmentResult {
+  segment: string
+  rate: Rate
+  weak: boolean
+}
+
+export interface FailureCluster {
+  pattern: string
+  count: number
+  example_reason: string
+  row_keys: string[]
+  run_ids: string[]
+}
+
+export interface Distribution {
+  median: number | null
+  p95: number | null
+  max: number | null
+}
+
+export interface BatchResults {
+  batch_id: string
+  mode: string
+  status: string
+  headline: Rate
+  reading: string
+  excluded: Record<string, number>
+  segments: SegmentResult[]
+  provenance: SegmentResult[]
+  decision_matrix: Record<string, Record<string, number>>
+  field_accuracy: Record<string, Rate>
+  clusters: FailureCluster[]
+  consistency: {
+    trials: number
+    always_pass: number
+    always_fail: number
+    inconsistent: number
+    pass_at_k: number | null
+    pass_hat_k: number | null
+    inconsistent_rows: string[]
+  }
+  cost_usd: Distribution
+  tokens: Distribution
+  seconds: Distribution
+  worst_rows: { run_id: string; row_key: string | null; cost_usd: number | null; seconds: number | null; passed: boolean }[]
+  relations: { relation_id: string; name: string; kind: string; checked: number; held: number; broken_rows: string[] }[]
+  load: Record<string, number | null> | null
+  critical_failures: string[]
+}
+
+export interface BatchComparison {
+  batch_a: string
+  batch_b: string
+  agent_versions: [number, number]
+  paired_rows: number
+  fixed: string[]
+  regressed: string[]
+  both_pass: number
+  both_fail: number
+  rate_a: Rate
+  rate_b: Rate
+  p_value: number
+  significant: boolean
+  reading: string
+}
+
+export interface ReleaseCriteria {
+  min_pass_rate_lower: number
+  min_segment_rate: number | null
+  critical_must_pass: boolean
+  no_significant_regression: boolean
+  tiers: string[]
+}
+
+export interface GateResult {
+  passed: boolean
+  batch_id: string | null
+  reasons: string[]
+  checked_at: string
 }

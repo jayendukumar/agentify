@@ -43,6 +43,8 @@ trace/output match a scenario's expectations) is `graded_passed`/
 
 from __future__ import annotations
 
+import asyncio
+
 import json
 import random
 import re
@@ -59,6 +61,7 @@ from app.schemas.twin import InferredToolSchema, TwinExpectedStep, TwinScenario,
 from .environments import roll_fault, roll_faults
 from .errors import TwinServiceError
 from .gateway import GuardrailExceeded, GuardrailTracker, check_tool_permission
+from .compliance import grade_compliance
 from .simulators import resolve_human_decision, resolve_tool_call
 
 _HUMAN_DECISION_TOOL = ToolDefinition(
@@ -255,7 +258,30 @@ def grade_run(
                 TwinDeviation(reason=f"Expected output field '{key}' was '{actual_value}', expected '{expected_value}'")
             )
 
+    # Epic 30, US30.5: control behaviour the situation asserts.
+    deviations.extend(grade_compliance(compliance_assertions(scenario), steps, final_output, "COMPLETED"))
+    # Epic 32, US32.2: a dataset row's expected outcome.
+    deviations.extend(grade_decision(scenario, final_output, "COMPLETED"))
+
     return not deviations, deviations
+
+
+def grade_decision(scenario: TwinScenario, final_output: dict[str, Any] | None, status: str) -> list[TwinDeviation]:
+    if scenario.expected_decision is None:
+        return []
+    from app.datasets.runtime import decision_from_output
+
+    actual = "escalate" if status == "ESCALATED" else decision_from_output(final_output, scenario.decision_field)
+    if actual == scenario.expected_decision:
+        return []
+    shown = actual or f"no '{scenario.decision_field}' in the output"
+    return [TwinDeviation(reason=f"Expected the case to be decided '{scenario.expected_decision}', but it was '{shown}'")]
+
+
+def compliance_assertions(scenario: TwinScenario) -> list:
+    """Epic 30: assertions live on the situation's story (they're authored
+    there and need no separate compiled field)."""
+    return list(scenario.story.expect.compliance) if scenario.story is not None else []
 
 
 async def run_scenario(
@@ -412,6 +438,8 @@ async def run_scenario(
                     else:
                         schema = tool_schemas[system_name]
                         stub = scenario.system_stubs.get(system_name) or TwinSystemStub()
+                        if scenario.stub_latency_ms:
+                            await asyncio.sleep(scenario.stub_latency_ms / 1000)
                         try:
                             tool_response, static_fallback, llm_call = await resolve_tool_call(
                                 llm, system_name=system_name, call_arguments=call.arguments, schema=schema, stub=stub
@@ -531,6 +559,14 @@ async def run_scenario(
                 # deviation, even if the agent recovered and still produced
                 # a grading-correct final output.
                 graded_passed = False
+    elif terminal_status == "ESCALATED" and (compliance_assertions(scenario) or scenario.expected_decision):
+        # Epic 30, US30.5: for a rule that demands escalation, an agent
+        # that escalated did the right thing -- grade its assertions rather
+        # than leaving the run ungraded. Epic 32: likewise a dataset row
+        # whose expected outcome is "escalate".
+        deviations = grade_compliance(compliance_assertions(scenario), steps, final_output, terminal_status)
+        deviations += grade_decision(scenario, final_output, terminal_status)
+        graded_passed = not deviations
     else:
         deviations = []
     deviations = policy_deviations + deviations

@@ -383,11 +383,22 @@ async def structure_process_with_validation(
     filename: str,
     blocks: list[ExtractedBlock],
     process_name: str,
+    organization_context: str = "",
 ) -> tuple[ProcessSchema, int, str]:
-    """Extract a process and reject documents classified as non-processes."""
+    """Extract a process and reject documents classified as non-processes.
+
+    Epic 28, US28.7: `organization_context` is a vocabulary-only Context
+    Pack -- the organization's glossary terms and application names this
+    document mentions -- so extracted systems and actors use the
+    organization's own names."""
     if not blocks:
         raise StructuringError(f"No extractable text or tables found in '{filename}'")
     instructions = _TEXT_INSTRUCTIONS.format(schema_contract=_SCHEMA_CONTRACT)
+    if organization_context:
+        instructions = (
+            f"{instructions}\n\n{organization_context}\n"
+            "When the document refers to a system or term listed above, use that listed name."
+        )
     prompt = (
         f"{instructions}\n\n"
         f'Document id: "{document_id}"\n'

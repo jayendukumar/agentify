@@ -130,6 +130,10 @@ vi.mock('../api/client', () => ({
   getRunSnapshot: (...args: unknown[]) => getRunSnapshot(...args),
   markAgentReleaseCandidate: (...args: unknown[]) => markAgentReleaseCandidate(...args),
   approveAgentArtifact: (...args: unknown[]) => approveAgentArtifact(...args),
+  // Epic 32: the run view offers 'Add to golden cases' -- not under test here.
+  listDatasets: () => Promise.resolve([]),
+  // Epic 30: the lifecycle panel loads compliance evidence.
+  getComplianceEvidence: () => Promise.resolve({ controls: [], evidenced: 0, total: 0 }),
 }))
 
 // BlueprintCanvas depends on real bpmn-js/SVG layout -- stubbed here so

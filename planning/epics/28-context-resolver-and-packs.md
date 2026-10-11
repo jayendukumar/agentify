@@ -1,7 +1,16 @@
 # Epic 28 -- Context Resolver & Context Packs
 
-**Status: groomed, not started.** Groomed 2026-10-11 from
+**Status: implemented (2026-10-11).** Groomed 2026-10-11 from
 [enterprise-context-strategy.md](../enterprise-context-strategy.md).
+Built in `app/context/resolver.py` (applicability, filtered pgvector
+retrieval, per-purpose token budgets, content-addressed packs, citation
+mapping, staleness) and `app/context/consumers.py` (blueprint human-review
+guard, agent enrichment, change impact, suite re-runs), wired into gap
+analysis, blueprint evaluation, agent generation, BPMN chat, and document
+extraction; migration `f8a9b0c1d2e3`; frontend "Applicable rules",
+"Why we're asking", the pack inspector, staleness banner, and the
+"What uses this?" impact view. Live-verified against OpenRouter -> Qwen
+(see the decision log, 2026-10-11).
 
 Goal: turn the organization context store (Epic 27) into the right,
 bounded, citable slice of context for each LLM call. A **Context Pack** is

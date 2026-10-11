@@ -1,0 +1,122 @@
+{
+  "id": "eu-data-protection-basics",
+  "version": "1.0.0",
+  "title": "EU -- general data protection basics",
+  "description": "Plain-language obligations and controls drawn from the EU General Data Protection Regulation (GDPR) that most process automation touches: lawful basis, minimisation, retention, data subject rights, breaches, and automated decisions.",
+  "disclaimer": "Decision support only, not legal advice. These are simplified summaries; check them with your data protection officer or counsel before relying on them.",
+  "industries": [],
+  "jurisdictions": ["EU"],
+  "changelog": ["1.0.0 (2026-10-11): first release."],
+  "regulations": [
+    {
+      "code": "GDPR",
+      "name": "EU General Data Protection Regulation",
+      "summary": "Regulation (EU) 2016/679 on the processing of personal data.",
+      "url": "https://eur-lex.europa.eu/eli/reg/2016/679/oj",
+      "obligations": [
+        {
+          "code": "GDPR-LAWFUL-BASIS",
+          "title": "Have and record a lawful basis for processing personal data",
+          "text": "Personal data may only be processed when there is a lawful basis (for example consent, contract, or legal obligation), and the basis relied on must be documented. Where consent is the basis it must be recorded and be as easy to withdraw as to give.",
+          "data_classes": ["personal"],
+          "controls": [
+            {
+              "code": "GDPR-C-CONSENT-RECORD",
+              "title": "Record the lawful basis or consent before processing",
+              "description": "Any step that collects or uses personal data checks that a lawful basis is recorded (and, where consent is relied on, that consent is on file and not withdrawn) before continuing.",
+              "control_type": "data_protection",
+              "requires_human_review": false,
+              "required_guardrails": ["check_lawful_basis"]
+            }
+          ]
+        },
+        {
+          "code": "GDPR-MINIMISATION",
+          "title": "Use only the personal data needed for the purpose",
+          "text": "Personal data must be adequate, relevant, and limited to what is necessary for the purpose it is processed for.",
+          "data_classes": ["personal"],
+          "controls": [
+            {
+              "code": "GDPR-C-MINIMAL-ACCESS",
+              "title": "Agents read only the personal data fields their task needs",
+              "description": "Automated steps are granted access to the minimum set of personal data fields required, not whole customer records.",
+              "control_type": "data_protection",
+              "requires_human_review": false,
+              "required_guardrails": ["least_privilege_data_access"]
+            }
+          ]
+        },
+        {
+          "code": "GDPR-RETENTION",
+          "title": "Keep personal data no longer than necessary",
+          "text": "Personal data must not be kept in an identifiable form for longer than necessary for its purpose; retention periods should be defined.",
+          "data_classes": ["personal"],
+          "controls": [
+            {
+              "code": "GDPR-C-RETENTION",
+              "title": "Apply a defined retention period",
+              "description": "Records created by the process carry a retention period and are deleted or anonymised when it ends.",
+              "control_type": "data_protection",
+              "requires_human_review": false,
+              "required_guardrails": []
+            }
+          ]
+        },
+        {
+          "code": "GDPR-DSR",
+          "title": "Respond to data subject requests within one month",
+          "text": "Requests from individuals to access, correct, erase, or port their data must be answered without undue delay and in any event within one month, extendable in limited cases.",
+          "data_classes": ["personal"],
+          "controls": [
+            {
+              "code": "GDPR-C-DSR-DEADLINE",
+              "title": "Track the one-month response deadline",
+              "description": "Data subject requests are logged with their received date and escalated before the one-month deadline.",
+              "control_type": "notification",
+              "requires_human_review": false,
+              "required_guardrails": ["deadline_tracking"]
+            }
+          ]
+        },
+        {
+          "code": "GDPR-BREACH",
+          "title": "Notify personal data breaches within 72 hours",
+          "text": "A personal data breach likely to result in a risk to individuals must be notified to the supervisory authority without undue delay and, where feasible, within 72 hours of becoming aware of it.",
+          "data_classes": ["personal"],
+          "controls": [
+            {
+              "code": "GDPR-C-BREACH-ESCALATION",
+              "title": "Escalate suspected breaches to the data protection officer immediately",
+              "description": "Any automated step that detects a possible exposure of personal data stops and escalates to the data protection officer rather than handling it itself.",
+              "control_type": "human_review",
+              "requires_human_review": true,
+              "review_role": "Data Protection Officer",
+              "required_guardrails": ["escalate_on_breach"]
+            }
+          ]
+        },
+        {
+          "code": "GDPR-ART22",
+          "title": "No solely automated decisions with legal or similarly significant effects without safeguards",
+          "text": "Individuals have the right not to be subject to a decision based solely on automated processing that produces legal or similarly significant effects (for example credit or hiring decisions), except with safeguards including the right to obtain human intervention, to express their view, and to contest the decision.",
+          "data_classes": ["personal"],
+          "controls": [
+            {
+              "code": "GDPR-C-HUMAN-IN-LOOP",
+              "title": "A person reviews significant automated decisions about individuals",
+              "description": "Decisions with legal or similarly significant effects on an individual are reviewed by a person before they take effect, and the reasons are recorded so they can be explained and contested.",
+              "control_type": "human_review",
+              "requires_human_review": true,
+              "required_guardrails": ["decision_logging", "explanation"]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "glossary": [
+    {"term": "Personal data", "definition": "Any information relating to an identified or identifiable natural person.", "synonyms": ["PII", "personally identifiable information"]},
+    {"term": "Data subject", "definition": "The individual a piece of personal data is about.", "synonyms": []},
+    {"term": "DPO", "definition": "Data protection officer: the person responsible for overseeing data protection compliance.", "synonyms": ["Data Protection Officer"]}
+  ]
+}

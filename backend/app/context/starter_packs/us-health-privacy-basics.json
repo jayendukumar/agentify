@@ -1,0 +1,106 @@
+{
+  "id": "us-health-privacy-basics",
+  "version": "1.0.0",
+  "title": "US -- health-privacy basics",
+  "description": "Plain-language obligations drawn from the US Health Insurance Portability and Accountability Act (HIPAA) Privacy, Security, and Breach Notification Rules, for organizations that handle protected health information.",
+  "disclaimer": "Decision support only, not legal advice. Whether HIPAA applies, and how, depends on your organization's role; confirm with your privacy officer or counsel.",
+  "industries": ["healthcare", "health insurance", "benefits administration", "insurance"],
+  "jurisdictions": ["US"],
+  "changelog": ["1.0.0 (2026-10-11): first release."],
+  "regulations": [
+    {
+      "code": "HIPAA",
+      "name": "Health Insurance Portability and Accountability Act (Privacy, Security, and Breach Notification Rules)",
+      "summary": "US federal rules on the use, disclosure, and safeguarding of protected health information.",
+      "url": "https://www.hhs.gov/hipaa/index.html",
+      "obligations": [
+        {
+          "code": "HIPAA-MIN-NECESSARY",
+          "title": "Use or disclose only the minimum necessary health information",
+          "text": "Uses and disclosures of protected health information (PHI) must be limited to the minimum necessary to accomplish the intended purpose.",
+          "data_classes": ["health"],
+          "controls": [
+            {
+              "code": "HIPAA-C-MIN-NECESSARY",
+              "title": "Agents access only the PHI fields their task requires",
+              "description": "Automated steps are limited to the specific PHI fields needed, and requests for full records are refused.",
+              "control_type": "data_protection",
+              "requires_human_review": false,
+              "required_guardrails": ["least_privilege_data_access"]
+            }
+          ]
+        },
+        {
+          "code": "HIPAA-AUTHORIZATION",
+          "title": "Get written authorization for disclosures not otherwise permitted",
+          "text": "Disclosing PHI for purposes other than treatment, payment, health care operations, or another permitted purpose requires the individual's written authorization.",
+          "data_classes": ["health"],
+          "controls": [
+            {
+              "code": "HIPAA-C-DISCLOSURE-REVIEW",
+              "title": "Disclosures outside permitted purposes are reviewed by the privacy officer",
+              "description": "Any automated disclosure of PHI to a third party for an unusual purpose stops for privacy officer review and checks that a valid authorization is on file.",
+              "control_type": "human_review",
+              "requires_human_review": true,
+              "review_role": "Privacy Officer",
+              "required_guardrails": ["decision_logging"]
+            }
+          ]
+        },
+        {
+          "code": "HIPAA-AUDIT",
+          "title": "Record and examine access to electronic PHI",
+          "text": "Systems containing electronic PHI must have mechanisms that record and examine activity, so access can be audited.",
+          "data_classes": ["health"],
+          "controls": [
+            {
+              "code": "HIPAA-C-ACCESS-LOG",
+              "title": "Log every agent access to PHI",
+              "description": "Every read or write of PHI by an automated step is logged with who or what accessed it, when, and why.",
+              "control_type": "logging",
+              "requires_human_review": false,
+              "required_guardrails": ["access_logging"]
+            }
+          ]
+        },
+        {
+          "code": "HIPAA-BAA",
+          "title": "Have a business associate agreement before sharing PHI with a vendor",
+          "text": "PHI may be shared with a vendor that performs functions on the organization's behalf only under a business associate agreement.",
+          "data_classes": ["health"],
+          "controls": [
+            {
+              "code": "HIPAA-C-BAA-CHECK",
+              "title": "Only send PHI to systems covered by a business associate agreement",
+              "description": "Automated steps send PHI only to applications recorded as covered by a business associate agreement.",
+              "control_type": "data_protection",
+              "requires_human_review": false,
+              "required_guardrails": ["approved_recipients_only"]
+            }
+          ]
+        },
+        {
+          "code": "HIPAA-BREACH",
+          "title": "Notify individuals of breaches of unsecured PHI within 60 days",
+          "text": "Following discovery of a breach of unsecured PHI, affected individuals must be notified without unreasonable delay and no later than 60 calendar days after discovery.",
+          "data_classes": ["health"],
+          "controls": [
+            {
+              "code": "HIPAA-C-BREACH-ESCALATION",
+              "title": "Escalate suspected PHI exposure to the privacy officer immediately",
+              "description": "Any automated step that detects a possible PHI exposure stops and escalates to the privacy officer.",
+              "control_type": "human_review",
+              "requires_human_review": true,
+              "review_role": "Privacy Officer",
+              "required_guardrails": ["escalate_on_breach"]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "glossary": [
+    {"term": "PHI", "definition": "Protected health information: individually identifiable health information held or transmitted by a covered entity or business associate.", "synonyms": ["protected health information", "ePHI"]},
+    {"term": "BAA", "definition": "Business associate agreement: the contract required before a vendor may handle PHI on an organization's behalf.", "synonyms": ["business associate agreement"]}
+  ]
+}

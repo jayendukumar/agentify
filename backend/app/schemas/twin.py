@@ -20,7 +20,9 @@ from pydantic import BaseModel, Field
 from .environment import FaultConfig
 from .run import RunBase, TwinDeviation
 
-SystemStubMode = Literal["proxy", "static"]
+# Epic 29, US29.5: "api" calls the linked application's registered
+# non-production endpoint (app/catalog/endpoints.py refuses anything else).
+SystemStubMode = Literal["proxy", "static", "api"]
 # Epic 17, US17.3: "manual" is new -- a real person supplies the checkpoint
 # decision later via the run's resume endpoint, instead of the engine
 # auto-resolving it from `approve_probability`/`rule` the moment the agent
@@ -90,7 +92,13 @@ class TwinExpectedStep(BaseModel):
     expected_decision: Literal["approve", "reject"] | None = None
 
 
-CoverageKind = Literal["happy_path", "gateway_branch", "checkpoint", "system_failure", "data_quality", "custom"]
+CoverageKind = Literal[
+    "happy_path", "gateway_branch", "checkpoint", "system_failure", "data_quality", "custom",
+    # Epic 30, US30.1: one target per applicable, testable control.
+    "control",
+]
+# Epic 30, US30.5: what a control demands, checkable from the run trace.
+ComplianceAssertionKind = Literal["escalated", "blocked", "logged", "reviewed"]
 SystemBehaviour = Literal["normal", "down", "timeout", "denied", "bad_data", "no_record", "custom_data"]
 ReviewerBehaviour = Literal["none", "approve", "reject", "threshold"]
 
@@ -114,10 +122,31 @@ class ReviewerSetup(BaseModel):
     persona_name: str | None = None
 
 
+class ComplianceAssertion(BaseModel):
+    """Epic 30, US30.5: one control behaviour a situation asserts.
+
+    - escalated: the agent handed the case to a person -- asked for a human
+      decision, or the run ended ESCALATED. With `role`, the request or the
+      final output must name that role.
+    - blocked: the agent did NOT carry out the action on `system`.
+    - reviewed: a person was asked before the action on `system` (or before
+      any action, without `system`).
+    - logged: the final output records the decision with a non-empty
+      explanation (`field`, or any of explanation/reason/rationale).
+    """
+
+    control_id: str
+    kind: ComplianceAssertionKind
+    role: str | None = None
+    system: str | None = None
+    field: str | None = None
+
+
 class SituationExpectation(BaseModel):
     systems_used: list[str] = []
     review_decision: Literal["approve", "reject"] | None = None
     output_fields: list[str] = []
+    compliance: list[ComplianceAssertion] = []
 
 
 class ScenarioStory(BaseModel):
@@ -157,6 +186,16 @@ class TwinScenarioCreate(BaseModel):
     faults: dict[str, list[FaultConfig]] = {}
     step_match: StepMatchMode = "exact"
     story: ScenarioStory | None = None
+    # Epic 32, US32.2: a data-driven scenario -- run once per dataset row,
+    # each graded against that row's labels. `decision_field` is the
+    # agent output field a row's decision label is compared with.
+    dataset_id: str | None = None
+    decision_field: str = "decision"
+    # Set per run from the row's label (never stored on the scenario).
+    expected_decision: Literal["approve", "reject", "escalate"] | None = None
+    # Epic 34, US34.10: simulated system latency for load batches (per run,
+    # never stored).
+    stub_latency_ms: int = 0
 
 
 class TwinScenario(TwinScenarioCreate):
@@ -178,6 +217,12 @@ class TwinRun(RunBase):
     scenario_id: str
     agent_artifact_id: str
     turns_used: int = 0
+    # Epic 32/34: the dataset row (pinned version) this run executed.
+    dataset_id: str | None = None
+    dataset_version: int | None = None
+    row_key: str | None = None
+    trial: int | None = None
+    batch_id: str | None = None
 
 
 class InferredToolSchema(BaseModel):
@@ -192,6 +237,14 @@ class InferredToolSchema(BaseModel):
     description: str
     parameters: dict[str, Any]
     response_shape_description: str
+    # Epic 29, US29.4/US29.5: "openapi" when built from the linked
+    # application's real spec instead of inferred by the LLM; `api_*` is
+    # what API mode needs to make the call.
+    source: Literal["inferred", "openapi"] = "inferred"
+    application_id: str | None = None
+    api_base_url: str | None = None
+    api_environment: str | None = None
+    api_operations: dict[str, dict[str, str]] = {}
 
 
 class TwinBaselineInput(BaseModel):

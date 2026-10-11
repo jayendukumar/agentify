@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ContextPackInspector } from '../components/org/ContextCitations'
 import { Link, useParams } from 'react-router-dom'
 import {
   ApiError,
@@ -273,6 +274,12 @@ export default function BlueprintPage() {
       )}
       {generateError && <p className="error" role="alert">{generateError}</p>}
       {exportError && <p className="error" role="alert">{exportError}</p>}
+      {overlay?.context_stale && (
+        <p className="info" role="status">
+          Organization rules this blueprint was evaluated against have changed since. Regenerate to use the current rules.
+        </p>
+      )}
+      {overlay?.context_pack_id && <ContextPackInspector packId={overlay.context_pack_id} />}
 
       {stats && (
         <div className="blueprint-summary">

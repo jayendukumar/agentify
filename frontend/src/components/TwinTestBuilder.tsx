@@ -395,6 +395,13 @@ export default function TwinTestBuilder({ processId, groups }: { processId: stri
             <p className="meta">
               Based on the blueprint. Click anything not yet covered to get a situation that tests it.
             </p>
+            {targets.some((t) => t.kind === 'control') && (
+              <p className="meta" data-testid="rules-coverage">
+                <strong>Rules:</strong> {targets.filter((t) => t.kind === 'control' && covered.has(t.id)).length} of{' '}
+                {targets.filter((t) => t.kind === 'control').length} organization rules have a situation that tests them.
+                An agent can't become a release candidate until each one passes.
+              </p>
+            )}
             <div className="chip-row">
               {targets.map((t) =>
                 covered.has(t.id) ? (

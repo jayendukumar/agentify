@@ -3,6 +3,7 @@ import { ApiError, getRunSnapshot } from '../api/client'
 import type { OrchestrationRun, RunSnapshotView, RunStep, TwinRun } from '../api/types'
 import BlueprintCanvas from './BlueprintCanvas'
 import StepInspector from './StepInspector'
+import PromoteRunControl from './datasets/PromoteRunControl'
 import { isTerminalRunStatus } from '../lib/runStatus'
 import { cumulativeAt, narrateStep, stepsForView, type RunView } from '../lib/runSteps'
 import { handleTabKeyDown } from '../lib/tabKeyboard'
@@ -107,6 +108,8 @@ export default function RunDetailView({
       ) : (
         staticSubjectLabel && <p className="meta run-detail-subject">{staticSubjectLabel}</p>
       )}
+
+      {run.kind === 'twin' && isTerminalRunStatus(run.status) && <PromoteRunControl processId={processId} runId={run.id} />}
 
       <div className="tab-bar" role="tablist" aria-label="Run views" onKeyDown={handleTabKeyDown}>
         {VIEWS.map((v) => (

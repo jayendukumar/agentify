@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ApiError, generateReviewerPersonas, generateTestData } from '../api/client'
+import { ApiError, generateReviewerPersonas, generateTestData, getAuthorityPersonas } from '../api/client'
 import type { DataMode, GeneratedRecord, ReviewerPersona, TestBuilderContext } from '../api/types'
 import { formatValue, REVIEWER_LABELS } from '../lib/twinSituations'
 
@@ -14,6 +14,9 @@ const PACKS: { mode: DataMode; label: string; hint: string }[] = [
   { mode: 'edge', label: 'Edge cases', hint: 'Valid but unusual -- limits, rare values' },
   { mode: 'messy', label: 'Messy real-world', hint: 'Typos, gaps, inconsistent formats' },
 ]
+
+// Epic 30, US30.4: offered only when rules or approval limits apply.
+const NEAR_MISS_PACK = { mode: 'near_miss' as DataMode, label: 'Near misses', hint: 'Look-alike names, amounts just over a limit' }
 
 function promptChips(context: TestBuilderContext): string[] {
   const first = context.input_fields[0]?.name
@@ -80,6 +83,23 @@ export default function TestDataKitchen({
     }
   }
 
+  async function useApprovalLimits() {
+    setBusy('authority')
+    setError(null)
+    try {
+      const fromMatrix = await getAuthorityPersonas(processId, context.artifact_id)
+      if (fromMatrix.length === 0) {
+        setError('No approval limits with an amount apply here, or this agent has no numeric input to compare them to.')
+      } else {
+        onPersonasChange(fromMatrix)
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not load the approval limits')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function castReviewers() {
     setBusy('personas')
     setError(null)
@@ -105,7 +125,7 @@ export default function TestDataKitchen({
       </p>
 
       <div className="kitchen-packs">
-        {PACKS.map((pack) => (
+        {[...PACKS, ...((context.rules ?? []).length || (context.approval_authorities ?? []).length ? [NEAR_MISS_PACK] : [])].map((pack) => (
           <button
             key={pack.mode}
             type="button"
@@ -242,6 +262,11 @@ export default function TestDataKitchen({
           <button type="button" className="button-secondary" disabled={disabled} onClick={castReviewers}>
             {busy === 'personas' ? 'Casting…' : '🎭 Cast reviewers'}
           </button>
+          {(context.approval_authorities ?? []).some((a) => a.limit_amount !== null) && (
+            <button type="button" className="button-secondary" disabled={disabled} onClick={useApprovalLimits}>
+              {busy === 'authority' ? 'Loading…' : 'Use our approval limits'}
+            </button>
+          )}
           {personas.length > 0 && (
             <ul className="persona-list">
               {personas.map((p) => (

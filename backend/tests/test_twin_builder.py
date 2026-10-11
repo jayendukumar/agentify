@@ -146,7 +146,7 @@ def test_suggest_drops_names_the_model_invented(client, fake_llm):
     assert story["covers"] == ["sys:CRM API"]
     assert story["system_behaviour"] == {"CRM API": "down"}
     assert story["reviewer"]["behaviour"] == "reject"
-    assert story["expect"] == {"systems_used": ["CRM API"], "review_decision": "reject", "output_fields": ["summary"]}
+    assert story["expect"] == {"systems_used": ["CRM API"], "review_decision": "reject", "output_fields": ["summary"], "compliance": []}
     assert situations[0]["inputs"] == {"record_id": "R-1"}
     assert fake_llm.complete.call_args.kwargs["operation"] == "twin_builder_suggest"
 

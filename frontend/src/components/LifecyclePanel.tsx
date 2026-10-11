@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ApiError, approveAgentArtifact, markAgentReleaseCandidate } from '../api/client'
-import type { AgentArtifact, LifecycleStatus } from '../api/types'
+import type { AgentArtifact, ComplianceEvidence, LifecycleStatus } from '../api/types'
+import ComplianceEvidencePanel from './ComplianceEvidencePanel'
 
 const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
   DRAFT: 'Draft',
@@ -37,6 +38,8 @@ export default function LifecyclePanel({
   const [current, setCurrent] = useState(artifact)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [evidence, setEvidence] = useState<ComplianceEvidence | null>(null)
+  const rulesOutstanding = evidence !== null && evidence.evidenced < evidence.total
 
   async function handleMarkReleaseCandidate() {
     setError(null)
@@ -78,13 +81,15 @@ export default function LifecyclePanel({
           ))}
         </ul>
       )}
+      <ComplianceEvidencePanel processId={processId} artifactId={artifact.id} onLoaded={setEvidence} />
       {canManage && (
         <div className="registry-entry-actions">
           <button
             type="button"
             className="button-secondary"
             onClick={handleMarkReleaseCandidate}
-            disabled={busy || current.lifecycle_status === 'DRAFT' || current.marked_release_candidate_at !== null}
+            disabled={busy || current.lifecycle_status === 'DRAFT' || current.marked_release_candidate_at !== null || rulesOutstanding}
+            title={rulesOutstanding ? 'Every rule this agent follows needs a passing test on this version first' : undefined}
           >
             Mark release candidate
           </button>

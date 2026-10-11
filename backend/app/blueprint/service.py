@@ -34,8 +34,10 @@ class _ParsedOverlay(BaseModel):
     nodes: list[BlueprintNodeResult]
 
 
-async def evaluate_blueprint(llm: LLMClient, *, flow_nodes: list[FlowNodeInfo]) -> list[BlueprintNodeResult]:
-    system_prompt = build_system_prompt(flow_nodes)
+async def evaluate_blueprint(
+    llm: LLMClient, *, flow_nodes: list[FlowNodeInfo], context_text: str = ""
+) -> list[BlueprintNodeResult]:
+    system_prompt = build_system_prompt(flow_nodes, context_text)
 
     result = await llm.complete(
         [ChatMessage(role="system", content=system_prompt)],

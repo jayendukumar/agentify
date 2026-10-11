@@ -2458,3 +2458,411 @@ While scripting the live checks, a request right after `POST
 /api/auth/login` sometimes returned 401, consistent with the session row
 committing after the response is sent. It predates this work and is
 outside its scope. Noted here so it isn't lost.
+
+## 2026-10-11 -- Epics 27-35, Organization Context, Ground Truth & Volume Testing
+
+### Epic 27: one generic `context_entities` table, not one table per kind
+
+The epic lists about ten entity kinds (business unit, jurisdiction, role,
+approval authority, regulation, obligation, control, policy, glossary term,
+plus Epic 29's application and data class). Every kind shares the same
+lifecycle: `applies_to` scope, proposed -> confirmed, citations, source,
+in-place versioning with history rows. One table keyed by `kind`, with the
+kind-specific fields in a JSON `data` column validated by a per-kind
+pydantic model on every write (`app/schemas/context.py`'s `DATA_MODELS`),
+gives one confirm/version/applicability code path instead of ten. The
+cost is that kind-specific fields can't be queried in SQL. Applicability
+runs in Python over confirmed entities, which is fine at
+single-organization scale. A typed table can be split out later if a kind
+needs indexed queries.
+
+### Epic 27: applicability is strict on unit/jurisdiction, lenient on data class, process type, and systems
+
+Where an entity restricts a dimension but the process scope leaves it
+empty, two readings are possible. Business unit and jurisdiction are
+strict: an unscoped process (every pre-Epic 27 process) sees only
+organization-wide entities, so it keeps behaving as before instead of
+suddenly receiving every jurisdiction's rules. Data classes, process type,
+and systems are lenient: they are usually unknown when a process is first
+modelled, and missing "this handles personal data" rules is the worse
+failure. Jurisdictions match hierarchically (`EU` covers `DE`, `US` covers
+`US-CA`) via the jurisdiction entities' `parent_code`, falling back to a
+small built-in table.
+
+### Epic 27: an extracted update to an existing rule is a proposal that merges on confirm
+
+Re-extracting a policy, or extracting a second policy, often restates a
+rule that is already confirmed. Creating a second entity would split
+history, and editing the live entity in place would skip human
+confirmation. Instead the proposal carries `supersedes_id`. On confirm its
+content is merged into the existing entity as that entity's next version,
+and the proposal row is removed, so everything referencing the entity
+keeps referencing it. A proposal that would loosen the rule (drops human
+review or guardrails, or raises or removes an approval limit) is flagged
+`relaxes`. Such a proposal can't be bulk-confirmed and needs an explicit
+`acknowledge_relaxation`. Proposals citing no real passage are dropped,
+the same defensive reconciliation as gap analysis.
+
+### Epic 27: embedding model kept at MiniLM for now
+
+The epic asked for an evaluation of a stronger embedding model for
+regulatory text. Not done in this pass: a meaningful comparison needs a
+labelled retrieval set built from real policies, which doesn't exist yet,
+and swapping the model changes the vector dimension of
+`document_embeddings` too. Policy passages use the same 384-dim
+`all-MiniLM-L6-v2` behind `app/ingestion/embeddings.py`. Retrieval
+quality is partly protected by design, because deterministic applicability
+narrows the candidate set before any vector ranking (Epic 28). Revisit
+once real policy documents are loaded.
+
+### Epic 28: packs are content-addressed rows; staleness is computed on read
+
+A Context Pack is stored once per distinct content (purpose, scope,
+process, the exact entity versions and passage ids, budget), keyed by a
+hash, and never mutated. Pinning a pack id on a blueprint overlay, agent
+artifact, gap finding, or run snapshot therefore pins exact versions.
+Staleness is not propagated on write. It is derived on read by comparing
+each pinned entry's version with the entity's current version and status,
+the same "derive, don't store" choice as Epic 12's artifact staleness. A
+context edit can't leave a stale flag out of sync, and no fan-out of
+writes is needed. Known limit: a *newly added* rule that would apply to an
+existing blueprint doesn't make it stale, because only pinned entries are
+compared. The impact view (US28.8) and re-generation cover that case for
+now.
+
+### Epic 28: the human-review guarantee is enforced in code, not left to the prompt
+
+US28.5 says a step a policy requires human review for is never fully
+automatable. The prompt asks the model for this, and
+`apply_blueprint_context` enforces it: any node citing a control with
+`requires_human_review` is downgraded from automatable to partial, and gets
+a review-before-action checkpoint. The enforcement depends on the model
+citing the control for the right step. Live runs cited correctly, but a
+model that cites nothing still gets no guard, so the prompt instruction
+remains the first line of defence.
+
+### Live finding: models write pack labels into prose meant for people
+
+The first live gap-analysis run against Qwen produced questions like
+"...escalates to the MLRO, as required by C3, C6, and C29". It also filed
+policy concerns as `structural` findings with no citations, and invented
+an `O19` label. Two fixes. The pack header now tells the model to use
+codes or names in human-readable text. More importantly,
+`mentioned_labels`/`humanize_labels` treat any pack label found in a
+question, rationale, or not-automatable reason as a citation, and replace
+it with the item's code or name. Tokens that aren't pack labels (e.g. a
+"P1" priority) are left alone. On re-run, questions read "...controls
+GDPR-C-CONSENT-RECORD, GDPR-LAWFUL-BASIS...", and every policy concern
+carried citations.
+
+### Live finding: re-extracting a policy duplicated its rules under new names
+
+Re-uploading the same policy produced "MLRO Review of Potential Sanctions
+Match", "...Matches", and "MLRO Review of Sanctions Matches" as three
+rules, because the model's titles vary run to run and dedup matched exact
+names. Extraction now matches each item against existing confirmed *and*
+pending entities of the same kind. It tries the exact code or name first,
+then embedding similarity over name plus text (cosine >= 0.85, the local
+MiniLM model). A match to a pending proposal is skipped. A match to a
+confirmed rule becomes an update proposal. New proposals join the index,
+so duplicates within one extraction are caught too. An approval authority
+only matches one with the same role.
+
+### Live finding: clause references and title-only passages
+
+Passages were cited as "paragraph 4" while the policy's own heading read
+"3. Sanctions screening", and a title-only first line was being retrieved
+as a passage. Passages that open with a heading are now cited by it
+("3. Sanctions screening (paragraph 4)"), and a lone short title line joins
+the passage that follows.
+
+### Epic 29: twin API mode is deny-by-default, checked at registration and again before every call
+
+US29.5 is the riskiest story in the catalog epic: a twin run that reaches
+a production system can move real money or real customer data. A
+production *deny-list* (refuse anything tagged production) fails open on
+the first untagged or mis-tagged endpoint. `app/catalog/endpoints.py` is an
+allow-list instead. A call needs all of the following:
+
+- an explicit non-production environment tag;
+- an http(s) URL whose host has no production-looking label (`prod`,
+  `production`, `live`, `prd`, `prod-*`);
+- a host that is recognisably non-production: loopback,
+  docker-internal, or `.local`; a `sandbox`/`test`/`dev`/`staging`/`mock`/
+  `uat`/`qa` label; or a pattern in `TWIN_API_ALLOWED_HOSTS`.
+
+A production-looking host is refused even when allow-listed. The check
+runs when endpoints are registered (a production-tagged endpoint may be
+*recorded* for reference, never called) and again inside
+`simulators._call_api` before every request, so editing an application's
+data through the generic entity endpoint can't route around it. Redirects
+are not followed, so an allowed host can't bounce a call somewhere else.
+Each scenario still opts into API mode per system (`TwinSystemStub.mode =
+"api"`); nothing switches to it implicitly.
+
+### Epic 29: system links live in one per-process table, not in every JSON blob
+
+The epic said "each place a system string is used gains an optional
+`application_id`". System strings live in process elements, blueprint
+agent specs, agent definitions, and tool contracts, most of them inside
+JSON blobs. Adding a field to each would mean four migrations' worth of
+reconciliation. Instead `process_system_links` maps (process, system
+name) to an application once, and every consumer resolves through it.
+Tool contracts get `application_id` as well, because the twin runtime
+needs it without a lookup. Auto-links are made only on an exact
+(normalized) name or alias match. Fuzzy matches are offered as a pick list
+and never auto-linked, and a person's choice, including "not in the
+catalog", is never overwritten.
+
+### Epic 29: one tool per system, even with a multi-operation API spec
+
+The twin engine gives the agent one callable tool per system
+(`InferredToolSchema`). An OpenAPI spec has many operations. Rather than
+change the engine and its gateway, tracing, and grading to many tools per
+system, a spec becomes one tool taking `{"operation": <operationId>,
+"params": {...}}`. Every operation, with its parameters and response shape,
+is listed in the tool description. Proxy mode then fabricates responses
+against the real response schemas, and API mode maps the operation back to
+its method and path.
+
+### Epic 30: compliance assertions live on the situation's story; an escalated run can now pass
+
+Assertions ("escalated to the MLRO", "nothing done in Core banking", "a
+person reviews before acting", "decision logged with an explanation") are
+authored on a situation, so they're stored on its `story.expect` (already
+persisted JSON). There's no new compiled scenario field, so no migration.
+`grade_run` reads them from there. They are structural checks over the
+step trace and final output, keeping Epic 14's no-LLM-judge principle.
+
+One behaviour change: an `ESCALATED` run used to be ungraded
+(`graded_passed = None`). For a rule that demands escalation, escalating is
+the correct outcome. A run that ends ESCALATED and has compliance
+assertions is now graded on those assertions. Runs without assertions are
+unchanged.
+
+### Epic 30: the release gate reads evidence; it doesn't gate simulation
+
+Epic 23's checklist gates `SIMULATION_READY`, i.e. whether a run may
+start. Control coverage can't live there: you need runs to produce it.
+It's enforced at `mark-release-candidate` instead. Every applicable,
+testable control (the controls recorded in the agent's knowledge sources
+by Epic 28) needs a passing situation whose run snapshot matches the
+agent's *current* version and pinned context pack, with that pack not
+stale. A rule change doesn't delete earlier passes. It turns them
+"out of date" in the evidence view and the export, and the gate closes
+again until they're re-run. Controls marked `testable: false` (purely
+organizational ones, set at confirmation or by extraction) don't count.
+
+### Epic 30: reviewers from the approval matrix are deterministic
+
+US30.3 personas come straight from approval-authority rows with a monetary
+limit: a threshold reviewer per row, rejecting above the limit, on the
+agent's first amount-like numeric input. No LLM call is involved, so the
+endpoint is a GET that viewers can use too. A row with no limit, or an
+agent with no numeric input, yields no persona; the LLM casting from Epic
+25 is still there for everything else.
+
+### Epic 31: the job queue is Postgres rows with SKIP LOCKED, not Redis/RQ/Arq
+
+The strategy doc suggested Arq or RQ. Both need Redis, a second stateful
+service in a stack that otherwise runs only Postgres, and the queue's
+volume (connector syncs, ingestion, re-runs) is tiny by queue standards. A
+`jobs` table claimed with `SELECT ... FOR UPDATE SKIP LOCKED` gives safe
+multi-worker claiming. Jobs survive restarts because they're rows, and a
+job whose worker died is requeued when its lease expires. It provides
+retries with exponential backoff, per-kind concurrency limits, dedupe keys
+(one pending sync per connector), and a scheduler tick. The worker runs in
+the API process via the FastAPI lifespan, or separately with `python -m
+app.jobs.worker`. When the worker is disabled (tests), the old in-process
+`BackgroundTasks` path is used, and tests drain the queue explicitly with
+`run_pending`.
+
+### Epic 31: connectors are standards, not vendors
+
+The epic named SharePoint, Confluence, ServiceNow, LeanIX, Entra ID, Okta,
+GRC platforms, and data catalogs. Building and live-testing a client per
+vendor isn't possible without each vendor's tenant. The built-ins are the
+standards those products speak instead:
+
+- MCP: the epic's own "standard interface", a minimal Streamable-HTTP
+  client calling one read tool.
+- A policy folder: a sync client or export for document libraries.
+- A JSON/CSV HTTP feed with a declarative field mapping: CMDB, EA tool,
+  GRC, and data-catalog APIs.
+- OSCAL catalogs.
+- SCIM 2.0, which both Entra ID and Okta serve, for groups.
+
+A specific vendor is a configuration of one of these. The connector
+contract is read-only by construction:
+
+- every built-in only issues reads;
+- the MCP client refuses tools whose names say they write;
+- stored config refuses anything that looks like a secret (`token_env`
+  names an environment variable instead).
+
+Synced *entities* are applied as confirmed, because the source is the
+system of record. Synced policy *documents* still go through Epic 27
+extraction, whose proposals a person confirms.
+
+### Epic 31: model policy is a context variable honoured inside LLMClient
+
+US31.8 needs every LLM call made on a business unit's behalf to obey that
+unit's policy: allowed providers, residency, a self-hosted endpoint, PII
+redaction. Threading a route argument through all ~10 call sites (and
+their callees, such as twin schema inference and simulators) would touch
+everything. Instead `llm_route_for(...)` sets a context variable at each
+entry point that knows its process (blueprint, gap analysis, chat,
+extraction, twin and orchestration runs, the test builder, policy
+ingestion), and `LLMClient.complete` enforces it. A blocked call raises
+`LLMPolicyError`, which maps to 403.
+
+The provider's own hosting region is configuration (`LLM_PROVIDER_REGION`).
+It is empty by default, meaning unknown, and unknown satisfies no
+residency requirement: an EU-only unit is refused rather than silently sent
+to a provider of unknown location.
+
+### Defect found by testing: business-unit `llm_policy` was silently dropped
+
+The first API-level test of a blocked unit returned 500, not 403.
+Entity data is validated per kind, and `BusinessUnitData` had no
+`llm_policy` field, so pydantic discarded it on write. No policy applied,
+and the call went to the real provider with the test key. `LlmPolicy`
+now lives in `app/schemas/context.py` as a typed field on business units,
+plus an organization-wide `PUT /api/organization/llm-policy`.
+
+### Epic 31: federation defaults to unrestricted
+
+A user with no business-unit memberships sees and stewards everything,
+which is how every user worked before this epic and what a single-unit
+organization needs. Memberships restrict visibility to group-wide context
+plus the user's units. Owner and `applies_to.business_units` are the
+attributes, and another unit's context answers 404, not 403. Stewardship
+restricts writes to entities owned by a stewarded unit. Only unrestricted
+users manage memberships, organization settings, packs, and the audit
+log. Hard multi-tenancy stays out of scope, as the epic says.
+
+### Epic 32: dataset rows are immutable revisions with validity ranges
+
+A run must be able to say exactly which version of a case it was graded
+against, and a diff must compare any two versions. Rows are never edited
+in place. Each change bumps the dataset version, closes the row's current
+revision (`valid_to_version`), and opens a new one. `rows_at(version)` then
+reads the dataset exactly as it was, runs pin `(dataset_id,
+dataset_version, row_key)` in their own columns and their Epic 22
+snapshot, and the diff compares two such reads. The cost is that a large
+relabel writes many rows; at the scale of golden sets (hundreds to low
+thousands) that's fine.
+
+### Epic 32: a row's decision label is the case outcome, graded against the agent's output
+
+The first draft labelled the expected *human checkpoint* decision. In a
+twin, though, the reviewer is simulated, so grading the reviewer's choice
+would test the simulation, not the agent. Historical exports also record
+the case's *outcome* (approved, declined, referred), not a reviewer step.
+A row's `decision` is therefore the expected outcome:
+approve/reject/escalate. It is graded against the agent's output field
+`decision_field` (default `decision`), after normalizing values such as
+"Approved", "declined", or "referred". An ESCALATED run counts as
+"escalate", so escalation-expected rows can pass.
+
+### Epic 32: pseudonymization on import is local and deterministic
+
+The epic asked for an option that never sends data to the LLM provider.
+Import offers only that option for now. Each mapped column can be kept,
+replaced by a code (`anon_<hash>`), or replaced by a look-alike. The
+look-alike preserves the shape: emails stay emails, phone and IBAN digit
+patterns are kept with the country prefix, and names become invented names.
+Replacement is deterministic (a salted hash), so duplicates and joins
+survive. Only mapped rows are stored, never the file. LLM-based "clone
+and disguise" from Epic 25 remains available for generating look-alikes.
+
+### Live-ish finding while testing: a value-based guess beats a name-based one for the decision column
+
+The column-mapping suggester initially classed "Final Status"
+(values: Approved/Declined) as an output label, because only "decision"
+in the name triggered the decision role. It now also checks sample
+values: a column whose values all normalize to decisions is suggested as
+the decision column unless it matches a declared output field. A person
+confirms the mapping either way.
+
+### Epic 33: rules are a typed JSON expression language, validated twice, never executed as code
+
+Gateway conditions become `{"all"|"any"|"not"|{"field","op","value"}}`
+expressions over the process's known input fields, evaluated by a small
+interpreter. Numbers inside strings compare as numbers ("EUR 12,500" > 10000),
+and text compares case-insensitively. The LLM drafts one rule per branch.
+Every draft is checked against the language and the field list, and
+anything that fails is stored as `unstructurable` with the original
+condition text and the reason, so it can never execute. A person confirms
+each rule, and an edited rule goes back to `proposed`. The oracle takes the
+first matching confirmed rule per decision point (or the default branch).
+When several decision points determine an outcome, the most severe wins
+(reject > escalate > approve), because a case any gate rejects is rejected.
+
+### Epic 33: the oracle never overwrites a label
+
+Oracle labelling fills in only *unlabelled* decisions, with provenance
+`oracle`. A row that already carries a historical or expert label is
+compared with the rules, never changed. A disagreement is listed as a
+conflict for a person, who can raise "the documented rule doesn't match
+practice" as a process gap finding (Epic 11). Volume testing then tests
+the process documentation as well as the agent. Label-first generation
+keeps only the generated records the oracle confirms, and counts the rest
+as discarded.
+
+### Epic 33: a judge is trusted only while its calibration is current
+
+Calibration runs the judge on rows that carry a human verdict for the
+rubric (`labels.outputs["judgment:<rubric id>"]`) and an agent output from
+a run on that row. It records agreement and Cohen's kappa. The rubric
+becomes gate-eligible only at or above its `min_agreement` over at least
+`min_samples` cases. Calibration stores the rubric version and judge model
+it ran with, so any change to the rubric text, field, or model voids
+eligibility until recalibrated. This keeps Epics 14/19's
+no-LLM-judge-by-default principle: judges are for free-text fields only,
+and must earn their place.
+
+### Epic 34: one job per run for correctness, one in-process driver for load
+
+Correctness batches enqueue one `twin_run` job per (row, trial). Each run
+is retried on its own, bounded by the worker's per-kind concurrency, and
+survives restarts. Before executing, a run checks its batch: paused jobs
+re-queue themselves a few seconds later, cancelled or over-budget runs are
+marked CANCELLED, and the last run to finish completes the batch. Load
+batches can't use that path: the queue's concurrency limit would flatten
+exactly the concurrency being measured. A load batch is one `load_batch`
+job that drives its runs with `asyncio.gather` under a semaphore of the
+requested size. Simulated system latency is applied per run, and the
+mode's results are reported separately (Epic 35).
+
+### Defect found by testing: jobs ignored the API's LLM client override
+
+The first batch test failed with 401s from the real provider. Job
+handlers called `get_llm_client()` directly, so they bypassed the FastAPI
+dependency override the app was configured with. That was hidden in
+tests, and in a deployment that swaps the client it would be wrong too.
+`get_job_llm` now resolves the client through the app's own dependency
+overrides, so a job runs with the same client as the request that queued
+it.
+
+### Epic 34: seeds per (batch, row, trial); traces pruned at completion
+
+Each batch run's seed is a hash of (batch, row, trial), stored on the run
+and applied as the scenario's checkpoint seed, which also drives fault
+rolls. Faults and probabilistic reviewers are therefore reproducible, and
+"replay" re-runs one row alone with the same seed. When a batch finishes
+with `keep_traces = failed_and_sampled` (the default), it clears the step
+traces of passing runs except flaky rows and a 10% sample. The grade,
+deviations, final output, and cost stay on every run.
+
+### Epic 34: throttling and caching live in the LLM client
+
+The client bounds concurrent requests per (endpoint, model) with a
+semaphore (`LLM_MAX_CONCURRENCY`, default 8). Rate-limit responses still
+get the existing exponential-backoff retries. This is distinct from Epic
+21's *simulated* 429 faults, which hit the agent's tools. For prompt
+caching, the stable prefix (agent instructions, organization context) is
+already first in every call. Anthropic models, including via OpenRouter,
+also need an explicit `cache_control` marker, which the client now adds.
+Providers that cache prefixes automatically need nothing. Whether caching
+actually reduced cost on the current Qwen route wasn't measured.

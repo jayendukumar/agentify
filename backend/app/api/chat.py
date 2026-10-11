@@ -4,7 +4,9 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.bpmn.chat_ops import DiagramApplyRegressionError, DiagramDiffError, apply_diff_and_persist
 from app.chat.service import ChatServiceError, handle_chat_message
+from app.context.resolver import render_pack, resolve_for_process
 from app.db import repository
+from app.llm.routing import llm_route_for
 from app.gap_analysis.service import run_gap_analysis
 from app.schemas.chat import ChatApplyRequest, ChatMessageRequest, ChatMessageResult, DiagramDiff
 
@@ -31,15 +33,18 @@ async def send_chat_message(
         )
 
     history = repository.list_chat_messages(db, process_id)
+    pack = resolve_for_process(db, process_id, purpose="chat_edit", query_text=body.text)
 
     try:
-        reply = await handle_chat_message(
-            llm,
-            schema=schema,
-            history=history,
-            selected_element_id=body.selected_element_id,
-            text=body.text,
-        )
+        with llm_route_for(db, process_id=process_id):
+            reply = await handle_chat_message(
+                llm,
+                schema=schema,
+                history=history,
+                selected_element_id=body.selected_element_id,
+                text=body.text,
+                context_text=render_pack(pack),
+            )
     except ChatServiceError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 

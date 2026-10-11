@@ -40,7 +40,7 @@ vs. depends on unstated judgment, relationship context, or negotiation (favor "p
 with a human-review checkpoint) vs. an authority/liability cost only a specific accountable \
 person can bear (favor "not_automatable" regardless of how mechanical the step looks).
 
-Never default to "automatable" purely because the step-type table leans that way -- ground the \
+##CONTEXT_RULES##Never default to "automatable" purely because the step-type table leans that way -- ground the \
 rationale in this specific node's actual label, predecessors/successors, and lane/actor context \
 below, not just its type label.
 
@@ -85,7 +85,7 @@ just the JSON object):
         "human_checkpoint": "none" | "review_before_action" | "review_after_action" | "escalation_on_exception",
         "consolidated_from_nodes": ["<node id>", "..."]
       },
-      "not_automatable_reason": null | "string -- required and specific when verdict is not_automatable"
+      "not_automatable_reason": null | "string -- required and specific when verdict is not_automatable"##APPLICABLE_RULES_FIELD##
     }
   ]
 }
@@ -103,6 +103,27 @@ def _node_context(node: FlowNodeInfo) -> dict:
     }
 
 
-def build_system_prompt(nodes: list[FlowNodeInfo]) -> str:
+_CONTEXT_RULES = """## Organization rules -- rubric factor 4 is judged against the organization's \
+own rules, listed in the Organization context section at the end. For every node, list in \
+"applicable_rules" the labels of the rules that govern that step (an empty list when none do). \
+A step governed by a control that requires human review must NOT be "automatable": use \
+"partial" with a review_before_action checkpoint, or "not_automatable". Mention the rule's code \
+in the rationale. Never invent rules that are not listed.
+
+"""
+
+
+_APPLICABLE_RULES_FIELD = """,
+      "applicable_rules": ["<label from the Organization context section, e.g. C3>"]"""
+
+
+def build_system_prompt(nodes: list[FlowNodeInfo], context_text: str = "") -> str:
+    """Epic 28, US28.5: `context_text` is a rendered Context Pack
+    (app/context/resolver.py's render_pack); empty when no organization
+    context applies, which leaves the prompt as it was before Epic 28."""
     nodes_json = json.dumps([_node_context(n) for n in nodes], indent=2)
-    return _INSTRUCTIONS.replace("##NODES_JSON##", nodes_json)
+    prompt = _INSTRUCTIONS.replace("##NODES_JSON##", nodes_json)
+    if not context_text:
+        return prompt.replace("##CONTEXT_RULES##", "").replace("##APPLICABLE_RULES_FIELD##", "")
+    prompt = prompt.replace("##APPLICABLE_RULES_FIELD##", _APPLICABLE_RULES_FIELD)
+    return prompt.replace("##CONTEXT_RULES##", _CONTEXT_RULES) + "\n" + context_text + "\n"

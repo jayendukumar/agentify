@@ -24,8 +24,11 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
+from app.context.resolver import citations_for, humanize_labels, mentioned_labels, render_pack, resolve_for_process
 from app.db import repository
+from app.db.models import ContextPackModel
 from app.llm import ChatMessage, LLMClient
+from app.llm.routing import llm_route_for
 from app.schemas.common import ProcessSchema
 from app.schemas.gap_analysis import GapFinding, GapFindingOption
 
@@ -45,17 +48,20 @@ class _ProposedFinding(BaseModel):
     question: str
     target_element_ids: list[str] = []
     options: list[GapFindingOption] = []
+    citations: list[str] = []
 
 
 class _ParsedFindings(BaseModel):
     findings: list[_ProposedFinding] = []
 
 
-async def analyze_gaps(llm: LLMClient, schema: ProcessSchema) -> list[_ProposedFinding]:
+async def analyze_gaps(
+    llm: LLMClient, schema: ProcessSchema, context_pack: ContextPackModel | None = None
+) -> list[_ProposedFinding]:
     if not schema.elements:
         return []
 
-    system_prompt = build_system_prompt(schema)
+    system_prompt = build_system_prompt(schema, render_pack(context_pack) if context_pack is not None else "")
     result = await llm.complete(
         [ChatMessage(role="system", content=system_prompt)],
         operation="gap_analysis",
@@ -78,6 +84,22 @@ async def analyze_gaps(llm: LLMClient, schema: ProcessSchema) -> list[_ProposedF
     findings = []
     for finding in parsed.findings:
         target_ids = [eid for eid in finding.target_element_ids if eid in valid_ids]
+        if context_pack is not None:
+            # Rules the model named in the question count as cited, and the
+            # question itself shows codes/names rather than pack labels.
+            labels = list(dict.fromkeys([*finding.citations, *mentioned_labels(context_pack, finding.question)]))
+            finding = finding.model_copy(
+                update={"citations": labels, "question": humanize_labels(context_pack, finding.question)}
+            )
+        if finding.kind == "policy":
+            # Epic 28, US28.4: a policy finding may concern the process as
+            # a whole (no target), but must rest on a real pack entry -- an
+            # uncited "policy" finding is general knowledge, not a rule this
+            # organization actually has.
+            if context_pack is None or not citations_for(context_pack, finding.citations):
+                continue
+            findings.append(finding.model_copy(update={"target_element_ids": target_ids}))
+            continue
         if not target_ids:
             # Every real finding must point at something that actually
             # exists in this diagram -- a finding with no valid target is
@@ -90,7 +112,13 @@ async def analyze_gaps(llm: LLMClient, schema: ProcessSchema) -> list[_ProposedF
 
 async def run_gap_analysis(db: Session, llm: LLMClient, process_id: str) -> list[GapFinding]:
     schema = repository.get_process_schema(db, process_id)
-    proposed = await analyze_gaps(llm, schema) if schema is not None else []
+    pack = None
+    if schema is not None and schema.elements:
+        pack = resolve_for_process(
+            db, process_id, purpose="gap_analysis", query_text="\n".join(e.label for e in schema.elements)
+        )
+    with llm_route_for(db, process_id=process_id):
+        proposed = await analyze_gaps(llm, schema, pack) if schema is not None else []
 
     # Dedup against every existing finding for this process (any status --
     # open, resolved, or dismissed): never re-create a finding the user
@@ -100,10 +128,20 @@ async def run_gap_analysis(db: Session, llm: LLMClient, process_id: str) -> list
     # would be worse than an occasional stale finding the user can dismiss
     # themselves (US11.3).
     existing = repository.list_gap_findings(db, process_id)
-    existing_keys = {(f.kind, tuple(sorted(f.target_element_ids))) for f in existing}
+    # Policy findings also key on the rules they cite -- two different
+    # rules missing from the same (or no) step are two findings.
+    existing_keys = {
+        (f.kind, tuple(sorted(f.target_element_ids)), tuple(sorted(c.policy_id or "" for c in f.citations)))
+        for f in existing
+    }
 
     for finding in proposed:
-        key = (finding.kind, tuple(sorted(finding.target_element_ids)))
+        citations = citations_for(pack, finding.citations)
+        key = (
+            finding.kind,
+            tuple(sorted(finding.target_element_ids)),
+            tuple(sorted(c.policy_id or "" for c in citations)),
+        )
         if key in existing_keys:
             continue
         repository.add_gap_finding(
@@ -113,6 +151,8 @@ async def run_gap_analysis(db: Session, llm: LLMClient, process_id: str) -> list
             question=finding.question,
             target_element_ids=finding.target_element_ids,
             options=finding.options,
+            citations=citations,
+            context_pack_id=pack.id if pack is not None and citations else None,
         )
         existing_keys.add(key)
 

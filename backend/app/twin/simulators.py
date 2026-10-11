@@ -6,8 +6,9 @@ System modes (US14.2): Proxy (LLM fabricates a plausible response against
 the inferred schema) and Static (scenario-provided input/output table,
 falling back to Proxy if nothing matches -- not a hard error, since a
 scenario author may only care about stubbing a few specific calls).
-API mode (a real dev-provided endpoint) is deliberately out of scope for
-this slice.
+API mode (Epic 29, US29.5) calls the linked application's registered
+non-production endpoint, re-checked by app/catalog/endpoints.py
+immediately before every call.
 
 Human-checkpoint modes: probability (sampled, optionally seeded for
 repeatable runs) and rule (a single condition over the agent's proposed
@@ -20,7 +21,11 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from typing import Any, Literal
+from urllib.parse import quote
+
+import httpx
 
 from app.llm import ChatMessage, LLMClient, Usage
 from app.schemas.twin import InferredToolSchema, TwinHumanCheckpointConfig, TwinSystemStub
@@ -35,6 +40,49 @@ _OPERATORS = {
     "lt": lambda a, b: a < b,
     "lte": lambda a, b: a <= b,
 }
+
+
+async def _call_api(schema: InferredToolSchema, call_arguments: dict[str, Any]) -> dict[str, Any]:
+    """US29.5: one real HTTP call to a sandbox endpoint. Path parameters are
+    substituted, GET/DELETE parameters go in the query string, and a
+    `body` parameter is sent as JSON."""
+    from app.catalog.endpoints import UnsafeEndpointError, check_endpoint
+    from app.config import get_settings
+
+    if not schema.api_base_url:
+        raise TwinServiceError(
+            f"'{schema.system_name}' has no registered non-production endpoint, so it can't run in API mode"
+        )
+    try:
+        check_endpoint(schema.api_base_url, schema.api_environment)
+    except UnsafeEndpointError as exc:
+        raise TwinServiceError(f"API mode refused for '{schema.system_name}': {exc}") from exc
+    operation_id = call_arguments.get("operation")
+    operation = schema.api_operations.get(str(operation_id))
+    if operation is None:
+        raise TwinServiceError(f"'{schema.system_name}' has no operation '{operation_id}'")
+    params = dict(call_arguments.get("params") or {})
+    path = operation["path"]
+    for name in re.findall(r"{([^}]+)}", path):
+        if name not in params:
+            raise TwinServiceError(f"Operation '{operation_id}' needs path parameter '{name}'")
+        path = path.replace("{" + name + "}", quote(str(params.pop(name)), safe=""))
+    body = params.pop("body", None)
+    url = schema.api_base_url.rstrip("/") + path
+    try:
+        async with httpx.AsyncClient(timeout=get_settings().twin_api_timeout_seconds, follow_redirects=False) as client:
+            response = await client.request(operation["method"], url, params=params or None, json=body)
+    except httpx.HTTPError as exc:
+        raise TwinServiceError(f"API call to '{schema.system_name}' failed: {exc}") from exc
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {"text": response.text[:2000]}
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    if response.status_code >= 400:
+        payload = {"error": True, "status_code": response.status_code, **payload}
+    return payload
 
 
 def _matches(match: dict[str, Any], arguments: dict[str, Any]) -> bool:
@@ -81,6 +129,8 @@ async def resolve_tool_call(
     stub: TwinSystemStub,
 ) -> tuple[dict[str, Any], bool, tuple[Usage, str] | None]:
     """Returns (response, static_fallback_used, (usage, model)_if_an_llm_call_was_made)."""
+    if stub.mode == "api":
+        return await _call_api(schema, call_arguments), False, None
     if stub.mode == "static":
         for rule in stub.static_responses:
             if _matches(rule.match, call_arguments):

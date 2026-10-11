@@ -1,6 +1,11 @@
 # Epic 35 -- Results at Volume & Statistical Release Gate
 
-**Status: groomed, not started.** Groomed 2026-10-11 alongside Epic 32.
+**Status: implemented (2026-10-11).** Groomed 2026-10-11 alongside Epic 32.
+Built in `app/batches/results.py` (Wilson intervals, segments, decision
+matrix, failure clusters, consistency, distributions, relation grading,
+load profile, McNemar comparison, gate, evidence), `app/api/results.py`,
+the gate check in mark-release-candidate, and migration `f4a5b6c7d8e9`.
+Frontend: `BatchResultsPage`.
 
 Goal: turn thousands of graded rows into a few trustworthy, readable
 numbers and the handful of failure patterns behind them, and let the

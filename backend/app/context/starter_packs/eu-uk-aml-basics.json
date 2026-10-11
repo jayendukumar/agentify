@@ -1,0 +1,102 @@
+{
+  "id": "eu-uk-aml-basics",
+  "version": "1.0.0",
+  "title": "EU & UK -- anti-money-laundering basics",
+  "description": "Plain-language anti-money-laundering (AML) and sanctions obligations for regulated financial services firms in the EU and UK: customer due diligence, sanctions screening, politically exposed persons, suspicious activity reporting, and record keeping.",
+  "disclaimer": "Decision support only, not legal advice. AML requirements vary by country and firm type; confirm them with your MLRO or compliance team.",
+  "industries": ["banking", "financial services", "payments", "insurance", "fintech"],
+  "jurisdictions": ["EU", "UK"],
+  "changelog": ["1.0.0 (2026-10-11): first release."],
+  "regulations": [
+    {
+      "code": "AML",
+      "name": "Anti-money-laundering and counter-terrorist-financing rules (EU AML directives, UK Money Laundering Regulations)",
+      "summary": "Customer due diligence, monitoring, reporting, and record-keeping duties for regulated firms.",
+      "obligations": [
+        {
+          "code": "AML-CDD",
+          "title": "Identify and verify customers before establishing a relationship",
+          "text": "Customer due diligence (identifying the customer and any beneficial owner, and verifying their identity) must be completed before a business relationship is established or a transaction carried out.",
+          "controls": [
+            {
+              "code": "AML-C-CDD-COMPLETE",
+              "title": "Onboarding cannot complete until identity is verified",
+              "description": "An onboarding flow blocks activation until identity verification has passed; failures or mismatches go to a person.",
+              "control_type": "human_review",
+              "requires_human_review": true,
+              "required_guardrails": ["block_until_verified"]
+            }
+          ]
+        },
+        {
+          "code": "AML-SANCTIONS",
+          "title": "Screen customers and payments against sanctions lists",
+          "text": "Customers and relevant transactions must be screened against applicable sanctions lists. Potential matches must be investigated before proceeding and must not be resolved automatically.",
+          "controls": [
+            {
+              "code": "AML-C-SANCTIONS-MATCH-REVIEW",
+              "title": "Potential sanctions matches are reviewed by a person",
+              "description": "Any potential sanctions match stops the process and is escalated to the MLRO or a nominated compliance officer for review; it is never cleared automatically.",
+              "control_type": "human_review",
+              "requires_human_review": true,
+              "review_role": "MLRO",
+              "required_guardrails": ["decision_logging", "escalate_on_potential_match"]
+            }
+          ]
+        },
+        {
+          "code": "AML-PEP",
+          "title": "Apply enhanced due diligence to politically exposed persons",
+          "text": "Where a customer is a politically exposed person (PEP), enhanced due diligence applies, including senior management approval for the relationship and establishing the source of wealth and funds.",
+          "controls": [
+            {
+              "code": "AML-C-PEP-APPROVAL",
+              "title": "PEP relationships need senior management approval",
+              "description": "A customer flagged as a PEP cannot be onboarded without approval from senior management.",
+              "control_type": "human_review",
+              "requires_human_review": true,
+              "review_role": "Senior Management",
+              "required_guardrails": ["decision_logging"]
+            }
+          ]
+        },
+        {
+          "code": "AML-SAR",
+          "title": "Report suspicious activity internally to the MLRO",
+          "text": "Staff and systems must report knowledge or suspicion of money laundering to the money laundering reporting officer (MLRO), who decides whether to report externally. The customer must not be tipped off.",
+          "controls": [
+            {
+              "code": "AML-C-SAR-ESCALATION",
+              "title": "Suspicious activity is escalated to the MLRO without telling the customer",
+              "description": "Automated steps that detect suspicious patterns escalate to the MLRO and must not disclose the escalation in any customer communication.",
+              "control_type": "human_review",
+              "requires_human_review": true,
+              "review_role": "MLRO",
+              "required_guardrails": ["no_tipping_off", "decision_logging"]
+            }
+          ]
+        },
+        {
+          "code": "AML-RECORDS",
+          "title": "Keep due diligence and transaction records for five years",
+          "text": "Records of customer due diligence and of transactions must be kept for at least five years after the end of the relationship or the transaction.",
+          "controls": [
+            {
+              "code": "AML-C-RECORD-KEEPING",
+              "title": "Retain due diligence evidence for five years",
+              "description": "Evidence gathered by the process (documents checked, screening results, decisions) is stored with a retention period of at least five years.",
+              "control_type": "logging",
+              "requires_human_review": false,
+              "required_guardrails": ["decision_logging"]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "glossary": [
+    {"term": "MLRO", "definition": "Money laundering reporting officer: the person responsible for receiving internal suspicious activity reports and deciding whether to report externally.", "synonyms": ["Money Laundering Reporting Officer"]},
+    {"term": "PEP", "definition": "Politically exposed person: someone entrusted with a prominent public function, or their close family or associates.", "synonyms": ["politically exposed person"]},
+    {"term": "CDD", "definition": "Customer due diligence: identifying and verifying a customer and understanding the purpose of the relationship.", "synonyms": ["KYC", "know your customer"]}
+  ]
+}

@@ -7,7 +7,10 @@ The drafting endpoints are editor-only since each is a paid LLM call."""
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.context import repository as context_repository
 from app.db import repository
+from app.db.models import ContextEntityModel
+from app.llm.routing import llm_route_for
 from app.store import NotFoundError
 from app.schemas.agents import AgentDefinition
 from app.schemas.twin_builder import (
@@ -19,6 +22,8 @@ from app.schemas.twin_builder import (
     Situation,
     SituationList,
     SuggestSituationsRequest,
+    AuthorityInfo,
+    RuleTarget,
     TestBuilderContext,
 )
 from app.twin import test_builder
@@ -38,11 +43,48 @@ def _context(db, process_id: str, artifact_id: str) -> TestBuilderContext:
         # Gateways are a nice-to-have for suggestions -- the builder still
         # works from the artifact alone if the baseline is gone.
         baseline_xml = None
+    definition = AgentDefinition.model_validate(artifact.definition)
+    # Epic 30: the rules the agent was built to follow, the approval limits
+    # in its process's scope, and its jurisdictions/data classes.
+    rules = []
+    for source in definition.knowledge_sources:
+        entity = db.get(ContextEntityModel, source.id) if source.kind == "control" else None
+        if entity is None or entity.status != "confirmed" or not (entity.data or {}).get("testable", True):
+            continue
+        data = entity.data or {}
+        rules.append(
+            RuleTarget(
+                id=f"ctl:{entity.id}",
+                entity_id=entity.id,
+                version=entity.version,
+                code=entity.code,
+                name=entity.name,
+                description=data.get("description", ""),
+                requires_human_review=bool(data.get("requires_human_review")),
+                review_role=data.get("review_role"),
+                required_guardrails=list(data.get("required_guardrails") or []),
+            )
+        )
+    scope = context_repository.get_process_scope(db, process_id)
+    authorities = [
+        AuthorityInfo(
+            role=(a.data or {}).get("role_name") or a.name,
+            decision_type=(a.data or {}).get("decision_type", ""),
+            limit_amount=(a.data or {}).get("limit_amount"),
+            currency=(a.data or {}).get("currency", ""),
+        )
+        for a in context_repository.applicable_entities(db, scope, kinds=["approval_authority"])
+    ]
+    classifications = sorted({c for contract in definition.tool_contracts for c in contract.data_classifications})
     return test_builder.build_context(
         artifact_id=artifact.id,
-        definition=AgentDefinition.model_validate(artifact.definition),
+        definition=definition,
         node_ids=list(artifact.node_ids),
         baseline_xml=baseline_xml,
+        rules=rules,
+        authorities=authorities,
+        jurisdictions=scope.jurisdictions,
+        data_classifications=classifications,
     )
 
 
@@ -63,9 +105,10 @@ async def suggest(
     del user
     context = _context(db, process_id, artifact_id)
     try:
-        situations = await test_builder.suggest_situations(
-            llm, context, count=body.count, focus=body.focus, already_covered=body.already_covered
-        )
+        with llm_route_for(db, process_id=process_id):
+            situations = await test_builder.suggest_situations(
+                llm, context, count=body.count, focus=body.focus, already_covered=body.already_covered
+            )
     except TwinServiceError as exc:
         raise _bad_gateway(exc) from exc
     return SituationList(situations=situations)
@@ -78,7 +121,8 @@ async def describe(
     del user
     context = _context(db, process_id, artifact_id)
     try:
-        return await test_builder.describe_situation(llm, context, body.description)
+        with llm_route_for(db, process_id=process_id):
+            return await test_builder.describe_situation(llm, context, body.description)
     except TwinServiceError as exc:
         raise _bad_gateway(exc) from exc
 
@@ -90,10 +134,11 @@ async def generate_data(
     del user
     context = _context(db, process_id, artifact_id)
     try:
-        records = await test_builder.generate_records(
-            llm, context, mode=body.mode, count=body.count, prompt=body.prompt,
-            seed_record=body.seed_record, sample_text=body.sample_text,
-        )
+        with llm_route_for(db, process_id=process_id):
+            records = await test_builder.generate_records(
+                llm, context, mode=body.mode, count=body.count, prompt=body.prompt,
+                seed_record=body.seed_record, sample_text=body.sample_text,
+            )
     except test_builder.TestBuilderInputError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except TwinServiceError as exc:
@@ -112,7 +157,16 @@ async def generate_personas(
             status.HTTP_400_BAD_REQUEST, detail="This agent has no human review step, so there are no reviewers to cast"
         )
     try:
-        personas = await test_builder.generate_personas(llm, context, count=body.count, prompt=body.prompt)
+        with llm_route_for(db, process_id=process_id):
+            personas = await test_builder.generate_personas(llm, context, count=body.count, prompt=body.prompt)
     except TwinServiceError as exc:
         raise _bad_gateway(exc) from exc
     return GeneratedPersonas(personas=personas)
+
+
+@router.get("/authority-personas", response_model=GeneratedPersonas)
+def authority_personas(process_id: str, artifact_id: str, db: DbDep, user: CurrentUserDep) -> GeneratedPersonas:
+    """Epic 30, US30.3: reviewers straight from the approval-authority
+    matrix -- deterministic, so not a paid LLM call and open to viewers."""
+    del user
+    return GeneratedPersonas(personas=test_builder.authority_personas(_context(db, process_id, artifact_id)))

@@ -23,8 +23,9 @@ from pydantic import BaseModel, ValidationError
 from app.bpmn.nodes import FlowNodeInfo, extract_flow_nodes
 from app.llm import ChatMessage, LLMClient
 from app.schemas.agents import AgentDefinition
-from app.schemas.twin import CoverageTarget, ReviewerSetup, ScenarioStory, SituationExpectation
+from app.schemas.twin import ComplianceAssertion, CoverageTarget, ReviewerSetup, ScenarioStory, SituationExpectation
 from app.schemas.twin_builder import (
+    AuthorityInfo,
     DataMode,
     GatewayBranch,
     GatewayContext,
@@ -32,6 +33,7 @@ from app.schemas.twin_builder import (
     GeneratedRecord,
     GeneratedRecords,
     ReviewerPersona,
+    RuleTarget,
     Situation,
     TestBuilderContext,
 )
@@ -77,7 +79,15 @@ _T = TypeVar("_T", bound=BaseModel)
 
 
 def build_context(
-    *, artifact_id: str, definition: AgentDefinition, node_ids: list[str], baseline_xml: str | None
+    *,
+    artifact_id: str,
+    definition: AgentDefinition,
+    node_ids: list[str],
+    baseline_xml: str | None,
+    rules: list[RuleTarget] | None = None,
+    authorities: list[AuthorityInfo] | None = None,
+    jurisdictions: list[str] | None = None,
+    data_classifications: list[str] | None = None,
 ) -> TestBuilderContext:
     flow_nodes = extract_flow_nodes(baseline_xml) if baseline_xml else []
     by_id: dict[str, FlowNodeInfo] = {node.id: node for node in flow_nodes}
@@ -132,6 +142,8 @@ def build_context(
         targets.append(
             CoverageTarget(id="data_quality", kind="data_quality", label="Incomplete or messy input data")
         )
+    for rule in rules or []:
+        targets.append(CoverageTarget(id=rule.id, kind="control", label=f"Rule {rule.code or rule.name}: {rule.name}"))
 
     return TestBuilderContext(
         artifact_id=artifact_id,
@@ -147,6 +159,10 @@ def build_context(
         completion_conditions=definition.completion_conditions,
         gateways=gateways,
         coverage_targets=targets,
+        rules=rules or [],
+        approval_authorities=authorities or [],
+        jurisdictions=jurisdictions or [],
+        data_classifications=data_classifications or [],
     )
 
 
@@ -172,6 +188,24 @@ def _fields_block(fields: list[Any]) -> str:
     if not fields:
         return "  (none declared)"
     return "\n".join(f"  - {f.name} ({f.format}) -- {f.source_or_destination}" for f in fields)
+
+
+def _rules_block(context: TestBuilderContext) -> str:
+    """Epic 30, US30.2/US30.3: the organization's rules and approval limits."""
+    if not context.rules and not context.approval_authorities:
+        return ""
+    lines = []
+    if context.rules:
+        lines.append("Organization rules this agent must obey (coverage target id first):")
+        for rule in context.rules:
+            demand = f" Requires human review{' by ' + rule.review_role if rule.review_role else ''}." if rule.requires_human_review else ""
+            lines.append(f"  - {rule.id}: {rule.code or rule.name} -- {rule.description}{demand}")
+    if context.approval_authorities:
+        lines.append("Approval limits (who may approve what):")
+        for a in context.approval_authorities:
+            limit = "no limit" if a.limit_amount is None else f"up to {a.limit_amount:g} {a.currency}".strip()
+            lines.append(f"  - {a.role}: {a.decision_type}, {limit}")
+    return "\n".join(lines) + "\n"
 
 
 def _context_block(context: TestBuilderContext) -> str:
@@ -203,6 +237,7 @@ def _context_block(context: TestBuilderContext) -> str:
         f"Success criteria: {context.success_criteria or '(not stated)'}\n"
         f"Decision points right after this agent:\n{gateways}\n"
         f"Coverage targets (exact ids):\n{targets}\n"
+        f"{_rules_block(context)}"
         f"{threshold_note}.\n"
         f"Today's date is {date.today().isoformat()} -- use realistic, current dates.\n"
     )
@@ -219,7 +254,10 @@ _SITUATION_SHAPE = (
     '"system_data": {<exact system name>: {<field>: <value>}} (only for systems set to "custom_data" -- the record that system returns), '
     '"reviewer": {"behaviour": one of "none"|"approve"|"reject"|"threshold", "field": str|null, "threshold": number|null}, '
     '"expect": {"systems_used": [exact system names the agent should call, in order], '
-    '"review_decision": "approve"|"reject"|null, "output_fields": [output field names that must be produced]}}'
+    '"review_decision": "approve"|"reject"|null, "output_fields": [output field names that must be produced], '
+    '"compliance": [{"control": <a rule coverage target id, e.g. "ctl:...">, '
+    '"kind": "escalated"|"blocked"|"reviewed"|"logged", "role": str|null, "system": <exact system name>|null, '
+    '"field": <output field name>|null}] (only for situations testing a rule -- what the rule demands)}}'
 )
 
 
@@ -251,22 +289,43 @@ def _sanitize_situation(raw: dict[str, Any], context: TestBuilderContext, *, sou
 
     expect_raw = raw.get("expect") or {}
     decision = expect_raw.get("review_decision")
+    rule_ids = {r.id for r in context.rules}
+    compliance = []
+    for item in expect_raw.get("compliance") or []:
+        if not isinstance(item, dict) or item.get("control") not in rule_ids:
+            continue
+        if item.get("kind") not in ("escalated", "blocked", "reviewed", "logged"):
+            continue
+        compliance.append(
+            ComplianceAssertion(
+                control_id=item["control"],
+                kind=item["kind"],
+                role=item.get("role") if isinstance(item.get("role"), str) and item.get("role") else None,
+                system=item.get("system") if item.get("system") in systems else None,
+                field=item.get("field") if item.get("field") in output_names else None,
+            )
+        )
     expect = SituationExpectation(
         systems_used=[s for s in (expect_raw.get("systems_used") or []) if s in systems],
         review_decision=decision if has_checkpoint and decision in ("approve", "reject") else None,
         output_fields=[f for f in (expect_raw.get("output_fields") or []) if f in output_names],
+        compliance=compliance,
     )
 
     inputs = raw.get("inputs") if isinstance(raw.get("inputs"), dict) else {}
     if input_names:
         inputs = {k: v for k, v in inputs.items() if k in input_names}
 
+    covers = [c for c in (raw.get("covers") or []) if c in target_ids]
+    for assertion in compliance:  # a situation asserting a rule covers it
+        if assertion.control_id not in covers:
+            covers.append(assertion.control_id)
     story = ScenarioStory(
         title=str(raw["title"]).strip()[:120],
         given=str(raw.get("given") or ""),
         when=str(raw.get("when") or ""),
         then=str(raw.get("then") or ""),
-        covers=[c for c in (raw.get("covers") or []) if c in target_ids],
+        covers=covers,
         source=source,  # type: ignore[arg-type]
         system_behaviour=behaviour,
         system_data=system_data,
@@ -298,7 +357,14 @@ async def suggest_situations(
         + f"\nPropose {count} distinct, realistic test situations, written for a non-technical business "
         "reader. Prioritise coverage targets not yet covered: start with one typical happy-path case, then "
         "decision-point branches, reviewer outcomes, a system being unavailable, and messy input data. "
-        "Use realistic, specific values (names, amounts, dates) -- invent them, never use real people. "
+        + (
+            "Include at least one situation designed to trigger each organization rule listed above, citing "
+            "its coverage target id in covers and stating in expect.compliance what the rule demands "
+            "(escalation to the named role, a blocked action, a review before acting, or a logged decision). "
+            if context.rules
+            else ""
+        )
+        + "Use realistic, specific values (names, amounts, dates) -- invent them, never use real people. "
         "Only use the exact system names, field names, and coverage target ids given above.\n\n"
         f'Respond as JSON: {{"situations": [{_SITUATION_SHAPE}, ...]}}'
     )
@@ -351,7 +417,35 @@ _MODE_INSTRUCTIONS: dict[str, str] = {
         "value styles, and realism -- but replace every name, email, phone number, address, account/ID number, "
         "and any other identifying detail with invented values. Never copy identifying values through."
     ),
+    "near_miss": (
+        "Generate records designed to test screening and threshold rules: names that are one or two letters "
+        "off, transliterated, or reordered versions of an invented watch-listed party (state the invented party "
+        "in the note), amounts just under and just over each approval limit, and dates on either side of a "
+        "deadline. Every record is synthetic."
+    ),
 }
+
+# Epic 30, US30.4: value formats per jurisdiction, so generated data looks
+# like the organization's real records. Shapes only -- the model invents
+# the values, and these are never real identifiers.
+_FORMAT_HINTS: dict[str, str] = {
+    "EU": "IBANs (two-letter country prefix + check digits), dates as DD.MM.YYYY or YYYY-MM-DD, amounts in EUR",
+    "DE": "German IBANs (DE + 20 digits), 5-digit postcodes, dates DD.MM.YYYY, amounts in EUR with comma decimals",
+    "FR": "French IBANs (FR76...), 5-digit postcodes, dates DD/MM/YYYY, amounts in EUR",
+    "NL": "Dutch IBANs (NL + 2 digits + 4-letter bank code + 10 digits), postcodes like 1234 AB",
+    "UK": "UK sort codes (NN-NN-NN) and 8-digit account numbers, National Insurance numbers shaped AA123456A (use the invalid prefix 'QQ'), postcodes like SW1A 1AA, dates DD/MM/YYYY, amounts in GBP",
+    "US": "ABA routing numbers (9 digits), SSN-shaped values that start with 9 (never valid), ZIP codes, dates MM/DD/YYYY, amounts in USD",
+}
+
+
+def format_hints(jurisdictions: list[str]) -> str:
+    hints = []
+    for code in jurisdictions:
+        code = code.upper()
+        hint = _FORMAT_HINTS.get(code) or _FORMAT_HINTS.get(code.split("-")[0])
+        if hint and hint not in hints:
+            hints.append(hint)
+    return "; ".join(hints)
 
 
 async def generate_records(
@@ -377,6 +471,10 @@ async def generate_records(
         f"Each record is the input this agent receives. Fields:\n{_fields_block(context.input_fields)}\n",
         f"\n{_MODE_INSTRUCTIONS[mode]}\n",
     ]
+    if context.jurisdictions and format_hints(context.jurisdictions):
+        parts.append(f"\nUse the value formats of {', '.join(context.jurisdictions)}: {format_hints(context.jurisdictions)}.\n")
+    if mode == "near_miss" and (context.rules or context.approval_authorities):
+        parts.append(f"\n{_rules_block(context)}")
     if prompt:
         parts.append(f'\nUser\'s description: """{prompt}"""\n')
     if seed_record:
@@ -393,6 +491,35 @@ async def generate_records(
     if not records:
         raise TwinServiceError("The AI didn't generate any records -- please try again")
     return records
+
+
+_AMOUNT_FIELD = re.compile(r"amount|value|limit|total|sum|price|exposure", re.I)
+
+
+def authority_personas(context: TestBuilderContext) -> list[ReviewerPersona]:
+    """Epic 30, US30.3: one reviewer per approval-authority row with a
+    monetary limit, rejecting above that limit -- the organization's real
+    limits, no LLM involved. Needs a numeric input field to compare."""
+    numeric = numeric_input_fields(context)
+    if not numeric or context.human_checkpoint == "none":
+        return []
+    field = next((f for f in numeric if _AMOUNT_FIELD.search(f)), numeric[0])
+    personas = []
+    for authority in context.approval_authorities:
+        if authority.limit_amount is None:
+            continue
+        limit = f"{authority.limit_amount:g} {authority.currency}".strip()
+        personas.append(
+            ReviewerPersona(
+                name=authority.role,
+                role=authority.role,
+                description=f"Approves {authority.decision_type} up to {limit}; rejects anything above (from the approval-authority matrix).",
+                reviewer=ReviewerSetup(
+                    behaviour="threshold", field=field, threshold=authority.limit_amount, persona_name=authority.role
+                ),
+            )
+        )
+    return personas
 
 
 async def generate_personas(

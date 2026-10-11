@@ -1,7 +1,15 @@
 # Epic 27 -- Organization Context Foundation
 
-**Status: groomed, not started.** Groomed 2026-10-11 from
+**Status: implemented (2026-10-11)**, except the embedding-model
+evaluation in the Notes (deferred -- see the decision log). Groomed
+2026-10-11 from
 [enterprise-context-strategy.md](../enterprise-context-strategy.md).
+Built in `app/context/` (`repository.py`, `applicability.py`,
+`jurisdictions.py`, `packs.py` + `starter_packs/*.json`, `profile.py`,
+`ingestion.py`), `app/api/organization.py`, migration
+`e7f8a9b0c1d2`, and the frontend `OrganizationPage` (profile wizard,
+starter packs, policy upload and review queue, context browser, "what
+applies where") plus `ProcessScopeEditor` on the process page.
 
 Goal: give the product a model of the *organization* a process belongs to
 -- its business units, jurisdictions, roles and approval authority, and

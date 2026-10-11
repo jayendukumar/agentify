@@ -35,6 +35,17 @@ function GovernanceDetails({ definition }: { definition: AgentDefinition }) {
           {definition.escalation_policy.escalate_when.join(', ')}.
         </p>
       )}
+      {definition.knowledge_sources.length > 0 && (
+        <p className="element-meta">
+          <strong>Follows:</strong>{' '}
+          {definition.knowledge_sources.map((s) => `${s.name || s.id} v${s.version}`).join(', ')}
+        </p>
+      )}
+      {(definition.policy_guardrails ?? []).length > 0 && (
+        <p className="element-meta">
+          <strong>Required by policy:</strong> {(definition.policy_guardrails ?? []).map((g) => g.replace(/_/g, ' ')).join(', ')}
+        </p>
+      )}
       {definition.model_policy && (
         <p className="element-meta">
           <strong>Model policy:</strong> {definition.model_policy.capability} ({definition.model_policy.model}),

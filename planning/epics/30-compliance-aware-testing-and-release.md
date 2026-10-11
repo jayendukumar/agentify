@@ -1,7 +1,15 @@
 # Epic 30 -- Compliance-Aware Testing & Release
 
-**Status: groomed, not started.** Groomed 2026-10-11 from
+**Status: implemented (2026-10-11).** Groomed 2026-10-11 from
 [enterprise-context-strategy.md](../enterprise-context-strategy.md).
+Built in `app/twin/compliance.py` (assertion grading, wired into
+`grade_run`), `app/twin/test_builder.py` (rule coverage targets, rule-driven
+suggestions, approval-matrix reviewers, jurisdiction formats, near-miss
+data), `app/context/compliance.py` (evidence, the release gate, Markdown
+export), and the agents/test-builder APIs. Frontend: the Rules line on the
+coverage meter, rule checks on situation cards, "Use our approval limits"
+and "Near misses" in the data kitchen, and the compliance evidence panel
+in the lifecycle section.
 
 Goal: make the digital twin test the organization's *rules*, not just its
 paths and failures, and make the release gate (Epic 23) require evidence

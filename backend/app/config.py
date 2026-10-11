@@ -67,6 +67,34 @@ class Settings(BaseSettings):
     # lives on this same Postgres instance, see local-stack-bootstrap skill).
     database_url: str = "postgresql+psycopg://agentic:agentic@127.0.0.1:5432/agentic_solution_generator"
     embedding_model_name: str = "all-MiniLM-L6-v2"
+    # Epic 28, US28.8: re-run the regression suites of agents whose pinned
+    # Context Pack contained an entity that just changed.
+    context_auto_rerun_suites: bool = True
+    # Epic 29, US29.5: extra hosts (fnmatch patterns, comma separated) a
+    # twin run may call in API mode, on top of the built-in non-production
+    # rules in app/catalog/endpoints.py.
+    twin_api_allowed_hosts: str = ""
+    twin_api_timeout_seconds: float = Field(default=20.0, gt=0)
+    # Epic 31, US31.1: the durable job queue (app/jobs/). The worker runs in
+    # the API process unless disabled (tests disable it and drain the queue
+    # explicitly); run `python -m app.jobs.worker` for a separate worker.
+    job_worker_enabled: bool = True
+    job_poll_seconds: float = Field(default=2.0, gt=0)
+    job_concurrency: int = Field(default=2, ge=1)
+    job_lease_seconds: float = Field(default=900.0, gt=0)
+    job_backoff_seconds: float = Field(default=5.0, ge=0)
+    connector_timeout_seconds: float = Field(default=30.0, gt=0)
+    # Epic 31, US31.8: what the default LLM provider is and where it runs,
+    # for business-unit residency checks. Empty region = unknown, which
+    # satisfies no residency requirement.
+    # Epic 34, US34.4/US34.5: at most this many concurrent requests per
+    # provider endpoint + model from this process (batches would otherwise
+    # trip provider rate limits en masse), and cache-mark the stable prompt
+    # prefix where the provider supports explicit marking.
+    llm_max_concurrency: int = Field(default=8, ge=1)
+    llm_prompt_cache: bool = True
+    llm_provider_name: str = "openrouter"
+    llm_provider_region: str = ""
 
     # Epic 13: which registries are connected. A JSON list, e.g.
     # '[{"name": "internal", "type": "local"}, {"name": "vendor-x", "type": "local"}]'

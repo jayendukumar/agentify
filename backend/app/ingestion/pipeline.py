@@ -13,10 +13,13 @@ from __future__ import annotations
 import logging
 
 from app.config import Settings, get_settings
+from app.context.resolver import render_pack, resolve_for_process
 from app.db import repository
+from app.db.models import ProcessModel
 from app.db.session import get_session_factory
 from app.gap_analysis.service import run_gap_analysis
 from app.llm import LLMClient
+from app.llm.routing import current_route, route_for_scope
 
 from . import storage
 from .extractors import ExtractedBlock, extract_docx, extract_pdf, extract_vsdx
@@ -41,6 +44,27 @@ SUPPORTED_CONTENT_TYPES = {PDF_CONTENT_TYPE, DOCX_CONTENT_TYPE, *VSDX_CONTENT_TY
 
 
 async def process_document(
+    process_id: str,
+    document_id: str,
+    llm: LLMClient,
+    settings: Settings | None = None,
+) -> None:
+    """Epic 31, US31.8: every LLM call here follows the process's
+    business-unit model policy."""
+    session = get_session_factory()()
+    try:
+        process = session.get(ProcessModel, process_id)
+        route = route_for_scope(session, process.business_unit_id) if process is not None else None
+    finally:
+        session.close()
+    token = current_route.set(route)
+    try:
+        await _process_document(process_id, document_id, llm, settings)
+    finally:
+        current_route.reset(token)
+
+
+async def _process_document(
     process_id: str,
     document_id: str,
     llm: LLMClient,
@@ -81,12 +105,19 @@ async def process_document(
             else:
                 raise StructuringError(f"No extractor available yet for content type '{document.content_type}'")
 
+            vocabulary = resolve_for_process(
+                session,
+                process_id,
+                purpose="extraction",
+                query_text="\n".join(b.content for b in blocks)[:20000],
+            )
             schema, validation_confidence, validation_message = await structure_process_with_validation(
                 llm,
                 document_id=document_id,
                 filename=document.filename,
                 blocks=blocks,
                 process_name=process.name,
+                organization_context=render_pack(vocabulary),
             )
 
         repository.update_document_validation(

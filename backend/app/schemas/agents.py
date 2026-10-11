@@ -64,6 +64,11 @@ class KnowledgeSourceRef(BaseModel):
 
     id: str
     version: int
+    # Epic 28, US28.6: populated from the pinned Context Pack -- the
+    # policy/control/obligation this is, by name, so it reads on an agent
+    # card without a lookup.
+    name: str = ""
+    kind: str = ""
 
 
 ToolSandboxMode = Literal["proxy", "static", "api"]
@@ -86,6 +91,10 @@ class ToolContract(BaseModel):
     retry_max_attempts: int = Field(default=1, ge=0)
     side_effect: Literal["none", "read_only", "mutating"] = "read_only"
     sandbox_mode: ToolSandboxMode = "proxy"
+    # Epic 29, US29.3/US29.7: the catalog application this system resolved
+    # to, and the classifications of the data it holds.
+    application_id: str | None = None
+    data_classifications: list[str] = []
 
 
 class ModelPolicy(BaseModel):
@@ -131,6 +140,10 @@ class AgentDefinition(BaseModel):
     escalation_policy: EscalationPolicy = EscalationPolicy()
     knowledge_sources: list[KnowledgeSourceRef] = []
     model_policy: ModelPolicy | None = None
+    # Epic 28, US28.6: named guardrails applicable controls require (e.g.
+    # "decision_logging", "explanation") -- behavioural rules, distinct from
+    # `guardrails`' numeric runtime limits.
+    policy_guardrails: list[str] = []
 
     # Epic 23, US23.2: two of the validation checklist's items that had no
     # existing home on the definition -- populated with a real,
@@ -207,6 +220,10 @@ class AgentArtifact(BaseModel):
     version: int = 1
     definition: AgentDefinition
     baseline_version_id: str
+    # Epic 28, US28.2/US28.8: pinned Context Pack, and whether any entry in
+    # it has changed since (which also makes `status` "stale").
+    context_pack_id: str | None = None
+    context_stale: bool = False
     # Epic 23, US23.1/US23.2: computed on every read, never stored.
     lifecycle_status: LifecycleStatus = "DRAFT"
     checklist: list[ChecklistItem] = []

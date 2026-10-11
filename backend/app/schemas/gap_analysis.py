@@ -6,8 +6,9 @@ from typing import Literal
 from pydantic import BaseModel
 
 from .chat import DiagramDiff
+from .context import Citation
 
-GapKind = Literal["structural", "cross_document"]
+GapKind = Literal["structural", "cross_document", "policy"]
 GapFindingStatus = Literal["open", "resolved", "dismissed"]
 
 
@@ -33,6 +34,9 @@ class GapFinding(BaseModel):
     decided_at: datetime | None = None
     decided_by: str | None = None
     decided_by_name: str | None = None
+    # Epic 28, US28.4: "why we're asking" for policy-grounded findings.
+    citations: list[Citation] = []
+    context_pack_id: str | None = None
 
 
 class GapFindingResolveRequest(BaseModel):

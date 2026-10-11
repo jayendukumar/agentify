@@ -31,7 +31,13 @@ def delete_scenario(process_id: str, scenario_id: str, db: DbDep, user: EditorDe
 
 @router.post("/scenarios/{scenario_id}/run", response_model=TwinRun, status_code=status.HTTP_202_ACCEPTED)
 def start_run(
-    process_id: str, scenario_id: str, db: DbDep, llm: LLMDep, user: EditorDep, background_tasks: BackgroundTasks
+    process_id: str,
+    scenario_id: str,
+    db: DbDep,
+    llm: LLMDep,
+    user: EditorDep,
+    background_tasks: BackgroundTasks,
+    row_key: str | None = None,
 ) -> TwinRun:
     """Epic 17, US17.6: same two-step BackgroundTask handoff
     app/api/orchestration.py's `start_run` already uses -- a twin run used
@@ -40,9 +46,12 @@ def start_run(
     can be polled (`get_run`), cancelled, and (via a manual human
     checkpoint) suspended/resumed exactly like an orchestration run.
     Epic 23, US23.3: also where `_require_simulation_ready` raises if the
-    artifact hasn't reached SIMULATION_READY."""
+    artifact hasn't reached SIMULATION_READY.
+
+    Epic 32, US32.2: `row_key` runs one row of a data-driven scenario's
+    dataset (at its current version), graded against that row's labels."""
     try:
-        run = repository.start_twin_run(db, process_id, scenario_id, run_by=user.id)
+        run = repository.start_twin_run(db, process_id, scenario_id, run_by=user.id, row_key=row_key)
     except TwinServiceError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     db.commit()

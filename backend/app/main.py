@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,26 +9,35 @@ from fastapi.responses import JSONResponse
 from app.api import (
     agents,
     auth,
+    batches,
     blueprint,
     bpmn,
+    catalog,
+    connectors,
+    datasets,
+    oracles,
     chat,
     documents,
     environments,
     evaluation,
     gap_analysis,
     orchestration,
+    organization,
     processes,
     publish,
     registries,
+    results,
     twin,
     twin_builder,
     versions,
 )
 from app.config import get_settings
+from app.context.repository import ContextValidationError
 from app.llm.exceptions import (
     LLMAuthenticationError,
     LLMBadRequestError,
     LLMError,
+    LLMPolicyError,
     LLMRateLimitError,
     LLMTimeoutError,
 )
@@ -61,7 +72,27 @@ def _configure_logging() -> None:
 
 _configure_logging()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Epic 31, US31.1: run the durable job worker alongside the API unless
+    it's disabled (tests; or a deployment running `python -m
+    app.jobs.worker` separately)."""
+    worker = task = None
+    if get_settings().job_worker_enabled:
+        from app.jobs.worker import Worker
+
+        worker = Worker()
+        task = asyncio.create_task(worker.run())
+    try:
+        yield
+    finally:
+        if worker is not None and task is not None:
+            worker.stop()
+            await task
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Agentic Solution Generator API",
     description="Backend API for ingesting process documentation, generating as-is BPMN, "
     "chat-driven editing, and agentic blueprint evaluation.",
@@ -99,11 +130,32 @@ app.include_router(orchestration.router)
 app.include_router(environments.router)
 app.include_router(evaluation.router)
 app.include_router(publish.router)
+app.include_router(organization.router)
+app.include_router(organization.process_router)
+app.include_router(organization.pack_router)
+app.include_router(catalog.router)
+app.include_router(catalog.process_router)
+app.include_router(connectors.router)
+app.include_router(connectors.jobs_router)
+app.include_router(datasets.router)
+app.include_router(oracles.router)
+app.include_router(batches.router)
+app.include_router(results.router)
 
 
 @app.exception_handler(NotFoundError)
 def handle_not_found(request: Request, exc: NotFoundError) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(ContextValidationError)
+def handle_context_validation(request: Request, exc: ContextValidationError) -> JSONResponse:
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(LLMPolicyError)
+def handle_llm_policy(request: Request, exc: LLMPolicyError) -> JSONResponse:
+    return JSONResponse(status_code=403, content={"detail": f"Blocked by the model policy: {exc}"})
 
 
 @app.exception_handler(LLMAuthenticationError)

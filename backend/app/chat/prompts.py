@@ -110,10 +110,16 @@ _SCHEMA_CONTEXT = """Current process schema (JSON):
 ##SELECTED_CONTEXT##"""
 
 
-def build_system_prompt(schema: ProcessSchema, selected_element_label: str | None) -> str:
+def build_system_prompt(
+    schema: ProcessSchema, selected_element_label: str | None, context_text: str = ""
+) -> str:
     """Uses plain placeholder tokens + str.replace rather than str.format --
     the instructions text is full of literal JSON braces (the response
-    shape example) that would otherwise all need escaping."""
+    shape example) that would otherwise all need escaping.
+
+    Epic 28, US28.7: `context_text` is a vocabulary-only Context Pack (the
+    glossary terms and application names the message mentions), appended
+    so "the onboarding system" resolves to the organization's own name."""
     schema_json = json.dumps(schema.model_dump(by_alias=True), indent=2)
     selected_context = (
         f'\nThe user currently has "{selected_element_label}" selected on the canvas -- '
@@ -125,4 +131,10 @@ def build_system_prompt(schema: ProcessSchema, selected_element_label: str | Non
     schema_contract = _SCHEMA_CONTEXT.replace("##SCHEMA_JSON##", schema_json).replace(
         "##SELECTED_CONTEXT##", selected_context
     )
-    return _INSTRUCTIONS.replace("##SCHEMA_CONTRACT##", schema_contract)
+    prompt = _INSTRUCTIONS.replace("##SCHEMA_CONTRACT##", schema_contract)
+    if context_text:
+        prompt += (
+            "\n\n" + context_text + "\nUse the organization's own names for systems and terms above when "
+            "adding or renaming steps."
+        )
+    return prompt

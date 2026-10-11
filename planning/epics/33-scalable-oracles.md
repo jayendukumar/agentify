@@ -1,6 +1,13 @@
 # Epic 33 -- Scalable Oracles: Rules, Label-First Generation, Metamorphic Tests & Calibrated Judges
 
-**Status: groomed, not started.** Groomed 2026-10-11 alongside Epic 32.
+**Status: implemented (2026-10-11).** Groomed 2026-10-11 alongside Epic 32.
+Built in `app/oracles/` (`rules.py` -- the expression language and
+oracle; `service.py` -- rule proposals, oracle labelling and conflicts,
+label-first generation, metamorphic variants, judge calibration, review
+queue; `jobs.py`), `app/api/oracles.py`, and migration `d2e3f4a5b6c7`.
+Frontend: the "Decision rules" and "Answers at scale" panels on the Golden
+cases page. Variant *grading* (comparing base and variant decisions) lives
+with batch results in Epic 35.
 
 Goal: produce trustworthy expected results for thousands of cases without
 a person labelling each one, by deriving them from things that are

@@ -28,6 +28,10 @@ vi.mock('../api/client', () => ({
   uploadDocuments: (...args: unknown[]) => uploadDocuments(...args),
   generateBpmn: (...args: unknown[]) => generateBpmn(...args),
   deleteDocument: (...args: unknown[]) => deleteDocument(...args),
+  // Epic 27/29 panels on the page -- not under test here.
+  listSystemResolutions: () => Promise.resolve([]),
+  listContextEntities: () => Promise.resolve([]),
+  setProcessScope: vi.fn(),
 }))
 
 afterEach(() => vi.resetAllMocks())

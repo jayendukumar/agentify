@@ -1,8 +1,16 @@
-import type { CoverageTarget, Situation } from '../api/types'
+import type { ComplianceAssertion, CoverageTarget, Situation } from '../api/types'
 import { REVIEWER_LABELS, SYSTEM_BEHAVIOUR_LABELS } from '../lib/twinSituations'
 
 // Epic 24, US24.1: one proposed test situation as a Given/When/Then story
 // card -- what a business reader reviews before anything is saved.
+// Epic 30, US30.5: what each rule check asserts, in plain language.
+const COMPLIANCE_LABELS: Record<ComplianceAssertion['kind'], (a: ComplianceAssertion) => string> = {
+  escalated: (a) => `escalated to ${a.role ?? 'a person'}`,
+  blocked: (a) => (a.system ? `nothing done in ${a.system}` : 'the action is blocked'),
+  reviewed: (a) => `a person reviews before ${a.system ? `anything happens in ${a.system}` : 'acting'}`,
+  logged: (a) => `decision logged with ${a.field ?? 'an explanation'}`,
+}
+
 export default function TwinSituationCard({
   situation,
   targets,
@@ -47,6 +55,14 @@ export default function TwinSituationCard({
           <>
             <dt>Then</dt>
             <dd>{story.then}</dd>
+          </>
+        )}
+        {(story.expect.compliance ?? []).length > 0 && (
+          <>
+            <dt>Rule check</dt>
+            <dd>
+              {(story.expect.compliance ?? []).map((a) => COMPLIANCE_LABELS[a.kind](a)).join('; ')}
+            </dd>
           </>
         )}
       </dl>
