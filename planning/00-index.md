@@ -152,6 +152,29 @@ Suggested order: 27 then 28 (the minimum that changes outcomes -- works on
 uploaded documents alone, so it serves small businesses immediately), then
 29 and 30 in parallel, then 31 for mid-size and large organizations.
 
+## Phase 6 epics (groomed 2026-10-11 from a ground-truth and volume-testing review)
+
+Twin testing today is one scenario at a time: one input, one hand-typed
+set of expectations, one run, judged as pass/fail. These epics let an
+agent be tested against thousands of labelled cases. Ground truth comes
+from historical outcomes, the process's own gateway rules, and
+label-first generation rather than per-row typing. Runs repeat for
+consistency, and the release gate decides on pass rates with known
+confidence.
+
+| # | Epic | Summary |
+|---|---|---|
+| 32 | [Labelled Datasets & Ground Truth Management](epics/32-labelled-datasets-and-ground-truth.md) | Rows with inputs plus expected labels; data-driven scenarios; historical CSV import with pseudonymization; label review, ambiguity, versioning, holdout; promote failures to golden cases |
+| 33 | [Scalable Oracles](epics/33-scalable-oracles.md) | Structured gateway rules compiled into a rule oracle; label-first generation at volume; metamorphic relations; calibrated LLM judge for free text only; disagreement-driven review queue |
+| 34 | [Batch Execution at Volume](epics/34-batch-execution-at-volume.md) | Durable job queue (pulls US31.1 forward); repeats per row; cost estimate and budget cap; provider throttling; prompt caching; seeded replay; tiered suites; scheduled runs; load profile |
+| 35 | [Results at Volume & Statistical Release Gate](epics/35-results-at-volume-and-statistical-gate.md) | Pass rate with confidence; segment and decision breakdowns; failure clustering; flakiness; paired version comparison; statistical criteria in the Epic 23 gate; evidence export |
+
+Suggested order: 32 first (US32.1-32.3 alone make volume testing
+possible with historical data), then 34's US34.1-34.4 so batches actually
+run, then 35's US35.1-35.4 so results are readable. 33 can start as soon
+as 32 lands. Its rule oracle (US33.1-33.2) has the biggest payoff, since
+it labels any number of rows for free.
+
 ## Backlog (superseded by the Phase 2 epics above)
 
 See [backlog.md](backlog.md) -- kept as the historical record of the
