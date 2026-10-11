@@ -115,6 +115,43 @@ doc's "automated agent improvement loop" (its Section 12) as a committed
 epic -- the source document itself frames that as future-looking, not
 current scope.
 
+## Phase 4 epics (groomed 2026-10-09 from a business-user UX review of the Digital Twin Simulation tab)
+
+Epics 14-23 built a capable twin, but defining a test still means
+hand-writing six JSON fields -- usable by an Automation Architect, not by
+the Process Analyst / Process Owner who know what a realistic case looks
+like. These epics put a guided, blueprint-driven flow in front of the
+same engine.
+
+| # | Epic | Summary |
+|---|---|---|
+| 24 | [Guided Digital Twin Test Builder](epics/24-guided-twin-test-builder.md) | Wizard + LLM-drafted, blueprint-grounded "story card" situations; plain-language system/reviewer behaviour; pre-filled expectations; coverage meter; JSON form kept as Advanced |
+| 25 | [Test Data Kitchen](epics/25-test-data-kitchen.md) | Sample packs (typical/edge/messy), describe-it generation, "make it tricky" mutations, clone & disguise, reviewer persona casting -- saved as environment datasets |
+| 26 | [Business-Readable Twin Results & Tab Consolidation](epics/26-business-readable-twin-results.md) | Story-first results, "fix this" links, run-all, one "Test your agents" tab |
+
+Suggested order: 24 and 25 together (25 is step 3 of 24's wizard), with
+26's US26.1 shipping alongside; the rest of 26 after real usage.
+
+## Phase 5 epics (groomed 2026-10-11 from the [Enterprise Context Strategy](enterprise-context-strategy.md))
+
+Every LLM call today sees only the process in front of it -- nothing about
+the organization's verticals, jurisdictions, applications, policies,
+regulatory obligations, or approval authority. These epics add an
+organization context layer and feed it into every stage, from
+small-business onboarding up to federated, multi-vertical enterprises.
+
+| # | Epic | Summary |
+|---|---|---|
+| 27 | [Organization Context Foundation](epics/27-organization-context-foundation.md) | Organization / business unit / jurisdiction scope on processes; profile wizard; roles and approval authority; policy-document ingestion into obligations/controls with human confirm; starter regulatory packs |
+| 28 | [Context Resolver & Context Packs](epics/28-context-resolver-and-packs.md) | Applicability + filtered retrieval into versioned, citable, token-budgeted packs; wired into gap analysis, blueprint, agent generation, chat; staleness propagation |
+| 29 | [Application & Data Catalog](epics/29-application-and-data-catalog.md) | Applications with aliases replace free-text system names; OpenAPI import and twin API mode; data classification driving permissions |
+| 30 | [Compliance-Aware Testing & Release](epics/30-compliance-aware-testing-and-release.md) | Rule coverage in the test builder; reviewers from the approval matrix; control coverage in the release gate; compliance evidence export |
+| 31 | [Enterprise Connectors & Federation](epics/31-enterprise-connectors-and-federation.md) | Job queue; MCP-based read-only connectors (policies, CMDB/EA, GRC, data catalog, IdP); per-unit stewardship and access; per-unit model/provider policy |
+
+Suggested order: 27 then 28 (the minimum that changes outcomes -- works on
+uploaded documents alone, so it serves small businesses immediately), then
+29 and 30 in parallel, then 31 for mid-size and large organizations.
+
 ## Backlog (superseded by the Phase 2 epics above)
 
 See [backlog.md](backlog.md) -- kept as the historical record of the
