@@ -2866,3 +2866,55 @@ already first in every call. Anthropic models, including via OpenRouter,
 also need an explicit `cache_control` marker, which the client now adds.
 Providers that cache prefixes automatically need nothing. Whether caching
 actually reduced cost on the current Qwen route wasn't measured.
+
+## 2026-10-12 -- Live smoke test of Epics 29-35
+
+Run against the real model (Qwen via OpenRouter) in the isolated
+`axyntro-live` container, on the Customer Onboarding process and its
+credit-limit agent, using a 10-case labelled dataset (historical import
+with pseudonymized IDs and names). Total model spend was about $0.04.
+
+### Labelled runs tell the agent to report its decision
+
+A data-driven run is graded on the case decision, but the agent's own
+output schema rarely has a `decision` field, so live every row failed
+with "no 'decision' in the output". The twin instructions now add the
+scenario's `decision_field` to the required output keys, with its allowed
+values, whenever the run has an expected decision. The label itself is
+never shown.
+
+### Oracle preconditions are explained up front
+
+Rules are drafted from BPMN gateways (US33.1). A linear process, where
+the decision lives in a policy rather than a branch, used to get an empty
+list silently; it now gets a 400 explaining why. Label-first generation
+checks for confirmed rules before queueing, rather than failing later
+inside the job. Drafting oracle rules from confirmed policy obligations
+is still open.
+
+### Run duration starts when the run starts
+
+`started_at` was the row's insert time. Batch runs are inserted up front
+and queued, so durations included queue wait (a median of 327s against
+about 60s of real work), skewing the results page, the load profile, and
+the batch estimator. A fresh run now stamps `started_at` when it begins
+executing.
+
+### Failure clusters keep the decision direction
+
+Clusters blanked every quoted value, merging "approved what should
+escalate" with the reverse. Decision deviations keep their values, which
+come from a fixed set.
+
+### The DB session commits before the response is sent
+
+With FastAPI's default request scope, `get_db` committed after the reply
+went out. A client calling straight after login could arrive before the
+session row existed and get "Session expired". `DbDep` now uses
+`scope="function"`, which needs FastAPI 0.121 or later.
+
+### Heading citations survive a merged title
+
+A document title merged into the first clause hid that clause's heading,
+so it was cited as "paragraph 1 to paragraph 2". The citation now uses
+the first heading in the passage.

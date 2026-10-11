@@ -172,6 +172,10 @@ def test_data_driven_scenario_grades_each_row_against_its_labels(client, fake_ll
     failed = _run_row(client, fake_llm, process, scenario, "bad", {"summary": "done", "decision": "approved"})
     assert failed["graded_passed"] is False, failed["deviations"]
     assert [d["reason"] for d in failed["deviations"]] == ["Expected the case to be decided 'reject', but it was 'approve'"]
+    # The agent is told to report the decision even though its own output
+    # schema has no such field -- without it no row could ever pass.
+    instructions = fake_llm.complete.call_args_list[-1].args[0][1].content
+    assert "['summary', 'decision']" in instructions and '"approve", "reject", or "escalate"' in instructions
 
     snapshot = client.get(f"/api/processes/{process['id']}/runs/{failed['id']}/snapshot").json()
     assert json.dumps(snapshot).count(dataset["id"]) >= 1

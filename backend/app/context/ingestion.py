@@ -148,8 +148,10 @@ def split_into_passages(blocks: list[ExtractedBlock]) -> list[Passage]:
         # A passage that opens with a heading is cited by that heading
         # ("3. Sanctions screening"), which is what a reader of the policy
         # recognizes -- the extractor's paragraph number goes in brackets.
-        first_line = current[0].splitlines()[0].strip().lstrip("#").strip()
-        if _HEADING.match(current[0]) and len(first_line) <= 80:
+        # A merged document title can precede the heading.
+        heading = next((piece for piece in current if _HEADING.match(piece)), None)
+        first_line = heading.splitlines()[0].strip().lstrip("#").strip() if heading else ""
+        if heading and len(first_line) <= 80:
             ref = f"{first_line} ({ref})"
         passages.append(Passage(clause_ref=ref, text="\n".join(current)))
 

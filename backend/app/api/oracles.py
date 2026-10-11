@@ -102,6 +102,10 @@ async def generate(
     """US33.4: label-first generation. Queued when the job worker runs
     (large sets take many LLM calls), otherwise done in this request."""
     dataset = datasets.get_dataset_model(db, process_id, dataset_id)
+    try:
+        service.require_confirmed_rules(service.confirmed_views(db, process_id))
+    except service.OracleError as exc:
+        raise _bad(exc) from exc
     if get_settings().job_worker_enabled:
         job = queue.enqueue(
             db, "label_first_generate", {"process_id": process_id, "dataset_id": dataset.id, "request": body.model_dump(), "user_id": user.id},

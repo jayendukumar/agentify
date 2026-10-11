@@ -114,7 +114,7 @@ class _Suspend:
     pending_calls: list[ToolCall]
 
 
-def _twin_instructions(*, has_checkpoint: bool, output_fields: list[str]) -> str:
+def _twin_instructions(*, has_checkpoint: bool, output_fields: list[str], decision_field: str | None = None) -> str:
     lines = [
         "Digital twin simulation instructions for this test run only (not part of your normal "
         "operating instructions above):",
@@ -136,6 +136,11 @@ def _twin_instructions(*, has_checkpoint: bool, output_fields: list[str]) -> str
         lines.append(
             "- Once you are completely finished and have no more tool calls to make, respond with "
             "ONLY a short JSON object summarizing what you did. Do not include any other text."
+        )
+    if decision_field:
+        lines.append(
+            f'- Set "{decision_field}" to how you decided the case: "approve", "reject", or "escalate" '
+            "(you could not decide it yourself and passed it to someone else)."
         )
     return "\n".join(lines)
 
@@ -308,6 +313,12 @@ async def run_scenario(
         tools.append(_HUMAN_DECISION_TOOL)
 
     output_fields = [f.name for f in artifact.output_schema]
+    # Epic 32: a data-driven run is graded on the case decision, so the
+    # agent must report one even when its own output schema has no such
+    # field.
+    decision_field = scenario.decision_field if scenario.expected_decision is not None else None
+    if decision_field and output_fields and decision_field not in output_fields:
+        output_fields.append(decision_field)
     rng = random.Random(scenario.human_checkpoint_config.seed)
 
     steps: list[RunStep] = []
@@ -344,7 +355,7 @@ async def run_scenario(
     if resume_state is None:
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=artifact.system_prompt),
-            ChatMessage(role="system", content=_twin_instructions(has_checkpoint=has_checkpoint, output_fields=output_fields)),
+            ChatMessage(role="system", content=_twin_instructions(has_checkpoint=has_checkpoint, output_fields=output_fields, decision_field=decision_field)),
             ChatMessage(role="user", content=json.dumps(scenario.inputs)),
         ]
         tracker = GuardrailTracker(guardrails=artifact.guardrails)

@@ -58,7 +58,7 @@ def test_results_headline_breakdowns_clusters_and_consistency(client, fake_llm):
     assert segments["typical"]["rate"]["passed"] == 3 and segments["edge"]["rate"]["passed"] == 2
     assert results["decision_matrix"]["approve"] == {"approve": 3, "reject": 3}
     assert results["decision_matrix"]["reject"] == {"reject": 2}
-    assert results["clusters"][0]["pattern"] == "Expected the case to be decided '…', but it was '…'"
+    assert results["clusters"][0]["pattern"] == "Expected the case to be decided 'approve', but it was 'reject'"
     assert results["clusters"][0]["count"] == 3 and set(results["clusters"][0]["row_keys"]) == {"a2", "b2"}
     consistency = results["consistency"]
     assert (consistency["always_pass"], consistency["always_fail"], consistency["inconsistent"]) == (2, 1, 1)

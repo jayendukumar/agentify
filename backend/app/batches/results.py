@@ -170,7 +170,14 @@ _PLACEHOLDERS = [
 ]
 
 
+# A wrong case decision keeps its values: they come from a fixed set, and
+# approving what should escalate is a different problem from the reverse.
+_DECISION_REASON = re.compile(r"^Expected the case to be decided '[^']*', but it was '[^']*'$")
+
+
 def _pattern(reason: str) -> str:
+    if _DECISION_REASON.match(reason):
+        return reason
     text = reason
     for regex, replacement in _PLACEHOLDERS:
         text = regex.sub(replacement, text)

@@ -141,7 +141,13 @@ async def propose_rules(session: Session, llm: LLMClient, process_id: str) -> li
     fields = process_fields(session, process_id)
     existing = {(r.gateway_id, r.branch_target_id) for r in list_rules(session, process_id)}
     created: list[DecisionRuleModel] = []
-    for gateway in _gateways(session, process_id):
+    gateways = _gateways(session, process_id)
+    if not gateways:
+        raise OracleError(
+            "This process has no decision points (gateways) to draft rules for. Label cases by hand, "
+            "import them from history, or generate them from a chosen answer instead."
+        )
+    for gateway in gateways:
         pending = [s for s in gateway.successors if (gateway.id, s.node_id) not in existing]
         if not pending:
             continue
@@ -366,6 +372,11 @@ def _targets(total: int, mix: dict[str, float]) -> dict[str, int]:
     return counts
 
 
+def require_confirmed_rules(rules: list[RuleView]) -> None:
+    if not rules:
+        raise OracleError("Confirm the decision rules first -- they're what makes generated labels trustworthy")
+
+
 async def generate_label_first(
     session: Session, llm: LLMClient, dataset: LabelledDatasetModel, request: GenerateRequest, *, user_id: str | None
 ) -> GenerateResult:
@@ -375,8 +386,7 @@ async def generate_label_first(
     from app.twin import test_builder
 
     rules = confirmed_views(session, dataset.process_id)
-    if not rules:
-        raise OracleError("Confirm the decision rules first -- they're what makes generated labels trustworthy")
+    require_confirmed_rules(rules)
     artifact = session.get(AgentArtifactModel, dataset.agent_artifact_id) if dataset.agent_artifact_id else None
     if artifact is None:
         raise OracleError("Link the dataset to an agent first -- generation needs its input fields")

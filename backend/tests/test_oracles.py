@@ -196,6 +196,18 @@ def test_label_first_generation_keeps_only_oracle_confirmed(client, fake_llm):
     assert {r["labels"]["decision"] for r in rows} == {"approve", "escalate"} and all(r["provenance"] == "synthetic" for r in rows)
 
 
+def test_propose_explains_a_process_without_decision_points(client, fake_llm):
+    process, _ = _make_artifact(client)
+    refused = client.post(_rules_url(process["id"], "/propose"))
+    assert refused.status_code == 400 and "no decision points" in refused.json()["detail"]
+    fake_llm.complete.assert_not_called()
+
+    # Generation needs confirmed rules -- refused up front, not as a failed job later.
+    dataset = _dataset(client, process["id"], None, [])
+    refused = client.post(f"/api/processes/{process['id']}/datasets/{dataset['id']}/generate", json={"total": 4})
+    assert refused.status_code == 400 and "Confirm the decision rules first" in refused.json()["detail"]
+
+
 def test_metamorphic_variants(client):
     process, artifact = _make_artifact(client)
     dataset = _dataset(client, process["id"], artifact["id"], [

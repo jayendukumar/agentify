@@ -11,7 +11,11 @@ from app.registry.base import RegistryConnector
 from app.registry.manager import get_registries
 
 LLMDep = Annotated[LLMClient, Depends(get_llm_client)]
-DbDep = Annotated[Session, Depends(get_db)]
+# scope="function": commit before the response is sent. With FastAPI's
+# default request scope the commit ran after the client already had the
+# reply, so an immediate follow-up request (e.g. right after login) could
+# miss what the first one wrote.
+DbDep = Annotated[Session, Depends(get_db, scope="function")]
 # Epic 13: a FastAPI dependency (not a bare lru_cache call) specifically so
 # tests can override it the same way they override get_llm_client -- the
 # real LocalRegistryConnector can't simulate an unreachable/auth-error

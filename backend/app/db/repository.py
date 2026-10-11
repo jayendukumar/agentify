@@ -1269,6 +1269,10 @@ async def _execute_twin_run(
         environment = _to_pydantic_twin_environment(session, environment_model) if environment_model is not None else None
         resume_state = run_model.resume_state
         run_model.resume_state = None
+        if resume_state is None:
+            # Epic 34: batch runs are created up front and queued, so the
+            # insert time would count queue wait as run time.
+            run_model.started_at = utcnow()
         run_model.status = "RUNNING"
         session.commit()
 
