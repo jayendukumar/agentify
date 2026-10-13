@@ -1,0 +1,80 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Core Banking System API",
+    "version": "11.2.0",
+    "description": "Customers, accounts, and credit limits of record."
+  },
+  "servers": [{ "url": "https://core-banking.sandbox.meridian.example" }],
+  "paths": {
+    "/customers/{customerId}": {
+      "get": {
+        "operationId": "getCustomer",
+        "summary": "Get a customer record",
+        "parameters": [
+          { "name": "customerId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "The customer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "customerId": { "type": "string" },
+                    "name": { "type": "string" },
+                    "country": { "type": "string" },
+                    "kycStatus": { "type": "string", "enum": ["verified", "pending", "failed"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{accountId}/credit-limit": {
+      "post": {
+        "operationId": "setCreditLimit",
+        "summary": "Record the approved credit limit on an account",
+        "parameters": [
+          { "name": "accountId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["limitEur", "approvedBy", "reason"],
+                "properties": {
+                  "limitEur": { "type": "number" },
+                  "approvedBy": { "type": "string" },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The limit was recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accountId": { "type": "string" },
+                    "limitEur": { "type": "number" },
+                    "effectiveFrom": { "type": "string", "format": "date" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

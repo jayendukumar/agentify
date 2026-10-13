@@ -1,0 +1,41 @@
+Application ID,Customer Name,Email,IBAN,Country,Identity Check,Sanctions Screening,Requested Limit (EUR),Annual Income (EUR),Channel,Final Status
+APP-2025-10407,Anna Rossi,anna.rossi@example.es,ES917023994561411063,ES,Failed,Potential match,90000,222000,Branch,Declined
+APP-2025-10414,Lea Rossi,lea.rossi@example.fr,FR761672644418865024,FR,Passed,Clear,120000,171000,Online,Referred
+APP-2025-10421,Mateo Santos,mateo.santos@example.es,ES916180489028177532,ES,Passed,Clear,90000,98000,Broker,Referred
+APP-2025-10428,Sofia Silva,sofia.silva@example.it,IT605943436309301818,IT,Passed,Potential match,30000,240000,Online,Referred
+APP-2025-10435,Tomasz Keller,tomasz.keller@example.de,DE896127586740684256,DE,Failed,Clear,12000,131000,Online,Declined
+APP-2025-10442,Klara Dubois,klara.dubois@example.es,ES919450307439593962,ES,Passed,Clear,120000,130000,Online,Referred
+APP-2025-10449,Sofia Lindqvist,sofia.lindqvist@example.ie,IE295769318221848013,IE,Passed,Clear,55000,55000,Branch,Approved
+APP-2025-10456,Niamh Jansen,niamh.jansen@example.ie,IE295350563432133348,IE,Passed,Clear,12000,213000,Online,Approved
+APP-2025-10463,Sofia Costa,sofia.costa@example.it,IT602481827530414018,IT,Failed,Clear,5000,110000,Online,Declined
+APP-2025-10470,Marta Lambert,marta.lambert@example.fr,FR768346834572409282,FR,Passed,Potential match,60000,67000,Broker,Referred
+APP-2025-10477,Klara Virtanen,klara.virtanen@example.de,DE891527695999670547,DE,Failed,Clear,75000,57000,Online,Declined
+APP-2025-10484,Elena Kowalski,elena.kowalski@example.de,DE891074305068399496,DE,Passed,Clear,120000,74000,Online,Referred
+APP-2025-10491,Eva Virtanen,eva.virtanen@example.it,IT608374998781661901,IT,Passed,Clear,15000,183000,Broker,Approved
+APP-2025-10498,Henrik Bauer,henrik.bauer@example.nl,NL918132395347611069,NL,Passed,Clear,5000,52000,Branch,Approved
+APP-2025-10505,Chiara Fischer,chiara.fischer@example.it,IT606152763853218547,IT,Passed,Clear,90000,69000,Broker,Referred
+APP-2025-10512,Klara Virtanen,klara.virtanen@example.es,ES912167139580033974,ES,Passed,Clear,5000,115000,Branch,Approved
+APP-2025-10519,Jonas Lindqvist,jonas.lindqvist@example.es,ES911751268810576509,ES,Passed,Potential match,8000,156000,Broker,Referred
+APP-2025-10526,Mateo Dubois,mateo.dubois@example.fr,FR762164204923371634,FR,Passed,Potential match,120000,45000,Broker,Referred
+APP-2025-10533,Camille Lambert,camille.lambert@example.nl,NL916308073683233512,NL,Passed,Clear,58000,120000,Branch,Approved
+APP-2025-10540,Diego Santos,diego.santos@example.nl,NL919790058833008210,NL,Failed,Clear,40000,207000,Online,Declined
+APP-2025-10547,Jonas Weber,jonas.weber@example.it,IT608409362143707738,IT,Passed,Clear,60000,253000,Branch,Referred
+APP-2025-10554,Anna Murphy,anna.murphy@example.fr,FR765612112320032038,FR,Passed,Clear,90000,87000,Online,Referred
+APP-2025-10561,Ines Murphy,ines.murphy@example.ie,IE292544649475816973,IE,Passed,Clear,20000,56000,Branch,Approved
+APP-2025-10568,Mateo Bauer,mateo.bauer@example.de,DE894727901406130733,DE,Passed,Clear,25000,165000,Online,Approved
+APP-2025-10575,Paulo Moreau,paulo.moreau@example.ie,IE298328824545078039,IE,Passed,Clear,40000,111000,Broker,Approved
+APP-2025-10582,Niamh Virtanen,niamh.virtanen@example.es,ES913839069654492006,ES,Passed,Clear,50000,192000,Broker,Approved
+APP-2025-10589,Jonas Jansen,jonas.jansen@example.es,ES914632902144617590,ES,Passed,Clear,45000,140000,Online,Approved
+APP-2025-10596,Ines Novak,ines.novak@example.it,IT608488107530521096,IT,Passed,Clear,15000,58000,Branch,Approved
+APP-2025-10603,Pierre Costa,pierre.costa@example.nl,NL917683285209505719,NL,Passed,Clear,55000,43000,Online,Referred
+APP-2025-10610,Elena Murphy,elena.murphy@example.nl,NL912148275637811704,NL,Passed,Clear,120000,242000,Branch,Referred
+APP-2025-10617,Marta Keller,marta.keller@example.ie,IE291733647450607490,IE,Passed,Clear,58000,82000,Online,Approved
+APP-2025-10624,Camille Keller,camille.keller@example.it,IT608574669120054709,IT,Passed,Clear,45000,168000,Online,Approved
+APP-2025-10631,Elena Garcia,elena.garcia@example.nl,NL916828462849073286,NL,Passed,Clear,120000,222000,Broker,Referred
+APP-2025-10638,Camille Santos,camille.santos@example.de,DE892967129959405751,DE,Failed,Clear,45000,195000,Branch,Declined
+APP-2025-10645,Paulo Keller,paulo.keller@example.it,IT602536859264704431,IT,Failed,Clear,45000,199000,Broker,Declined
+APP-2025-10652,Eva Rossi,eva.rossi@example.it,IT601453407248147291,IT,Passed,Clear,15000,179000,Online,Approved
+APP-2025-10659,Anna Muller,anna.muller@example.it,IT606804359844822529,IT,Passed,Clear,20000,158000,Online,Approved
+APP-2025-10666,Lukas Horvat,lukas.horvat@example.de,DE896355305482181223,DE,Passed,Clear,60000,114000,Online,Referred
+APP-2025-10673,Sofia Kowalski,sofia.kowalski@example.de,DE891692460752068307,DE,Passed,Clear,15000,211000,Online,Approved
+APP-2025-10680,Lea Santos,lea.santos@example.ie,IE293712884114775266,IE,Passed,Clear,5000,210000,Branch,Approved

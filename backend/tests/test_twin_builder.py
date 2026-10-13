@@ -204,6 +204,20 @@ def test_generate_data_returns_records_capped_to_count(client, fake_llm):
     assert fake_llm.complete.call_args.kwargs["operation"] == "twin_data_messy"
 
 
+def test_generate_data_drops_null_records_instead_of_failing(client, fake_llm):
+    """Live: one `"record": null` among 25 failed a whole label-first job."""
+    process, artifact = _make_artifact(client)
+    fake_llm.complete.return_value = _llm_json(
+        {"records": [{"label": "ok", "record": {"record_id": "R-1"}}, {"label": "empty", "record": None}]}
+    )
+    r = client.post(
+        f"/api/processes/{process['id']}/agent-artifacts/{artifact['id']}/test-builder/data",
+        json={"mode": "messy", "count": 5},
+    )
+    assert r.status_code == 200
+    assert [rec["label"] for rec in r.json()["records"]] == ["ok"]
+
+
 def test_generate_personas_turns_uncheckable_threshold_into_reject(client, fake_llm):
     """The fixture agent's only input is a string `record_id` -- a
     threshold on any field can't be checked reliably (the engine raises if

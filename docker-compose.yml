@@ -28,8 +28,11 @@ services:
     environment:
       # Overrides whatever backend/.env has for local (non-Docker) dev --
       # inside the compose network the db is reachable by service name,
-      # not 127.0.0.1.
-      DATABASE_URL: postgresql+psycopg://agentic:agentic@db:5432/agentic_solution_generator
+      # not 127.0.0.1. APP_DB_NAME switches to the demo database
+      # (start.ps1 -Demo), which also raises the job worker's concurrency
+      # so demo batches finish in minutes rather than an hour.
+      DATABASE_URL: postgresql+psycopg://agentic:agentic@db:5432/${APP_DB_NAME:-agentic_solution_generator}
+      JOB_CONCURRENCY: ${JOB_CONCURRENCY:-2}
     ports:
       - "8000:8000"
     depends_on:

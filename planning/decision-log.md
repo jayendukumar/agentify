@@ -2918,3 +2918,30 @@ session row existed and get "Session expired". `DbDep` now uses
 A document title merged into the first clause hid that clause's heading,
 so it was cited as "paragraph 1 to paragraph 2". The citation now uses
 the first heading in the passage.
+
+## 2026-10-12 -- Demo seed for Epics 27-35
+
+### The demo is seeded through the API, onto a curated diagram
+
+`backend/scripts/demo_seed/seed_demo.py` builds the Customer Onboarding
+story through the public API, not by writing rows, so every derived
+thing (context packs, citations, links, lifecycle, oracle labels) comes
+from the real code paths a presenter will click through. The diagram is
+not extracted from a document. It is a fixed BPMN built once with the
+app's own builder (`assets/customer-onboarding.bpmn`), because rule
+drafting, the oracle, and the agent all key off its three gateways. An
+extracted diagram changes shape run to run. The model still drafts the
+decision rules (US33.1). The script then sets the six expected
+expressions and confirms them, the step a reviewer would do. The demo
+runs in its own database (`start.ps1 -Demo`), because the organization
+is a singleton.
+
+### Defect found live: one null generated record failed a whole label-first job
+
+The first live seed lost an eight-minute generation job because the
+model returned `"record": null` for one of 25 cases.
+`test_builder.generate_records` already drops empty records, but
+`GeneratedRecord.record` was a required dict, so validation rejected the
+whole reply before that filter ran. Mocked tests always returned
+well-formed records. A null record is now coerced to `{}` and dropped
+like any other empty one.

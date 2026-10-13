@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .blueprint import AgentIOField
 from .twin import CoverageTarget, ReviewerSetup, ScenarioStory
@@ -120,7 +120,14 @@ class GenerateDataRequest(BaseModel):
 class GeneratedRecord(BaseModel):
     label: str
     note: str = ""
-    record: dict[str, Any]
+    # A null record from the model becomes {} so generate_records can drop
+    # it, rather than failing the whole batch.
+    record: dict[str, Any] = {}
+
+    @field_validator("record", mode="before")
+    @classmethod
+    def _null_record(cls, value: Any) -> Any:
+        return {} if value is None else value
 
 
 class GeneratedRecords(BaseModel):

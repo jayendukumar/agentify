@@ -1,0 +1,77 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Credit Decisioning Engine API",
+    "version": "2.4.0",
+    "description": "Scores applicants and recommends initial credit limits."
+  },
+  "servers": [{ "url": "https://credit-engine.sandbox.meridian.example" }],
+  "paths": {
+    "/applicants/{applicantId}/score": {
+      "get": {
+        "operationId": "getCreditScore",
+        "summary": "Get the applicant's current credit risk score",
+        "parameters": [
+          { "name": "applicantId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "The applicant's score",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "applicantId": { "type": "string" },
+                    "score": { "type": "integer", "minimum": 300, "maximum": 850 },
+                    "riskBand": { "type": "string", "enum": ["low", "medium", "high"] },
+                    "scoredAt": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/limit-recommendations": {
+      "post": {
+        "operationId": "recommendCreditLimit",
+        "summary": "Recommend an initial credit limit for an application",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["applicantId", "requestedLimitEur"],
+                "properties": {
+                  "applicantId": { "type": "string" },
+                  "requestedLimitEur": { "type": "number" },
+                  "annualIncomeEur": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A recommendation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recommendedLimitEur": { "type": "number" },
+                    "affordable": { "type": "boolean" },
+                    "reasons": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
