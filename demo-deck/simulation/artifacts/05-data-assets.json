@@ -1,0 +1,48 @@
+{
+  "data_assets": [
+    {
+      "name": "Customer",
+      "classification": "Confidential-PII",
+      "stored_in": "EU",
+      "description": "Identity, contact details and KYC results."
+    },
+    {
+      "name": "Account",
+      "classification": "Confidential",
+      "stored_in": "EU",
+      "description": "Accounts, balances and credit limits."
+    },
+    {
+      "name": "Credit decision",
+      "classification": "Confidential",
+      "stored_in": "EU",
+      "description": "Scores, recommended limits and decision reasons."
+    },
+    {
+      "name": "Sanctions screening result",
+      "classification": "Restricted",
+      "stored_in": "EU",
+      "description": "Screening hits and MLRO decisions (kept five years)."
+    }
+  ],
+  "held_by_application": {
+    "Core Banking System": [
+      "Customer",
+      "Account"
+    ],
+    "Credit Decisioning Engine": [
+      "Customer",
+      "Credit decision"
+    ],
+    "Sanctions Screening Service": [
+      "Customer",
+      "Sanctions screening result"
+    ],
+    "Identity Verification Service": [
+      "Customer"
+    ],
+    "Customer Notifications": [
+      "Customer"
+    ]
+  }
+}

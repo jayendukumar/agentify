@@ -1,0 +1,17 @@
+[
+ {"go":"/organization"},{"shot":"../screenshots/01-org-profile"},
+ {"scroll":"Starter rule pack"},{"shot":"../screenshots/02-rule-packs"},
+ {"click":"Browse context"},{"select":"Approval authorities"},{"shot":"../screenshots/03-approval-authorities"},
+ {"select":"Controls"},{"scroll":"What the organization knows"},{"shot":"../screenshots/04-controls"},
+ {"click":"What applies where"},{"select":"Retail Banking"},{"fill":"DE, UK","value":"DE"},{"click":"Show what applies","wait":2500},{"shot":"../screenshots/05-what-applies"},
+ {"scroll":400},{"shot":"../screenshots/05b-what-applies-more"},
+ {"click":"Applications & data"},{"scroll":"Applications"},{"shot":"../screenshots/06-applications"},
+ {"scroll":"Data assets"},{"shot":"../screenshots/07-data-assets"},
+ {"click":"Connectors"},{"scroll":"Connectors"},{"shot":"../screenshots/08-connectors"},
+ {"click":"Changes & access"},{"scroll":"Who stewards what"},{"shot":"../screenshots/09-stewards"},
+ {"scroll":"Model policy"},{"shot":"../screenshots/10-model-policy"},
+ {"go":"/processes/proc_9ea4381551bb/blueprint","wait":4000},{"shot":"../screenshots/11-blueprint"},
+ {"select":"credit limit"},{"scroll":"Inspect process step"},{"shot":"../screenshots/12-blueprint-step"},
+ {"click":"Show organization context used"},{"probe":1},{"shot":"../screenshots/13-context-used"},
+ {"go":"/processes/proc_9ea4381551bb/blueprint","wait":4000},{"click":"Agents (12)"},{"click":"CreditAssessmentAgent","wait":2000},{"probe":1},{"shot":"../screenshots/14-agent"}
+]

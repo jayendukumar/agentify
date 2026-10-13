@@ -1,0 +1,6 @@
+{
+  "name": "Name casing doesn't change the decision",
+  "kind": "invariance (must not change the decision)",
+  "field": "customer_name",
+  "change": "UPPERCASE it"
+}

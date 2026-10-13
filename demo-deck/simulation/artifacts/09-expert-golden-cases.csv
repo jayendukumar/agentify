@@ -1,0 +1,11 @@
+row_key,critical,segment,decision,application_id,customer_name,email,country,identity_check,sanctions_screening,requested_limit_eur,annual_income_eur
+edge-limit-exactly-50k,True,edge-cases,approve,APP-DEMO-E1,Hannah Becker,hannah.becker@example.de,DE,passed,clear,50000,140000
+edge-limit-just-over-50k,True,edge-cases,escalate,APP-DEMO-E2,Marco Bianchi,marco.bianchi@example.it,IT,passed,clear,50001,150000
+edge-sanctions-small-limit,True,edge-cases,escalate,APP-DEMO-E3,Viktor Petrov,viktor.petrov@example.de,DE,passed,potential match,10000,60000
+edge-identity-failed,True,edge-cases,reject,APP-DEMO-E4,Julia Schmidt,julia.schmidt@example.de,DE,failed,clear,10000,52000
+edge-everything-wrong,True,edge-cases,reject,APP-DEMO-E5,Omar Haddad,omar.haddad@example.fr,FR,failed,potential match,90000,80000
+typical-small,False,typical,approve,APP-DEMO-T1,Lena Vogel,lena.vogel@example.de,DE,passed,clear,15000,61000
+typical-medium,False,typical,approve,APP-DEMO-T2,Pierre Laurent,pierre.laurent@example.fr,FR,passed,clear,35000,98000
+typical-large,False,typical,escalate,APP-DEMO-T3,Sanne de Vries,sanne.devries@example.nl,NL,passed,clear,75000,210000
+typical-very-large,False,typical,escalate,APP-DEMO-T4,Carlos Ruiz,carlos.ruiz@example.es,ES,passed,clear,120000,260000
+edge-low-income-high-request,False,edge-cases,approve,APP-DEMO-E6,Aoife Byrne,aoife.byrne@example.ie,IE,passed,clear,45000,24000

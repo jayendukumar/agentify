@@ -1,0 +1,6 @@
+Name,Aliases,Vendor,Owner,Description,Hosting Region,Criticality
+Core Banking System,Core banking;CBS;Temenos Core,Temenos,Head of Operations,"Accounts, customers and credit limits of record",EU (Frankfurt),critical
+Credit Decisioning Engine,Credit engine;Credit scoring;Decision engine,Experian,Chief Risk Officer,Scores applicants and recommends credit limits,EU (Dublin),high
+Sanctions Screening Service,Sanctions screening;Sanctions list screening;World-Check,Refinitiv,MLRO,Screens names against EU and UN sanctions lists,EU (Frankfurt),critical
+Identity Verification Service,ID verification;KYC service;eIDV,Onfido,Head of Operations,Document and biometric identity checks,EU (Amsterdam),high
+Customer Notifications,Notification service;Email service,Twilio SendGrid,Head of Operations,Customer letters and emails,EU (Dublin),medium

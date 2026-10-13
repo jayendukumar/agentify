@@ -1,0 +1,6 @@
+{
+  "row_key": "edge-low-income-high-request",
+  "ambiguous": true,
+  "note": "The documented rule only looks at the amount. A EUR 45,000 limit on EUR 24,000 income passes it, but an analyst would likely decline on affordability.",
+  "second_opinion_decision": "reject"
+}

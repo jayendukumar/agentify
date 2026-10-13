@@ -1,0 +1,26 @@
+{
+  "Credit Decisioning Engine": [
+    {
+      "url": "https://credit-engine.sandbox.meridian.example",
+      "environment": "sandbox",
+      "description": "Vendor sandbox"
+    },
+    {
+      "url": "https://credit-engine.meridian.example",
+      "environment": "production",
+      "description": "Recorded for reference only -- never called from a twin"
+    }
+  ],
+  "Core Banking System": [
+    {
+      "url": "https://core-banking.sandbox.meridian.example",
+      "environment": "sandbox",
+      "description": "Vendor sandbox"
+    },
+    {
+      "url": "https://core-banking.meridian.example",
+      "environment": "production",
+      "description": "Recorded for reference only -- never called from a twin"
+    }
+  ]
+}

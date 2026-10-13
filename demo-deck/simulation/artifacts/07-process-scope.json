@@ -1,0 +1,8 @@
+{
+  "name": "Customer Onboarding",
+  "business_unit": "Retail Banking",
+  "jurisdictions": [
+    "DE"
+  ],
+  "process_type": "customer_onboarding"
+}

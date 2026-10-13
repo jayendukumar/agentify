@@ -1,0 +1,2 @@
+[{"go": "/"},
+ {"eval": "fetch('/api/auth/login', {method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: 'Demo Presenter', role: 'editor'})}).then(r => r.status)"}]

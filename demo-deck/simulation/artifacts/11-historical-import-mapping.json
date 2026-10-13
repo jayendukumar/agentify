@@ -1,0 +1,68 @@
+[
+  {
+    "column": "Application ID",
+    "role": "input",
+    "field": "application_id",
+    "pseudonymize": "hash"
+  },
+  {
+    "column": "Customer Name",
+    "role": "input",
+    "field": "customer_name",
+    "pseudonymize": "fake"
+  },
+  {
+    "column": "Email",
+    "role": "input",
+    "field": "email",
+    "pseudonymize": "fake"
+  },
+  {
+    "column": "IBAN",
+    "role": "input",
+    "field": "iban",
+    "pseudonymize": "fake"
+  },
+  {
+    "column": "Country",
+    "role": "input",
+    "field": "country",
+    "pseudonymize": "keep"
+  },
+  {
+    "column": "Identity Check",
+    "role": "input",
+    "field": "identity_check",
+    "pseudonymize": "keep"
+  },
+  {
+    "column": "Sanctions Screening",
+    "role": "input",
+    "field": "sanctions_screening",
+    "pseudonymize": "keep"
+  },
+  {
+    "column": "Requested Limit (EUR)",
+    "role": "input",
+    "field": "requested_limit_eur",
+    "pseudonymize": "keep"
+  },
+  {
+    "column": "Annual Income (EUR)",
+    "role": "input",
+    "field": "annual_income_eur",
+    "pseudonymize": "keep"
+  },
+  {
+    "column": "Channel",
+    "role": "segment",
+    "field": null,
+    "pseudonymize": "keep"
+  },
+  {
+    "column": "Final Status",
+    "role": "decision",
+    "field": null,
+    "pseudonymize": "keep"
+  }
+]

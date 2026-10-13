@@ -1,0 +1,32 @@
+{
+  "v1_correctness_batch": {
+    "tier": "full",
+    "trials": 1,
+    "budget_usd": 5.0,
+    "seed": 7
+  },
+  "load_batch": {
+    "tier": "smoke",
+    "mode": "load",
+    "target_concurrency": 8,
+    "stub_latency_ms": 250,
+    "trials": 1,
+    "budget_usd": 5.0,
+    "seed": 7
+  },
+  "nightly_schedule": {
+    "tier": "regression",
+    "trials": 1,
+    "every_minutes": 1440,
+    "on_dataset_change": true,
+    "on_context_change": true,
+    "budget_usd": 2.0,
+    "enabled": false
+  },
+  "v2_correctness_batch": {
+    "tier": "full",
+    "trials": 1,
+    "budget_usd": 5.0,
+    "seed": 7
+  }
+}

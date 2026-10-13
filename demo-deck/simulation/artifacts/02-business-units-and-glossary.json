@@ -1,0 +1,32 @@
+{
+  "business_units": {
+    "Retail Banking": {
+      "description": "Current accounts, cards and personal lending for EU retail customers."
+    },
+    "Wealth Management": {
+      "description": "Private banking and investment advice.",
+      "model_policy": {
+        "models_must_be_hosted_in": [
+          "EU"
+        ],
+        "remove_personal_data_before_calling_model": true
+      }
+    }
+  },
+  "glossary": [
+    {
+      "term": "MLRO",
+      "definition": "Money Laundering Reporting Officer: decides on potential sanctions matches and suspicious activity.",
+      "synonyms": [
+        "Money Laundering Reporting Officer"
+      ]
+    },
+    {
+      "term": "Account activation",
+      "definition": "Enabling the customer to transact on the account.",
+      "synonyms": [
+        "activate account"
+      ]
+    }
+  ]
+}

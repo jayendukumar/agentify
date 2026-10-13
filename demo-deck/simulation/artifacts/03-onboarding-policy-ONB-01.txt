@@ -1,0 +1,17 @@
+Meridian Group -- Customer Onboarding Policy (ONB-01)
+
+1. Scope
+This policy applies to all retail banking customer onboarding in the EU.
+
+2. Identity verification
+Every new customer must have their identity verified against an official document before the account is opened. Accounts must not be activated while verification is pending. An application whose identity cannot be verified must be rejected.
+
+3. Sanctions screening
+All new customers must be screened against the EU consolidated sanctions list. A potential match must be reviewed by the MLRO, who decides whether to proceed. A potential match must never be cleared automatically. Screening results must be kept for five years.
+
+4. Credit limits
+Initial credit limits up to EUR 50,000 may be approved by the Head of Operations. Limits above EUR 50,000 require approval by the Chief Risk Officer. Every credit limit decision must be logged with its reasons.
+
+5. Definitions
+"Account activation" means enabling the customer to transact on the account.
+"MLRO" means the Money Laundering Reporting Officer.

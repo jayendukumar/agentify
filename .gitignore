@@ -14,3 +14,7 @@ Thumbs.db
 
 # Local browser review screenshots and reports
 frontend/.ui-review/
+
+# Demo deck screenshot capture: frontend build and raw replay frames
+demo-deck/build/capture/demo-dist/
+demo-deck/build/capture/frames/

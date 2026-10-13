@@ -1,0 +1,33 @@
+{
+  "second_user": {
+    "name": "Wealth Management Analyst",
+    "role": "editor",
+    "membership": [
+      {
+        "business_unit": "Wealth Management",
+        "steward": true
+      }
+    ]
+  },
+  "connectors": [
+    {
+      "name": "Policy library (SharePoint export)",
+      "type": "folder",
+      "config": {
+        "path": "/data/policies"
+      },
+      "enabled": false,
+      "schedule_minutes": 1440
+    },
+    {
+      "name": "ServiceNow CMDB applications",
+      "type": "http",
+      "config": {
+        "url": "https://meridian.service-now.example/api/now/table/cmdb_ci_appl",
+        "token_env": "SNOW_TOKEN"
+      },
+      "enabled": false,
+      "schedule_minutes": 360
+    }
+  ]
+}

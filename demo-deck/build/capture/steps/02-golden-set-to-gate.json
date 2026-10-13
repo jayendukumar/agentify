@@ -1,0 +1,15 @@
+[
+ {"go":"/processes/proc_9ea4381551bb/datasets","wait":5000},{"shot":"../screenshots/15-golden-cases"},
+ {"scroll":"Decision rules"},{"shot":"../screenshots/16-decision-rules"},
+ {"scroll":"golden set v7"},{"shot":"../screenshots/17-dataset"},
+ {"scroll":"Run at volume"},{"shot":"../screenshots/18-run-at-volume"},
+ {"scroll":"Rules and labels disagree"},{"shot":"../screenshots/19-oracle-conflicts"},
+ {"scroll":"Answers at scale"},{"shot":"../screenshots/19b-answers-at-scale"},
+ {"scroll":"Things that must hold"},{"shot":"../screenshots/20-invariants"},
+ {"go":"/processes/proc_9ea4381551bb/batches/batch_41412c61b506","wait":5000},{"shot":"../screenshots/21-batch-results"},
+ {"scroll":"Where it does well"},{"shot":"../screenshots/22-segments"},
+ {"scroll":"How it decides"},{"shot":"../screenshots/23-how-it-decides"},
+ {"scroll":"What goes wrong"},{"shot":"../screenshots/24-what-goes-wrong"},
+ {"scroll":"Compare with another batch"},{"eval":"[...document.querySelectorAll('select')].map(s=>[...s.options].map(o=>o.text).join(', ')).join(' || ')"},{"select":"v1"},{"probe":1},{"scroll":"Compare with another batch"},{"shot":"../screenshots/25-compare"},
+ {"scroll":"Release criteria"},{"shot":"../screenshots/26-release-gate"}
+]

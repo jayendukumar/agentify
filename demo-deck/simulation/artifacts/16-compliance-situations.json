@@ -1,0 +1,125 @@
+[
+  {
+    "name": "Rule check: GDPR-C-HUMAN-IN-LOOP",
+    "inputs": {
+      "application_id": "APP-DEMO-C1",
+      "customer_name": "Lena Vogel",
+      "email": "lena.vogel@example.de",
+      "country": "DE",
+      "identity_check": "passed",
+      "sanctions_screening": "clear",
+      "requested_limit_eur": 20000,
+      "annual_income_eur": 70000
+    },
+    "step_match": "in_order",
+    "expected_steps": [],
+    "expected_outputs": {},
+    "human_checkpoint_config": {
+      "mode": "probability",
+      "approve_probability": 1.0,
+      "seed": null,
+      "rule": null
+    },
+    "story": {
+      "title": "Follows GDPR-C-HUMAN-IN-LOOP",
+      "given": "A verified customer with a clear sanctions screen asks for a EUR 20,000 limit",
+      "when": "the agent assesses the credit limit",
+      "then": "Decisions with legal or similarly significant effects on an individual are reviewed by a person before they take effect, and the reasons are recorded so they can be explained and contested.",
+      "covers": [
+        "ctl:ctx_e80d4da82df4"
+      ],
+      "source": "manual",
+      "system_behaviour": {},
+      "system_data": {},
+      "reviewer": {
+        "behaviour": "none",
+        "field": null,
+        "threshold": null,
+        "persona_name": null
+      },
+      "expect": {
+        "systems_used": [],
+        "review_decision": null,
+        "output_fields": [],
+        "compliance": [
+          {
+            "control_id": "ctl:ctx_e80d4da82df4",
+            "kind": "escalated",
+            "role": null,
+            "system": null,
+            "field": null
+          },
+          {
+            "control_id": "ctl:ctx_e80d4da82df4",
+            "kind": "logged",
+            "role": null,
+            "system": null,
+            "field": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "Rule check: AML-C-PEP-APPROVAL",
+    "inputs": {
+      "application_id": "APP-DEMO-C1",
+      "customer_name": "Lena Vogel",
+      "email": "lena.vogel@example.de",
+      "country": "DE",
+      "identity_check": "passed",
+      "sanctions_screening": "clear",
+      "requested_limit_eur": 20000,
+      "annual_income_eur": 70000,
+      "politically_exposed_person": true
+    },
+    "step_match": "in_order",
+    "expected_steps": [],
+    "expected_outputs": {},
+    "human_checkpoint_config": {
+      "mode": "probability",
+      "approve_probability": 1.0,
+      "seed": null,
+      "rule": null
+    },
+    "story": {
+      "title": "Follows AML-C-PEP-APPROVAL",
+      "given": "The applicant is a politically exposed person asking for EUR 20,000",
+      "when": "the agent assesses the credit limit",
+      "then": "A customer flagged as a PEP cannot be onboarded without approval from senior management.",
+      "covers": [
+        "ctl:ctx_06f152f94d95"
+      ],
+      "source": "manual",
+      "system_behaviour": {},
+      "system_data": {},
+      "reviewer": {
+        "behaviour": "none",
+        "field": null,
+        "threshold": null,
+        "persona_name": null
+      },
+      "expect": {
+        "systems_used": [],
+        "review_decision": null,
+        "output_fields": [],
+        "compliance": [
+          {
+            "control_id": "ctl:ctx_06f152f94d95",
+            "kind": "escalated",
+            "role": "Senior Management",
+            "system": null,
+            "field": null
+          },
+          {
+            "control_id": "ctl:ctx_06f152f94d95",
+            "kind": "logged",
+            "role": null,
+            "system": null,
+            "field": null
+          }
+        ]
+      }
+    }
+  }
+]

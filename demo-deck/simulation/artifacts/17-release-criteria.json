@@ -1,0 +1,10 @@
+{
+  "min_pass_rate_lower": 0.85,
+  "min_segment_rate": 0.7,
+  "critical_must_pass": true,
+  "no_significant_regression": true,
+  "tiers": [
+    "regression",
+    "full"
+  ]
+}

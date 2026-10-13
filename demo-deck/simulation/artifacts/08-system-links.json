@@ -1,0 +1,16 @@
+{
+  "note": "Blueprint system name contains -> catalog application it is linked to (used only when the catalog's own name/alias matching didn't link it)",
+  "keywords": {
+    "sanction": "Sanctions Screening Service",
+    "identity": "Identity Verification Service",
+    "kyc": "Identity Verification Service",
+    "credit": "Credit Decisioning Engine",
+    "scor": "Credit Decisioning Engine",
+    "decision": "Credit Decisioning Engine",
+    "core": "Core Banking System",
+    "bank": "Core Banking System",
+    "account": "Core Banking System",
+    "notif": "Customer Notifications",
+    "email": "Customer Notifications"
+  }
+}

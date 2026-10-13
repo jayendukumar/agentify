@@ -1,0 +1,8 @@
+[{"go":"/"},{"eval":"fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Demo Presenter',role:'editor'})}).then(r=>r.status)"},
+ {"go":"/"},{"shot":"../screenshots/v2-process-list"},
+ {"go":"/processes/proc_9ea4381551bb","wait":3000},{"probe":1},{"shot":"../screenshots/v2-process"},
+ {"go":"/processes/proc_9ea4381551bb/diagram","wait":5000},{"click":"Fit diagram","wait":2000},{"shot":"../screenshots/v2-diagram"},
+ {"go":"/processes/proc_9ea4381551bb/gaps","wait":4000},{"probe":1},{"shot":"../screenshots/v2-gaps"},
+ {"go":"/organization"},{"click":"Policy documents"},{"scroll":2000},{"probe":1},{"shot":"../screenshots/v2-policy-docs"},
+ {"go":"/processes/proc_9ea4381551bb/blueprint","wait":4000},{"click":"Agents (12)"},{"scroll":"Agentic Blueprint"},{"scroll":330},{"shot":"../screenshots/v2-agents"},
+ {"click":"Digital Twin Simulation"},{"scroll":330},{"shot":"../screenshots/v2-guided"}]

@@ -1,0 +1,11 @@
+{
+  "generate_cases_with_known_answers": {
+    "how_many": 40,
+    "messy_fraction": 0.1,
+    "segment": "generated"
+  },
+  "holdout": {
+    "fraction": 0.1,
+    "seed": 7
+  }
+}

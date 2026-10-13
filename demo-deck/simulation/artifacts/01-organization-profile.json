@@ -1,0 +1,36 @@
+{
+  "name": "Meridian Group",
+  "industry": "banking",
+  "size": "mid-size",
+  "countries": [
+    "EU",
+    "DE",
+    "FR",
+    "NL",
+    "ES",
+    "IT",
+    "IE"
+  ],
+  "business_units": [
+    "Retail Banking",
+    "Wealth Management"
+  ],
+  "approval_rules": [
+    {
+      "role": "Head of Operations",
+      "decision_type": "credit limit",
+      "limit_amount": 50000,
+      "currency": "EUR"
+    },
+    {
+      "role": "Chief Risk Officer",
+      "decision_type": "credit limit",
+      "limit_amount": 500000,
+      "currency": "EUR"
+    }
+  ],
+  "starter_rule_packs": [
+    "eu-uk-aml-basics",
+    "eu-data-protection-basics"
+  ]
+}

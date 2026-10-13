@@ -1,0 +1,10 @@
+{
+  "name": "Credit decisions at volume",
+  "dataset": "Credit limit decisions -- golden set",
+  "decision_field": "decision",
+  "step_match": "in_order",
+  "reviewer": {
+    "mode": "probability",
+    "approve_probability": 1.0
+  }
+}

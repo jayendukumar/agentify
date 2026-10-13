@@ -1,0 +1,62 @@
+[
+  {
+    "gateway": "Identity verified?",
+    "branch": "Yes - identity verified",
+    "rule": {
+      "field": "identity_check",
+      "op": "eq",
+      "value": "passed"
+    },
+    "decides_the_case_as": "approve"
+  },
+  {
+    "gateway": "Identity verified?",
+    "branch": "No - verification failed",
+    "rule": {
+      "field": "identity_check",
+      "op": "ne",
+      "value": "passed"
+    },
+    "decides_the_case_as": "reject"
+  },
+  {
+    "gateway": "Potential sanctions match?",
+    "branch": "Yes - potential match",
+    "rule": {
+      "field": "sanctions_screening",
+      "op": "eq",
+      "value": "potential match"
+    },
+    "decides_the_case_as": "escalate"
+  },
+  {
+    "gateway": "Potential sanctions match?",
+    "branch": "No - clear",
+    "rule": {
+      "field": "sanctions_screening",
+      "op": "ne",
+      "value": "potential match"
+    },
+    "decides_the_case_as": "approve"
+  },
+  {
+    "gateway": "Requested limit above EUR 50,000?",
+    "branch": "Above EUR 50,000",
+    "rule": {
+      "field": "requested_limit_eur",
+      "op": "gt",
+      "value": 50000
+    },
+    "decides_the_case_as": "escalate"
+  },
+  {
+    "gateway": "Requested limit above EUR 50,000?",
+    "branch": "EUR 50,000 or less",
+    "rule": {
+      "field": "requested_limit_eur",
+      "op": "lte",
+      "value": 50000
+    },
+    "decides_the_case_as": "approve"
+  }
+]
