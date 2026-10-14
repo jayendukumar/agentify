@@ -18,3 +18,10 @@ frontend/.ui-review/
 # Demo deck screenshot capture: frontend build and raw replay frames
 demo-deck/build/capture/demo-dist/
 demo-deck/build/capture/frames/
+
+# Python bytecode (backend/ has its own rule; this covers tools/ and demo-deck/)
+__pycache__/
+*.pyc
+
+# Office lock files left while a deck is open
+~$*
