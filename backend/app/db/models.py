@@ -517,6 +517,8 @@ class TwinEnvironmentModel(Base):
     personas: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     events: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     faults: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Epic 36, US36.1: system name -> SimulatedSystemData (sample records).
+    system_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
@@ -665,6 +667,10 @@ class OrchestrationScenarioModel(Base):
         ForeignKey("twin_environments.id", ondelete="SET NULL"), nullable=True
     )
     environment_version: Mapped[int | None] = mapped_column(nullable=True)
+    # Epic 36, US36.2/US36.3: {"handoff", "default_gateway_routing",
+    # "gateway_routing"} -- one JSON column rather than three, since they're
+    # only ever read together by the walk.
+    routing: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -1257,3 +1263,47 @@ class BatchScheduleModel(Base):
     last_dataset_version: Mapped[int | None] = mapped_column(nullable=True)
     last_context_pack_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ProcessOperatingModel(Base):
+    """Epic 36, US36.4: how a process runs today -- per node, who does it,
+    how long it takes and waits, what that time costs; per process, how
+    many cases arrive. The as-is side of every process twin comparison.
+    One row per process, `version` bumped on save; a process twin batch
+    snapshots the model it ran with."""
+
+    __tablename__ = "process_operating_models"
+
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), primary_key=True)
+    model: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    version: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class ProcessTwinBatchModel(Base):
+    """Epic 36, US36.5: the whole process run as a digital twin over a
+    dataset -- one orchestration run per case (SimulationRunModel rows with
+    `batch_id` = this id), executed through the job queue. `results` is the
+    efficiency report (US36.7), computed once the last case finishes."""
+
+    __tablename__ = "process_twin_batches"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    scenario_id: Mapped[str] = mapped_column(String, nullable=False)
+    dataset_id: Mapped[str] = mapped_column(String, nullable=False)
+    dataset_version: Mapped[int] = mapped_column(nullable=False)
+    row_keys: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    # running | paused | cancelled | completed | stopped_budget
+    status: Mapped[str] = mapped_column(String, nullable=False, default="running")
+    budget_usd: Mapped[float | None] = mapped_column(nullable=True)
+    seed: Mapped[int] = mapped_column(nullable=False, default=7)
+    operating_model: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    operating_model_version: Mapped[int] = mapped_column(nullable=False, default=1)
+    results: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+

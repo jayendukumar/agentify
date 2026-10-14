@@ -1,0 +1,300 @@
+{
+  "system": "Vendor master",
+  "description": "Supplier master data: legal name, VAT number, bank account, status, payment terms",
+  "records": [
+    {
+      "supplier_id": "SUP-001",
+      "name": "Acme Industrial GmbH",
+      "vat_number": "DE227904006",
+      "country": "DE",
+      "iban": "DE50881399869879730911",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2025-12-17",
+      "default_gl_account": "620200"
+    },
+    {
+      "supplier_id": "SUP-002",
+      "name": "Brightline Logistics BV",
+      "vat_number": "NL582813204",
+      "country": "NL",
+      "iban": "NL11753645568151884472",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2026-03-02",
+      "default_gl_account": "630300"
+    },
+    {
+      "supplier_id": "SUP-003",
+      "name": "Castellan Office Supplies SL",
+      "vat_number": "ES863282616",
+      "country": "ES",
+      "iban": "ES57576169871689768469",
+      "status": "active",
+      "payment_terms_days": 60,
+      "bank_details_changed_on": "2024-10-18",
+      "default_gl_account": "640400"
+    },
+    {
+      "supplier_id": "SUP-004",
+      "name": "Delta Fasteners SpA",
+      "vat_number": "IT656184557",
+      "country": "IT",
+      "iban": "IT13932081967273177848",
+      "status": "active",
+      "payment_terms_days": 60,
+      "bank_details_changed_on": "2024-05-11",
+      "default_gl_account": "650500"
+    },
+    {
+      "supplier_id": "SUP-005",
+      "name": "Elbe Packaging GmbH",
+      "vat_number": "DE430312277",
+      "country": "DE",
+      "iban": "DE80876634400297875347",
+      "status": "active",
+      "payment_terms_days": 60,
+      "bank_details_changed_on": "2024-10-20",
+      "default_gl_account": "660600"
+    },
+    {
+      "supplier_id": "SUP-006",
+      "name": "Fjord Cloud Services AS",
+      "vat_number": "NO923241443",
+      "country": "NO",
+      "iban": "DE73680457178472671475",
+      "status": "active",
+      "payment_terms_days": 30,
+      "bank_details_changed_on": "2025-09-09",
+      "default_gl_account": "670700"
+    },
+    {
+      "supplier_id": "SUP-007",
+      "name": "Gironde Facility Services SARL",
+      "vat_number": "FR902677112",
+      "country": "FR",
+      "iban": "FR62270107981933190845",
+      "status": "active",
+      "payment_terms_days": 30,
+      "bank_details_changed_on": "2026-03-22",
+      "default_gl_account": "680800"
+    },
+    {
+      "supplier_id": "SUP-008",
+      "name": "Hanse Electrical KG",
+      "vat_number": "DE436556570",
+      "country": "DE",
+      "iban": "DE95997283792984162294",
+      "status": "active",
+      "payment_terms_days": 60,
+      "bank_details_changed_on": "2026-10-04",
+      "default_gl_account": "610100"
+    },
+    {
+      "supplier_id": "SUP-009",
+      "name": "Iberia Print & Media SA",
+      "vat_number": "ES967578017",
+      "country": "ES",
+      "iban": "ES29836016105500875475",
+      "status": "active",
+      "payment_terms_days": 30,
+      "bank_details_changed_on": "2024-11-03",
+      "default_gl_account": "620200"
+    },
+    {
+      "supplier_id": "SUP-010",
+      "name": "Jura Precision Tools AG",
+      "vat_number": "CH600989477",
+      "country": "CH",
+      "iban": "DE83922983695793186032",
+      "status": "active",
+      "payment_terms_days": 30,
+      "bank_details_changed_on": "2024-06-02",
+      "default_gl_account": "630300"
+    },
+    {
+      "supplier_id": "SUP-011",
+      "name": "Kestrel IT Consulting Ltd",
+      "vat_number": "IE684938506",
+      "country": "IE",
+      "iban": "IE16737028382226468616",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2025-09-17",
+      "default_gl_account": "640400"
+    },
+    {
+      "supplier_id": "SUP-012",
+      "name": "Lumen Lighting BV",
+      "vat_number": "NL469438031",
+      "country": "NL",
+      "iban": "NL32477647258771884133",
+      "status": "active",
+      "payment_terms_days": 30,
+      "bank_details_changed_on": "2025-12-22",
+      "default_gl_account": "650500"
+    },
+    {
+      "supplier_id": "SUP-013",
+      "name": "Mosel Catering GmbH",
+      "vat_number": "DE587600815",
+      "country": "DE",
+      "iban": "DE92568205258983194893",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2024-08-28",
+      "default_gl_account": "660600"
+    },
+    {
+      "supplier_id": "SUP-014",
+      "name": "Nordic Freight AB",
+      "vat_number": "SE387870937",
+      "country": "SE",
+      "iban": "SE95821416210521854914",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2026-10-05",
+      "default_gl_account": "670700"
+    },
+    {
+      "supplier_id": "SUP-015",
+      "name": "Orbis Security Services SA",
+      "vat_number": "FR380094471",
+      "country": "FR",
+      "iban": "FR42106460013041189557",
+      "status": "active",
+      "payment_terms_days": 30,
+      "bank_details_changed_on": "2025-02-07",
+      "default_gl_account": "680800"
+    },
+    {
+      "supplier_id": "SUP-016",
+      "name": "Pavia Chemicals Srl",
+      "vat_number": "IT439370843",
+      "country": "IT",
+      "iban": "IT87397615846450604541",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2025-01-25",
+      "default_gl_account": "610100"
+    },
+    {
+      "supplier_id": "SUP-017",
+      "name": "Quayside Marine Supplies Ltd",
+      "vat_number": "IE442397499",
+      "country": "IE",
+      "iban": "IE84085380129110285940",
+      "status": "active",
+      "payment_terms_days": 60,
+      "bank_details_changed_on": "2024-08-12",
+      "default_gl_account": "620200"
+    },
+    {
+      "supplier_id": "SUP-018",
+      "name": "Rhone Valley Energy SAS",
+      "vat_number": "FR235611246",
+      "country": "FR",
+      "iban": "FR55666363228088642300",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2024-09-19",
+      "default_gl_account": "630300"
+    },
+    {
+      "supplier_id": "SUP-019",
+      "name": "Silesia Steel Sp. z o.o.",
+      "vat_number": "PL614154076",
+      "country": "PL",
+      "iban": "PL63452912808458500370",
+      "status": "blocked",
+      "payment_terms_days": 30,
+      "bank_details_changed_on": "2024-05-01",
+      "default_gl_account": "640400"
+    },
+    {
+      "supplier_id": "SUP-020",
+      "name": "Tagus Software Lda",
+      "vat_number": "PT646126839",
+      "country": "PT",
+      "iban": "PT29653845355778794326",
+      "status": "active",
+      "payment_terms_days": 30,
+      "bank_details_changed_on": "2024-11-16",
+      "default_gl_account": "650500"
+    },
+    {
+      "supplier_id": "SUP-021",
+      "name": "Umbria Furniture Srl",
+      "vat_number": "IT105703511",
+      "country": "IT",
+      "iban": "IT55860214584210839490",
+      "status": "inactive",
+      "payment_terms_days": 60,
+      "bank_details_changed_on": "2025-03-03",
+      "default_gl_account": "660600"
+    },
+    {
+      "supplier_id": "SUP-022",
+      "name": "Vltava Engineering s.r.o.",
+      "vat_number": "CZ678726398",
+      "country": "CZ",
+      "iban": "CZ76281126584409324484",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2025-11-10",
+      "default_gl_account": "670700"
+    },
+    {
+      "supplier_id": "SUP-023",
+      "name": "Westerland Cleaning GmbH",
+      "vat_number": "DE517268838",
+      "country": "DE",
+      "iban": "DE34097658280258220180",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2026-01-21",
+      "default_gl_account": "680800"
+    },
+    {
+      "supplier_id": "SUP-024",
+      "name": "Volga Trading House LLC",
+      "vat_number": "RU495133271",
+      "country": "RU",
+      "iban": "DE48382993215711649415",
+      "status": "active",
+      "payment_terms_days": 60,
+      "bank_details_changed_on": "2024-11-02",
+      "default_gl_account": "610100"
+    },
+    {
+      "supplier_id": "SUP-025",
+      "name": "Zenith Temporary Staffing BV",
+      "vat_number": "NL229856863",
+      "country": "NL",
+      "iban": "NL81835795111744325688",
+      "status": "active",
+      "payment_terms_days": 45,
+      "bank_details_changed_on": "2025-05-01",
+      "default_gl_account": "620200"
+    }
+  ],
+  "lookup_fields": [
+    "supplier_id",
+    "name",
+    "vat_number",
+    "iban"
+  ],
+  "operations": [
+    "lookup"
+  ],
+  "reference_prefix": "VEN",
+  "keywords": [
+    "vendor",
+    "supplier master",
+    "supplier data",
+    "supplier record",
+    "master data",
+    "mdg",
+    "fraud"
+  ]
+}

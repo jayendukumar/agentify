@@ -1,0 +1,30 @@
+/* Epic 36: process twin page. Series colours validated with the dataviz
+   palette checker (light surface): as-is #c2601d, to-be #006ffb. */
+.process-twin { --ptwin-as-is: #c2601d; --ptwin-to-be: var(--axyntro-blue); }
+.ptwin-section { margin: var(--axyntro-space-5) 0; }
+.ptwin-model-settings, .ptwin-run-form { display: flex; flex-wrap: wrap; gap: var(--axyntro-space-3); margin: var(--axyntro-space-3) 0; }
+.ptwin-model-settings label, .ptwin-run-form label { display: flex; flex-direction: column; gap: var(--axyntro-space-1); font-size: var(--axyntro-text-small); }
+.ptwin-table-wrap { overflow-x: auto; }
+.ptwin-tri { display: inline-flex; gap: 2px; }
+.ptwin-tri input { width: 5.2em; }
+.ptwin-endings { list-style: none; padding: 0; display: grid; gap: var(--axyntro-space-2); }
+.ptwin-tile { flex: 1 1 170px; display: flex; flex-direction: column; gap: 2px; }
+.ptwin-tile-value { font-size: 1.75rem; font-weight: 700; color: var(--heading, var(--axyntro-royal-navy)); font-variant-numeric: tabular-nums; }
+.ptwin-compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--axyntro-space-3); margin: var(--axyntro-space-4) 0; }
+.ptwin-legend { grid-column: 1 / -1; display: flex; gap: var(--axyntro-space-4); font-size: var(--axyntro-text-small); color: var(--axyntro-slate); }
+.ptwin-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
+.ptwin-compare { margin: 0; border: 1px solid var(--axyntro-mist); border-radius: var(--axyntro-radius-card); padding: var(--axyntro-space-3); }
+.ptwin-compare figcaption { font-weight: 600; margin-bottom: var(--axyntro-space-2); color: var(--axyntro-slate); }
+.ptwin-compare-row { display: grid; grid-template-columns: 6.5em 1fr 6.5em; align-items: center; gap: var(--axyntro-space-2); margin: 6px 0; font-size: var(--axyntro-text-small); }
+.ptwin-compare-label { color: var(--axyntro-slate); }
+.ptwin-compare-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--axyntro-slate); }
+.ptwin-compare-track { height: 12px; display: block; }
+.ptwin-bar { display: block; height: 12px; border-radius: 0 4px 4px 0; }
+.ptwin-bar-as-is { background: var(--ptwin-as-is, #c2601d); }
+.ptwin-bar-to-be { background: var(--ptwin-to-be, #006ffb); }
+.ptwin-paths li { margin: 4px 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (forced-colors: active) {
+  .ptwin-bar-as-is { background: CanvasText; }
+  .ptwin-bar-to-be { background: Highlight; }
+}

@@ -8,7 +8,9 @@ param(
     # With -Demo: drop and recreate the demo database first.
     [switch]$ResetDemo,
     # With -Demo: seed the Epics 27-35 demo story once the API is up.
-    [switch]$Seed
+    [switch]$Seed,
+    # With -Demo: seed the Epic 36 "Invoice to Pay" process twin demo.
+    [switch]$SeedProcessTwin
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,8 +37,8 @@ if (-not (Test-Path -LiteralPath 'backend\.env')) {
     throw "backend\.env is missing. Copy backend\.env.example to backend\.env and add your OPENROUTER_API_KEY."
 }
 
-if (($ResetDemo -or $Seed) -and -not $Demo) {
-    throw '-ResetDemo and -Seed only apply together with -Demo.'
+if (($ResetDemo -or $Seed -or $SeedProcessTwin) -and -not $Demo) {
+    throw '-ResetDemo, -Seed and -SeedProcessTwin only apply together with -Demo.'
 }
 
 $demoDb = 'agentic_solution_generator_demo'
@@ -97,7 +99,7 @@ Write-Host 'API:      http://localhost:8000'
 Write-Host ''
 Write-Host 'To stop it later, run: docker compose down'
 
-if ($Seed) {
+if ($Seed -or $SeedProcessTwin) {
     # Migrations and the embedding model load before the API answers.
     Write-Host 'Waiting for the API...'
     $deadline = (Get-Date).AddMinutes(5)
@@ -115,10 +117,19 @@ if ($Seed) {
         }
     }
     Require-Command 'python'
-    & python (Join-Path $PSScriptRoot 'backend\scripts\demo_seed\seed_demo.py') --base-url 'http://localhost:8000'
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Seeding failed (exit code $LASTEXITCODE). Fix the cause, then re-run with -Demo -ResetDemo -Seed."
-        exit 1
+    if ($Seed) {
+        & python (Join-Path $PSScriptRoot 'backend\scripts\demo_seed\seed_demo.py') --base-url 'http://localhost:8000'
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Seeding failed (exit code $LASTEXITCODE). Fix the cause, then re-run with -Demo -ResetDemo -Seed."
+            exit 1
+        }
+    }
+    if ($SeedProcessTwin) {
+        & python (Join-Path $PSScriptRoot 'backend\scripts\demo_seed\seed_process_twin.py') --base-url 'http://localhost:8000'
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Seeding failed (exit code $LASTEXITCODE). Fix the cause, then re-run with -Demo -ResetDemo -SeedProcessTwin."
+            exit 1
+        }
     }
 }
 

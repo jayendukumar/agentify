@@ -1,0 +1,36 @@
+{
+  "system": "Sanctions screening",
+  "description": "Sanctions and watchlist screening; returns listed entities matching a name",
+  "records": [
+    {
+      "name": "Volga Trading House LLC",
+      "list": "EU consolidated financial sanctions",
+      "match_type": "entity"
+    },
+    {
+      "name": "Caspian Maritime Holdings",
+      "list": "EU consolidated financial sanctions",
+      "match_type": "entity"
+    },
+    {
+      "name": "Northern Star Commodities FZE",
+      "list": "OFAC SDN",
+      "match_type": "entity"
+    }
+  ],
+  "lookup_fields": [
+    "name"
+  ],
+  "operations": [
+    "lookup"
+  ],
+  "reference_prefix": "SCR",
+  "keywords": [
+    "sanction",
+    "watchlist",
+    "screening",
+    "kyc",
+    "aml",
+    "compliance"
+  ]
+}

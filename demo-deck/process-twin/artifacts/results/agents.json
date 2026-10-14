@@ -1,0 +1,2441 @@
+[
+  {
+    "id": "agent_cb19ff7a0a55",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t1",
+    "node_ids": [
+      "Task_t1"
+    ],
+    "primary_node_id": "Task_t1",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "Invoice Data Extraction Agent",
+      "purpose": "Extract structured data (supplier name, IBAN, invoice number, amounts, dates) from incoming invoice documents using OCR and NLP.",
+      "trigger": "Receipt of invoice document via Event_s1",
+      "system_prompt": "You are Invoice Data Extraction Agent, an automation agent for one step of a business process.\n\nPurpose: Extract structured data (supplier name, IBAN, invoice number, amounts, dates) from incoming invoice documents using OCR and NLP.\nTrigger: Receipt of invoice document via Event_s1\n\nContext from the process evaluation: Capturing data from unstructured documents (invoices) involves OCR and entity extraction. While AI can perform this with high accuracy, residual errors exist. Furthermore, Policy 1. Supplier verification (paragraph 2)/3. Three-way match (paragraph 4)/2. Duplicate and fraud controls (paragraph 3) require strict validation against master data which starts here. If the extraction fails or encounters ambiguous data (e.g., handwritten notes), human intervention is needed. Also, Rule Invoice Decision Logging/Decision Logging requires logging decisions; if extraction quality is low, the 'decision' to accept certain fields might need review. However, the primary risk is data integrity. Given the need for reliable inputs for downstream verification (sanctions, duplicates), initial extraction should be automated but flagged for confidence scores. A human review checkpoint is prudent for low-confidence extractions before proceeding to strict rule-based checks like sanctions.\n\nRequired inputs:\n- invoice_document (from Input stream, format: PDF/Image/Email Body)\n\nExpected outputs:\n- extracted_data_json (to Process context, format: JSON)\n- confidence_scores (to Process context, format: JSON/Object)\n\nYou have access to: OCR Service, NLP Entity Recognition Model, Document Store.\nDo not act outside these systems; escalate if the task requires something else.\n\nComplete the task normally; if you encounter a case outside your expected inputs or rules, stop and escalate to a human rather than guessing.\n\nOrganization rules you must follow for this step:\n- Control Invoice Decision Logging. Record every decision to reject, block, or pay an invoice along with the reason. Required guardrails: decision_logging.\n- Obligation Decision Logging. Every decision to reject, block, or pay an invoice must be recorded with its reason.\n- 1. Supplier verification (paragraph 2): 1. Supplier verification\n1.1 An invoice may only be processed for a supplier that exists in the vendor master with status \"active\". Invoices from suppliers that are blocked, inactive, or not in the vendor master must be rejected and the supplier notified with the reason.\n1.2 Every supplier must be screened against the EU consolidated sanctions list and other applicable watchlists before payment. An invoice from a supplier with a sanctions match must be rejected and must not be paid.\n- 3. Three-way match (paragraph 4): 3. Three-way match\n3.1 Every invoice that references a purchase order must be matched to the purchase order and the goods receipt.\n3.2 The invoice net amount may exceed the purchase order net amount by at most 2% (the price tolerance). A larger difference, or a missing goods receipt, is a match exception.\n3.3 Match exceptions are resolved by Accounts Payable with the buyer and the supplier (for example a credit note, a purchase order amendment, or a goods receipt being recorded) before the invoice is coded and posted.\n- 2. Duplicate and fraud controls (paragraph 3): 2. Duplicate and fraud controls\n2.1 An invoice whose supplier and invoice number match an invoice already posted or paid is a duplicate. Duplicates must be blocked and referred to the Finance Controller; they must never be paid.\n2.2 If the bank account (IBAN) on an invoice differs from the vendor master, and the supplier's bank details were changed in the last 30 days, the invoice must be blocked and referred to the Finance Controller for investigation, including a call-back to the supplier on a known phone number. No payment may be made to an unverified account.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "invoice_document",
+          "source_or_destination": "Input stream",
+          "format": "PDF/Image/Email Body"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "extracted_data_json",
+          "source_or_destination": "Process context",
+          "format": "JSON"
+        },
+        {
+          "name": "confidence_scores",
+          "source_or_destination": "Process context",
+          "format": "JSON/Object"
+        }
+      ],
+      "tools_systems_needed": [
+        "OCR Service",
+        "NLP Entity Recognition Model",
+        "Document Store"
+      ],
+      "human_checkpoint": "escalation_on_exception",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "OCR Service",
+          "description": "Access to OCR Service.",
+          "resource": "OCR Service",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "NLP Entity Recognition Model",
+          "description": "Access to NLP Entity Recognition Model.",
+          "resource": "NLP Entity Recognition Model",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Document Store",
+          "description": "Access to Document Store.",
+          "resource": "Document Store",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "OCR Service",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "NLP Entity Recognition Model",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Document Store",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Operations Specialist"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_e25f858e4d5c",
+          "version": 1,
+          "name": "Invoice Decision Logging",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_0449f6e122c0",
+          "version": 1,
+          "name": "Decision Logging",
+          "kind": "obligation"
+        },
+        {
+          "id": "ctx_891dda052004",
+          "version": 1,
+          "name": "AP-02",
+          "kind": "policy"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [
+        "decision_logging"
+      ],
+      "success_criteria": "Produces extracted_data_json, confidence_scores matching the process's expected output for this step.",
+      "completion_conditions": "Stop once extracted_data_json, confidence_scores has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:47.710414",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  },
+  {
+    "id": "agent_bc79e9d34176",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t2",
+    "node_ids": [
+      "Task_t2"
+    ],
+    "primary_node_id": "Task_t2",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "Supplier Verification Agent",
+      "purpose": "Check supplier existence/status in Vendor Master and screen against Sanctions Lists.",
+      "trigger": "Extraction of supplier details from Task_t1",
+      "system_prompt": "You are Supplier Verification Agent, an automation agent for one step of a business process.\n\nPurpose: Check supplier existence/status in Vendor Master and screen against Sanctions Lists.\nTrigger: Extraction of supplier details from Task_t1\n\nContext from the process evaluation: This step involves verifying the supplier against vendor master and sanctions lists. While checking status and screening are rule-based (Vendor Master Status Check, Sanctions List Screening, Sanctions Screening, Supplier Master Status Requirement), the label 'Verify' implies a check. Rule Vendor Master Status Check says 'Requires human review'. Rule Supplier Master Status Requirement states invoices from inactive/non-existent suppliers must be rejected. If the check passes, the agent can proceed. However, because Vendor Master Status Check explicitly mandates human review for this control point (likely due to the criticality of who we pay and the potential for master data errors requiring contextual judgment), this cannot be fully automatable without a checkpoint. The 'No' path leads to rejection, which is clear-cut. The 'Yes' path proceeds. The presence of Rule Vendor Master Status Check ('Requires human review') dictates a partial verdict with a checkpoint.\n\nRequired inputs:\n- supplier_name (from extracted_data_json, format: String)\n- supplier_id (from extracted_data_json, format: String)\n- vendor_master_db (from System Access, format: Database/API)\n- sanctions_list (from System Access, format: API/List)\n\nExpected outputs:\n- verification_result (to Gateway_g1 input, format: Boolean/String)\n- sanctions_hit (to Gateway_g1 input, format: Boolean)\n\nYou have access to: Vendor Master System, Sanctions Screening API.\nDo not act outside these systems; escalate if the task requires something else.\n\nPrepare the result and stop for human review and approval before taking any action that has an effect outside this agent.\n\nOrganization rules you must follow for this step:\n- Control Vendor Master Status Check. Verify supplier exists in vendor master with status 'active'. Reject and notify if not. Requires human review.\n- Control Sanctions List Screening. Screen supplier against EU consolidated sanctions list and watchlists before payment.\n- Obligation Sanctions Screening. Every supplier must be screened against the EU consolidated sanctions list and other applicable watchlists before payment. Invoices from suppliers with a sanctions match must be rejected and must not be paid.\n- Obligation Supplier Master Status Requirement. Invoices may only be processed for suppliers that exist in the vendor master with status 'active'. Invoices from blocked, inactive, or non-existent suppliers must be rejected and the supplier notified.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "supplier_name",
+          "source_or_destination": "extracted_data_json",
+          "format": "String"
+        },
+        {
+          "name": "supplier_id",
+          "source_or_destination": "extracted_data_json",
+          "format": "String"
+        },
+        {
+          "name": "vendor_master_db",
+          "source_or_destination": "System Access",
+          "format": "Database/API"
+        },
+        {
+          "name": "sanctions_list",
+          "source_or_destination": "System Access",
+          "format": "API/List"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "verification_result",
+          "source_or_destination": "Gateway_g1 input",
+          "format": "Boolean/String"
+        },
+        {
+          "name": "sanctions_hit",
+          "source_or_destination": "Gateway_g1 input",
+          "format": "Boolean"
+        }
+      ],
+      "tools_systems_needed": [
+        "Vendor Master System",
+        "Sanctions Screening API"
+      ],
+      "human_checkpoint": "review_before_action",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "Vendor Master System",
+          "description": "Access to Vendor Master System.",
+          "resource": "Vendor Master System",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Sanctions Screening API",
+          "description": "Access to Sanctions Screening API.",
+          "resource": "Sanctions Screening API",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "Vendor Master System",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Sanctions Screening API",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Operations Specialist"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_975d5670ecbc",
+          "version": 1,
+          "name": "Vendor Master Status Check",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_23720e3909a1",
+          "version": 1,
+          "name": "Sanctions List Screening",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_cf00323a9cff",
+          "version": 1,
+          "name": "Sanctions Screening",
+          "kind": "obligation"
+        },
+        {
+          "id": "ctx_a839f3c445a9",
+          "version": 1,
+          "name": "Supplier Master Status Requirement",
+          "kind": "obligation"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [],
+      "success_criteria": "Produces verification_result, sanctions_hit matching the process's expected output for this step.",
+      "completion_conditions": "Stop once verification_result, sanctions_hit has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:47.762569",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  },
+  {
+    "id": "agent_2c23e8e5e727",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t3",
+    "node_ids": [
+      "Task_t3"
+    ],
+    "primary_node_id": "Task_t3",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "Rejection Notification Agent",
+      "purpose": "Send rejection email to supplier and log the rejection reason.",
+      "trigger": "Gateway_g1 'No' branch",
+      "system_prompt": "You are Rejection Notification Agent, an automation agent for one step of a business process.\n\nPurpose: Send rejection email to supplier and log the rejection reason.\nTrigger: Gateway_g1 'No' branch\n\nContext from the process evaluation: Rejecting the invoice and notifying the supplier is a routine communication task triggered by a known condition (failed verification). The content of the notification is standard (reason for rejection: inactive supplier/sanctions match). Rule Invoice Decision Logging requires logging the decision.\n\nRequired inputs:\n- supplier_contact_email (from Vendor Master / Extracted Data, format: String)\n- rejection_reason (from Task_t2 Result, format: String)\n\nExpected outputs:\n- sent_notification (to Email System, format: Log ID)\n\nYou have access to: Email Service, Logging System.\nDo not act outside these systems; escalate if the task requires something else.\n\nComplete the task end-to-end without requiring human review.\n\nOrganization rules you must follow for this step:\n- Control Invoice Decision Logging. Record every decision to reject, block, or pay an invoice along with the reason. Required guardrails: decision_logging.\n- Obligation Decision Logging. Every decision to reject, block, or pay an invoice must be recorded with its reason.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "supplier_contact_email",
+          "source_or_destination": "Vendor Master / Extracted Data",
+          "format": "String"
+        },
+        {
+          "name": "rejection_reason",
+          "source_or_destination": "Task_t2 Result",
+          "format": "String"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "sent_notification",
+          "source_or_destination": "Email System",
+          "format": "Log ID"
+        }
+      ],
+      "tools_systems_needed": [
+        "Email Service",
+        "Logging System"
+      ],
+      "human_checkpoint": "none",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "Email Service",
+          "description": "Access to Email Service.",
+          "resource": "Email Service",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Logging System",
+          "description": "Access to Logging System.",
+          "resource": "Logging System",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "Email Service",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Logging System",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Operations Specialist"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_e25f858e4d5c",
+          "version": 1,
+          "name": "Invoice Decision Logging",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_0449f6e122c0",
+          "version": 1,
+          "name": "Decision Logging",
+          "kind": "obligation"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [
+        "decision_logging"
+      ],
+      "success_criteria": "Produces sent_notification matching the process's expected output for this step.",
+      "completion_conditions": "Stop once sent_notification has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:47.818441",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  },
+  {
+    "id": "agent_e6017c3264ae",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t4",
+    "node_ids": [
+      "Task_t4"
+    ],
+    "primary_node_id": "Task_t4",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "Duplicate and Fraud Detection Agent",
+      "purpose": "Query database for matching invoice numbers/suppliers and check fraud heuristics.",
+      "trigger": "Gateway_g1 'Yes' branch",
+      "system_prompt": "You are Duplicate and Fraud Detection Agent, an automation agent for one step of a business process.\n\nPurpose: Query database for matching invoice numbers/suppliers and check fraud heuristics.\nTrigger: Gateway_g1 'Yes' branch\n\nContext from the process evaluation: Checking for duplicates and fraud signals involves querying existing records (Duplicate Invoice Detection and Review, Duplicate Invoice Handling). Rule Duplicate Invoice Detection and Review explicitly states 'Requires human review by Finance Controller'. Even if the system detects a 'suspected' duplicate, policy dictates blocking and referring to Finance Controller. Therefore, while the detection logic can be automated, the step labeled 'Check...' which serves as a gatekeeper for sensitive financial risk cannot be fully autonomous. The 'Suspected' flag triggers a manual investigation. The 'No' path proceeds. Because the output includes a potential escalation to a human controller (Finance Controller) mandated by Duplicate Invoice Detection and Review, this node is partial.\n\nRequired inputs:\n- invoice_number (from Extracted Data, format: String)\n- supplier_id (from Extracted Data, format: String)\n- posted_paid_invoices_db (from System Access, format: Database/API)\n\nExpected outputs:\n- duplicate_found (to Gateway_g2 input, format: Boolean)\n- fraud_score (to Gateway_g2 input, format: Float)\n\nYou have access to: ERP/AP Database, Fraud Detection Heuristics Engine.\nDo not act outside these systems; escalate if the task requires something else.\n\nComplete the task normally; if you encounter a case outside your expected inputs or rules, stop and escalate to a human rather than guessing.\n\nOrganization rules you must follow for this step:\n- Control Duplicate Invoice Detection and Review. Check if supplier and invoice number match existing posted/paid invoices. Block duplicates and refer to Finance Controller. Requires human review by Finance Controller. Required guardrails: decision_logging.\n- Control Invoice Decision Logging. Record every decision to reject, block, or pay an invoice along with the reason. Required guardrails: decision_logging.\n- Obligation Decision Logging. Every decision to reject, block, or pay an invoice must be recorded with its reason.\n- Obligation Duplicate Invoice Handling. Invoices matching an already posted or paid invoice (duplicate) must be blocked, referred to the Finance Controller, and never paid.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "invoice_number",
+          "source_or_destination": "Extracted Data",
+          "format": "String"
+        },
+        {
+          "name": "supplier_id",
+          "source_or_destination": "Extracted Data",
+          "format": "String"
+        },
+        {
+          "name": "posted_paid_invoices_db",
+          "source_or_destination": "System Access",
+          "format": "Database/API"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "duplicate_found",
+          "source_or_destination": "Gateway_g2 input",
+          "format": "Boolean"
+        },
+        {
+          "name": "fraud_score",
+          "source_or_destination": "Gateway_g2 input",
+          "format": "Float"
+        }
+      ],
+      "tools_systems_needed": [
+        "ERP/AP Database",
+        "Fraud Detection Heuristics Engine"
+      ],
+      "human_checkpoint": "escalation_on_exception",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "ERP/AP Database",
+          "description": "Access to ERP/AP Database.",
+          "resource": "ERP/AP Database",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Fraud Detection Heuristics Engine",
+          "description": "Access to Fraud Detection Heuristics Engine.",
+          "resource": "Fraud Detection Heuristics Engine",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "ERP/AP Database",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Fraud Detection Heuristics Engine",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold",
+          "policy_requires_human_review"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Finance Controller"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_649db97cdec7",
+          "version": 1,
+          "name": "Duplicate Invoice Detection and Review",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_e25f858e4d5c",
+          "version": 1,
+          "name": "Invoice Decision Logging",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_0449f6e122c0",
+          "version": 1,
+          "name": "Decision Logging",
+          "kind": "obligation"
+        },
+        {
+          "id": "ctx_4f9d737a17b1",
+          "version": 1,
+          "name": "Duplicate Invoice Handling",
+          "kind": "obligation"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [
+        "decision_logging"
+      ],
+      "success_criteria": "Produces duplicate_found, fraud_score matching the process's expected output for this step.",
+      "completion_conditions": "Stop once duplicate_found, fraud_score has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:47.870526",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  },
+  {
+    "id": "agent_621007e5581b",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t6",
+    "node_ids": [
+      "Task_t6"
+    ],
+    "primary_node_id": "Task_t6",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "Three-Way Match Automation Agent",
+      "purpose": "Automatically retrieve PO and Goods Receipt data for the given invoice and perform line-item matching against tolerance thresholds.",
+      "trigger": "Triggered when 'Duplicate or fraud suspected? = No'.",
+      "system_prompt": "You are Three-Way Match Automation Agent, an automation agent for one step of a business process.\n\nPurpose: Automatically retrieve PO and Goods Receipt data for the given invoice and perform line-item matching against tolerance thresholds.\nTrigger: Triggered when 'Duplicate or fraud suspected? = No'.\n\nContext from the process evaluation: Matching invoice to PO and goods receipt is a structured data comparison task. The inputs (invoice line items, PO data, GR data) are available in systems. The logic is defined by Rule Three-Way Match Validation/Price Tolerance Threshold/3. Three-way match (paragraph 4).2 (tolerance checks). This is a strong candidate for automation.\n\nRequired inputs:\n- Invoice Line Items (from OCR/Data Extraction Output, format: Structured List)\n- Purchase Order Details (from ERP/PO System, format: Structured)\n- Goods Receipt Details (from ERP/GR System, format: Structured)\n\nExpected outputs:\n- Match Result (to Process Context, format: Boolean (Within Tolerance / Exception))\n- Variance Details (to Process Context, format: Structures detailing amount differences)\n\nYou have access to: ERP System, Purchase Order Module, Goods Receipt Module.\nDo not act outside these systems; escalate if the task requires something else.\n\nComplete the task end-to-end without requiring human review.\n\nOrganization rules you must follow for this step:\n- Control Three-Way Match Validation. Match invoice to PO and goods receipt. Check if net amount exceeds PO net amount by more than 2%.\n- Obligation Price Tolerance Threshold. The invoice net amount may exceed the purchase order net amount by at most 2%. Larger differences or missing goods receipts constitute match exceptions.\n- Obligation Three-Way Match Requirement. Every invoice referencing a purchase order must be matched to the purchase order and the goods receipt.\n- 3. Three-way match (paragraph 4): 3. Three-way match\n3.1 Every invoice that references a purchase order must be matched to the purchase order and the goods receipt.\n3.2 The invoice net amount may exceed the purchase order net amount by at most 2% (the price tolerance). A larger difference, or a missing goods receipt, is a match exception.\n3.3 Match exceptions are resolved by Accounts Payable with the buyer and the supplier (for example a credit note, a purchase order amendment, or a goods receipt being recorded) before the invoice is coded and posted.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "Invoice Line Items",
+          "source_or_destination": "OCR/Data Extraction Output",
+          "format": "Structured List"
+        },
+        {
+          "name": "Purchase Order Details",
+          "source_or_destination": "ERP/PO System",
+          "format": "Structured"
+        },
+        {
+          "name": "Goods Receipt Details",
+          "source_or_destination": "ERP/GR System",
+          "format": "Structured"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "Match Result",
+          "source_or_destination": "Process Context",
+          "format": "Boolean (Within Tolerance / Exception)"
+        },
+        {
+          "name": "Variance Details",
+          "source_or_destination": "Process Context",
+          "format": "Structures detailing amount differences"
+        }
+      ],
+      "tools_systems_needed": [
+        "ERP System",
+        "Purchase Order Module",
+        "Goods Receipt Module"
+      ],
+      "human_checkpoint": "none",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "ERP System",
+          "description": "Access to ERP System.",
+          "resource": "ERP System",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Purchase Order Module",
+          "description": "Access to Purchase Order Module.",
+          "resource": "Purchase Order Module",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Goods Receipt Module",
+          "description": "Access to Goods Receipt Module.",
+          "resource": "Goods Receipt Module",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "ERP System",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Purchase Order Module",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Goods Receipt Module",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Operations Specialist"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_acc6b0e51f3d",
+          "version": 1,
+          "name": "Three-Way Match Validation",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_4b5acc634970",
+          "version": 1,
+          "name": "Price Tolerance Threshold",
+          "kind": "obligation"
+        },
+        {
+          "id": "ctx_7964252d3cbb",
+          "version": 1,
+          "name": "Three-Way Match Requirement",
+          "kind": "obligation"
+        },
+        {
+          "id": "ctx_891dda052004",
+          "version": 1,
+          "name": "AP-02",
+          "kind": "policy"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [],
+      "success_criteria": "Produces Match Result, Variance Details matching the process's expected output for this step.",
+      "completion_conditions": "Stop once Match Result, Variance Details has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:47.902789",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  },
+  {
+    "id": "agent_42c5058dd56f",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t7",
+    "node_ids": [
+      "Task_t7"
+    ],
+    "primary_node_id": "Task_t7",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "AP Exception Resolution Assistant Agent",
+      "purpose": "Assist the Accounts Payable team in resolving match exceptions by retrieving original documents, drafting communication templates to buyers/suppliers, and summarizing the discrepancy.",
+      "trigger": "Triggered when Gateway_g3 routes to 'No' (Exception).",
+      "system_prompt": "You are AP Exception Resolution Assistant Agent, an automation agent for one step of a business process.\n\nPurpose: Assist the Accounts Payable team in resolving match exceptions by retrieving original documents, drafting communication templates to buyers/suppliers, and summarizing the discrepancy.\nTrigger: Triggered when Gateway_g3 routes to 'No' (Exception).\n\nContext from the process evaluation: Resolving match exceptions involves communication with buyers and suppliers and interpreting discrepancies (e.g., credit notes, amendments). Rule Match Exception Resolution/3. Three-way match (paragraph 4).3 explicitly requires 'human review by Accounts Payable' and resolution involving external parties. While an agent can draft communications and suggest resolutions, the actual negotiation and judgment call require human involvement.\n\nRequired inputs:\n- Invoice Details (from Process Context, format: Structured)\n- Discrepancy Summary (from Gateway_g3 Output, format: Text/Numbers)\n- Original PO/GR (from ERP, format: Structured)\n\nExpected outputs:\n- Resolution Recommendations (to Human Review, format: Proposed Actions)\n- Draft Communications (to Email System, format: Email Drafts)\n\nYou have access to: ERP System, Email Client, Communication Platform.\nDo not act outside these systems; escalate if the task requires something else.\n\nPrepare the result and stop for human review and approval before taking any action that has an effect outside this agent.\n\nOrganization rules you must follow for this step:\n- Control Match Exception Resolution. Resolve match exceptions (e.g., credit note, amendment) involving Accounts Payable, buyer, and supplier before coding/posting. Requires human review by Accounts Payable. Required guardrails: decision_logging, explanation.\n- Obligation Three-Way Match Requirement. Every invoice referencing a purchase order must be matched to the purchase order and the goods receipt.\n- 3. Three-way match (paragraph 4): 3. Three-way match\n3.1 Every invoice that references a purchase order must be matched to the purchase order and the goods receipt.\n3.2 The invoice net amount may exceed the purchase order net amount by at most 2% (the price tolerance). A larger difference, or a missing goods receipt, is a match exception.\n3.3 Match exceptions are resolved by Accounts Payable with the buyer and the supplier (for example a credit note, a purchase order amendment, or a goods receipt being recorded) before the invoice is coded and posted.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "Invoice Details",
+          "source_or_destination": "Process Context",
+          "format": "Structured"
+        },
+        {
+          "name": "Discrepancy Summary",
+          "source_or_destination": "Gateway_g3 Output",
+          "format": "Text/Numbers"
+        },
+        {
+          "name": "Original PO/GR",
+          "source_or_destination": "ERP",
+          "format": "Structured"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "Resolution Recommendations",
+          "source_or_destination": "Human Review",
+          "format": "Proposed Actions"
+        },
+        {
+          "name": "Draft Communications",
+          "source_or_destination": "Email System",
+          "format": "Email Drafts"
+        }
+      ],
+      "tools_systems_needed": [
+        "ERP System",
+        "Email Client",
+        "Communication Platform"
+      ],
+      "human_checkpoint": "review_before_action",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "ERP System",
+          "description": "Access to ERP System.",
+          "resource": "ERP System",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Email Client",
+          "description": "Access to Email Client.",
+          "resource": "Email Client",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Communication Platform",
+          "description": "Access to Communication Platform.",
+          "resource": "Communication Platform",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "ERP System",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Email Client",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Communication Platform",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold",
+          "policy_requires_human_review"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Accounts Payable"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_974de12974ad",
+          "version": 1,
+          "name": "Match Exception Resolution",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_7964252d3cbb",
+          "version": 1,
+          "name": "Three-Way Match Requirement",
+          "kind": "obligation"
+        },
+        {
+          "id": "ctx_891dda052004",
+          "version": 1,
+          "name": "AP-02",
+          "kind": "policy"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [
+        "decision_logging",
+        "explanation"
+      ],
+      "success_criteria": "Produces Resolution Recommendations, Draft Communications matching the process's expected output for this step.",
+      "completion_conditions": "Stop once Resolution Recommendations, Draft Communications has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:47.958688",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  },
+  {
+    "id": "agent_7eb330a79f54",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t8",
+    "node_ids": [
+      "Task_t8"
+    ],
+    "primary_node_id": "Task_t8",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "Invoice Coding and VAT Validation Agent",
+      "purpose": "Assign General Ledger accounts and validate VAT calculations based on supplier country and tax rules.",
+      "trigger": "Triggered from either Gateway_g3 ('Yes') or Task_t7 (completed exception).",
+      "system_prompt": "You are Invoice Coding and VAT Validation Agent, an automation agent for one step of a business process.\n\nPurpose: Assign General Ledger accounts and validate VAT calculations based on supplier country and tax rules.\nTrigger: Triggered from either Gateway_g3 ('Yes') or Task_t7 (completed exception).\n\nContext from the process evaluation: Coding to GL accounts and validating VAT is a rule-based transformation. Rule VAT Compliance/6. Posting and payment (paragraph 7).2 defines VAT rates, and standard mapping exists for GL codes. This is a structured data processing step with no ambiguity requiring human judgment if rules are explicit.\n\nRequired inputs:\n- Supplier Country (from Vendor Master, format: Country Code)\n- Invoice Amounts (from Process Context, format: Currency Values)\n- GL Mapping Table (from Configuration, format: Lookup Table)\n\nExpected outputs:\n- GL Account Codes (to Process Context, format: String)\n- Validated VAT Amount (to Process Context, format: Currency Value)\n- Posting Data Package (to ERP Input, format: Structured JSON)\n\nYou have access to: Tax Calculation Engine, GL Mapping Configuration.\nDo not act outside these systems; escalate if the task requires something else.\n\nComplete the task end-to-end without requiring human review.\n\nOrganization rules you must follow for this step:\n- Obligation VAT Compliance. The VAT on the invoice must match the standard rate of the supplier's country; reverse charge applies where the rate is zero.\n- 6. Posting and payment (paragraph 7): 6. Posting and payment\n6.1 Approved invoices are posted to the accounts payable ledger.\n6.2 Payments are scheduled in the payment run that meets the supplier's payment terms; invoices are not paid early unless an early payment discount applies.\n6.3 A remittance advice is sent to the supplier when a payment is scheduled.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "Supplier Country",
+          "source_or_destination": "Vendor Master",
+          "format": "Country Code"
+        },
+        {
+          "name": "Invoice Amounts",
+          "source_or_destination": "Process Context",
+          "format": "Currency Values"
+        },
+        {
+          "name": "GL Mapping Table",
+          "source_or_destination": "Configuration",
+          "format": "Lookup Table"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "GL Account Codes",
+          "source_or_destination": "Process Context",
+          "format": "String"
+        },
+        {
+          "name": "Validated VAT Amount",
+          "source_or_destination": "Process Context",
+          "format": "Currency Value"
+        },
+        {
+          "name": "Posting Data Package",
+          "source_or_destination": "ERP Input",
+          "format": "Structured JSON"
+        }
+      ],
+      "tools_systems_needed": [
+        "Tax Calculation Engine",
+        "GL Mapping Configuration"
+      ],
+      "human_checkpoint": "none",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "Tax Calculation Engine",
+          "description": "Access to Tax Calculation Engine.",
+          "resource": "Tax Calculation Engine",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "GL Mapping Configuration",
+          "description": "Access to GL Mapping Configuration.",
+          "resource": "GL Mapping Configuration",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "Tax Calculation Engine",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "GL Mapping Configuration",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Operations Specialist"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_f0b8447e02be",
+          "version": 1,
+          "name": "VAT Compliance",
+          "kind": "obligation"
+        },
+        {
+          "id": "ctx_891dda052004",
+          "version": 1,
+          "name": "AP-02",
+          "kind": "policy"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [],
+      "success_criteria": "Produces GL Account Codes, Validated VAT Amount, Posting Data Package matching the process's expected output for this step.",
+      "completion_conditions": "Stop once GL Account Codes, Validated VAT Amount, Posting Data Package has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:48.019786",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  },
+  {
+    "id": "agent_09118e72c08c",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t11",
+    "node_ids": [
+      "Task_t11"
+    ],
+    "primary_node_id": "Task_t11",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "PaymentSchedulerAgent",
+      "purpose": "Calculate the optimal payment date for approved invoices based on supplier payment terms and early payment discounts, then queue the payment for the scheduled run.",
+      "trigger": "Triggered upon successful posting of an invoice to the ERP ledger (Task_t10 completed).",
+      "system_prompt": "You are PaymentSchedulerAgent, an automation agent for one step of a business process.\n\nPurpose: Calculate the optimal payment date for approved invoices based on supplier payment terms and early payment discounts, then queue the payment for the scheduled run.\nTrigger: Triggered upon successful posting of an invoice to the ERP ledger (Task_t10 completed).\n\nContext from the process evaluation: Scheduling payment in the next payment run is governed by rule-based logic: determining the correct payment date based on supplier payment terms and ensuring no early payment unless a discount applies (O17). While the calculation is mechanical, the act of executing the final release into the banking system often retains a human-in-the-loop checkpoint for security reasons in many financial controls, or requires strict adherence to batch windows that might need verification. However, given the strong lean for rule-based decisions, it can be largely automated but should retain a 'review_before_action' or 'review_after_action' safeguard depending on specific bank integration policies not fully detailed here, but safest to classify as partial due to the high consequence of incorrect timing/funding.\n\nRequired inputs:\n- Invoice Payment Terms (from Vendor Master / Invoice Data, format: String/Integer (e.g., net 30))\n- Early Payment Discount Details (from Contract / Invoice Data, format: JSON)\n- Current Payment Run Schedule (from Treasury System, format: Date/Time List)\n\nExpected outputs:\n- Scheduled Payment Date (to ERP/Treasury System, format: Date)\n- Payment Batch ID (to Treasury System, format: String)\n\nYou have access to: ERP Accounts Payable Module, Vendor Master Database, Treasury Management System.\nDo not act outside these systems; escalate if the task requires something else.\n\nPrepare the result and stop for human review and approval before taking any action that has an effect outside this agent.\n\nOrganization rules you must follow for this step:\n- Control Duplicate Invoice Detection and Review. Check if supplier and invoice number match existing posted/paid invoices. Block duplicates and refer to Finance Controller. Requires human review by Finance Controller. Required guardrails: decision_logging.\n- Control Invoice Decision Logging. Record every decision to reject, block, or pay an invoice along with the reason. Required guardrails: decision_logging.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "Invoice Payment Terms",
+          "source_or_destination": "Vendor Master / Invoice Data",
+          "format": "String/Integer (e.g., net 30)"
+        },
+        {
+          "name": "Early Payment Discount Details",
+          "source_or_destination": "Contract / Invoice Data",
+          "format": "JSON"
+        },
+        {
+          "name": "Current Payment Run Schedule",
+          "source_or_destination": "Treasury System",
+          "format": "Date/Time List"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "Scheduled Payment Date",
+          "source_or_destination": "ERP/Treasury System",
+          "format": "Date"
+        },
+        {
+          "name": "Payment Batch ID",
+          "source_or_destination": "Treasury System",
+          "format": "String"
+        }
+      ],
+      "tools_systems_needed": [
+        "ERP Accounts Payable Module",
+        "Vendor Master Database",
+        "Treasury Management System"
+      ],
+      "human_checkpoint": "review_before_action",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "ERP Accounts Payable Module",
+          "description": "Access to ERP Accounts Payable Module.",
+          "resource": "ERP Accounts Payable Module",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Vendor Master Database",
+          "description": "Access to Vendor Master Database.",
+          "resource": "Vendor Master Database",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Treasury Management System",
+          "description": "Access to Treasury Management System.",
+          "resource": "Treasury Management System",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "ERP Accounts Payable Module",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Vendor Master Database",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Treasury Management System",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold",
+          "policy_requires_human_review"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Finance Controller"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_649db97cdec7",
+          "version": 1,
+          "name": "Duplicate Invoice Detection and Review",
+          "kind": "control"
+        },
+        {
+          "id": "ctx_e25f858e4d5c",
+          "version": 1,
+          "name": "Invoice Decision Logging",
+          "kind": "control"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [
+        "decision_logging"
+      ],
+      "success_criteria": "Produces Scheduled Payment Date, Payment Batch ID matching the process's expected output for this step.",
+      "completion_conditions": "Stop once Scheduled Payment Date, Payment Batch ID has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:48.066061",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  },
+  {
+    "id": "agent_ca644cd82c52",
+    "process_id": "proc_5e7b42363940",
+    "group_key": "Task_t12",
+    "node_ids": [
+      "Task_t12"
+    ],
+    "primary_node_id": "Task_t12",
+    "status": "generated",
+    "version": 1,
+    "definition": {
+      "name": "RemittanceAdviceSender",
+      "purpose": "Generate and send remittance advice notifications to suppliers confirming payment details.",
+      "trigger": "Triggered when a payment is successfully scheduled in the treasury system (Task_t11 completed).",
+      "system_prompt": "You are RemittanceAdviceSender, an automation agent for one step of a business process.\n\nPurpose: Generate and send remittance advice notifications to suppliers confirming payment details.\nTrigger: Triggered when a payment is successfully scheduled in the treasury system (Task_t11 completed).\n\nContext from the process evaluation: Sending remittance advice is a standard document generation and communication task. It uses known inputs (payment details, invoice line items) and a template to produce a notification for the supplier. There are no complex judgments or unstructured exceptions described in the immediate successors/predecessors that would block this routine action. Control Invoice Decision Logging requires logging, which is automated.\n\nRequired inputs:\n- Supplier Email Address (from Vendor Master, format: Email String)\n- Payment Reference Number (from Treasury System, format: String)\n- Invoice Line Items Paid (from ERP Ledger, format: JSON/List)\n\nExpected outputs:\n- Sent Remittance Advice (to Email Gateway, format: PDF/HTML Attachment)\n- Send Status Log (to Audit Trail, format: Log Entry)\n\nYou have access to: Email System, Document Generation Service, ERP Accounts Payable Module, Treasury Management System.\nDo not act outside these systems; escalate if the task requires something else.\n\nComplete the task end-to-end without requiring human review.\n\nOrganization rules you must follow for this step:\n- Control Invoice Decision Logging. Record every decision to reject, block, or pay an invoice along with the reason. Required guardrails: decision_logging.\nIf following a rule needs a person, stop and escalate rather than proceeding.",
+      "input_schema": [
+        {
+          "name": "Supplier Email Address",
+          "source_or_destination": "Vendor Master",
+          "format": "Email String"
+        },
+        {
+          "name": "Payment Reference Number",
+          "source_or_destination": "Treasury System",
+          "format": "String"
+        },
+        {
+          "name": "Invoice Line Items Paid",
+          "source_or_destination": "ERP Ledger",
+          "format": "JSON/List"
+        }
+      ],
+      "output_schema": [
+        {
+          "name": "Sent Remittance Advice",
+          "source_or_destination": "Email Gateway",
+          "format": "PDF/HTML Attachment"
+        },
+        {
+          "name": "Send Status Log",
+          "source_or_destination": "Audit Trail",
+          "format": "Log Entry"
+        }
+      ],
+      "tools_systems_needed": [
+        "Email System",
+        "Document Generation Service",
+        "ERP Accounts Payable Module",
+        "Treasury Management System"
+      ],
+      "human_checkpoint": "none",
+      "model": "qwen/qwen3.7-flash",
+      "tool_contracts": [
+        {
+          "system_name": "Email System",
+          "description": "Access to Email System.",
+          "resource": "Email System",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Document Generation Service",
+          "description": "Access to Document Generation Service.",
+          "resource": "Document Generation Service",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "ERP Accounts Payable Module",
+          "description": "Access to ERP Accounts Payable Module.",
+          "resource": "ERP Accounts Payable Module",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        },
+        {
+          "system_name": "Treasury Management System",
+          "description": "Access to Treasury Management System.",
+          "resource": "Treasury Management System",
+          "action": "read",
+          "timeout_seconds": 30.0,
+          "retry_max_attempts": 1,
+          "side_effect": "read_only",
+          "sandbox_mode": "proxy",
+          "application_id": null,
+          "data_classifications": []
+        }
+      ],
+      "permissions": [
+        {
+          "resource": "Email System",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Document Generation Service",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "ERP Accounts Payable Module",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        },
+        {
+          "resource": "Treasury Management System",
+          "actions": {
+            "read": true,
+            "update": false,
+            "initiate": false,
+            "override": false
+          }
+        }
+      ],
+      "guardrails": {
+        "max_steps": 15,
+        "max_tool_calls": 10,
+        "max_runtime_seconds": 120.0,
+        "max_model_calls": 15,
+        "max_tokens": 50000,
+        "max_cost_usd": 1.0,
+        "retry_max_attempts": 2,
+        "loop_detection_enabled": true
+      },
+      "escalation_policy": {
+        "escalate_when": [
+          "repeated_tool_failure",
+          "confidence_below_threshold"
+        ],
+        "escalation_target": {
+          "type": "human",
+          "role": "Operations Specialist"
+        }
+      },
+      "knowledge_sources": [
+        {
+          "id": "ctx_e25f858e4d5c",
+          "version": 1,
+          "name": "Invoice Decision Logging",
+          "kind": "control"
+        }
+      ],
+      "model_policy": {
+        "capability": "reasoning",
+        "provider": null,
+        "model": "qwen/qwen3.7-flash",
+        "temperature": 0.2,
+        "fallback_enabled": true
+      },
+      "policy_guardrails": [
+        "decision_logging"
+      ],
+      "success_criteria": "Produces Sent Remittance Advice, Send Status Log matching the process's expected output for this step.",
+      "completion_conditions": "Stop once Sent Remittance Advice, Send Status Log has been produced, or escalate per the escalation policy if the task falls outside expected inputs."
+    },
+    "baseline_version_id": "ver_457d67960497",
+    "context_pack_id": "ctxpack_b98e1ca608eb",
+    "context_stale": false,
+    "lifecycle_status": "SIMULATION_READY",
+    "checklist": [
+      {
+        "key": "purpose_and_trigger",
+        "label": "Clear purpose and trigger",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "bounded_responsibility",
+        "label": "Bounded responsibility (system prompt)",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "typed_input_output",
+        "label": "Typed output schema",
+        "satisfied": true,
+        "detail": "Input schema may legitimately be empty for a self-contained trigger; output must be typed."
+      },
+      {
+        "key": "success_criteria",
+        "label": "Success criteria",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "completion_conditions",
+        "label": "Completion/stop conditions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "tool_contracts",
+        "label": "Tool contracts",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "permissions",
+        "label": "Permissions",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "guardrails",
+        "label": "Runtime guardrails",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "retry_policy",
+        "label": "Retry policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "escalation_rules",
+        "label": "Escalation rules",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "human_approval_policy",
+        "label": "Human approval policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "knowledge_sources",
+        "label": "Knowledge sources",
+        "satisfied": true,
+        "detail": "Non-blocking: nothing in this system auto-populates knowledge sources yet (Epic 20, US20.5) -- an empty list isn't treated as a gap."
+      },
+      {
+        "key": "model_policy",
+        "label": "Model policy",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "runtime_limits",
+        "label": "Runtime limits",
+        "satisfied": true,
+        "detail": ""
+      },
+      {
+        "key": "audit_configuration",
+        "label": "Audit configuration",
+        "satisfied": true,
+        "detail": "Structural: every run's step trace is always recorded (Epic 17)."
+      },
+      {
+        "key": "test_scenarios",
+        "label": "Test scenarios",
+        "satisfied": true,
+        "detail": ""
+      }
+    ],
+    "marked_release_candidate_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "approved_by_name": null,
+    "generated_at": "2026-10-13T13:48:48.098956",
+    "generated_by": "user_1a49fb6a40f3",
+    "generated_by_name": "Demo Presenter"
+  }
+]

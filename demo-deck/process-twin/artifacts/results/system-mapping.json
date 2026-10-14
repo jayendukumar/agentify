@@ -1,0 +1,71 @@
+{
+  "mapping": {
+    "Communication Platform": [
+      "Supplier email"
+    ],
+    "Document Generation Service": [
+      "Supplier email"
+    ],
+    "Document Store": [
+      "Invoice inbox"
+    ],
+    "ERP Accounts Payable Module": [
+      "AP ledger",
+      "Chart of accounts and tax rules",
+      "ERP purchasing"
+    ],
+    "ERP System": [
+      "AP ledger",
+      "ERP purchasing"
+    ],
+    "ERP/AP Database": [
+      "AP ledger",
+      "ERP purchasing"
+    ],
+    "Email Client": [
+      "Supplier email"
+    ],
+    "Email Service": [
+      "Supplier email"
+    ],
+    "Email System": [
+      "Supplier email"
+    ],
+    "Fraud Detection Heuristics Engine": [
+      "Vendor master"
+    ],
+    "GL Mapping Configuration": [
+      "Chart of accounts and tax rules"
+    ],
+    "Goods Receipt Module": [
+      "ERP purchasing"
+    ],
+    "NLP Entity Recognition Model": [
+      "Invoice inbox"
+    ],
+    "OCR Service": [
+      "Invoice inbox"
+    ],
+    "Purchase Order Module": [
+      "ERP purchasing"
+    ],
+    "Sanctions Screening API": [
+      "Sanctions screening"
+    ],
+    "Tax Calculation Engine": [
+      "Chart of accounts and tax rules"
+    ],
+    "Treasury Management System": [
+      "Payment system"
+    ],
+    "Vendor Master Database": [
+      "Vendor master"
+    ],
+    "Vendor Master System": [
+      "Vendor master"
+    ]
+  },
+  "unmatched": [
+    "Logging System"
+  ]
+}

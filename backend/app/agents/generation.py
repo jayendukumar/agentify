@@ -98,8 +98,8 @@ def build_agent_definition(nodes: list[BlueprintNodeResult], *, primary_node_id:
         tools_systems_needed=spec.tools_systems_needed,
         human_checkpoint=spec.human_checkpoint,
         model=model,
-        tool_contracts=_build_tool_contracts(spec.tools_systems_needed),
-        permissions=_build_default_permissions(spec.tools_systems_needed),
+        tool_contracts=build_tool_contracts(spec.tools_systems_needed),
+        permissions=build_default_permissions(spec.tools_systems_needed),
         guardrails=RuntimeGuardrails(),
         escalation_policy=_default_escalation_policy(),
         model_policy=ModelPolicy(model=model),
@@ -108,7 +108,7 @@ def build_agent_definition(nodes: list[BlueprintNodeResult], *, primary_node_id:
     )
 
 
-def _build_tool_contracts(tool_names: list[str]) -> list[ToolContract]:
+def build_tool_contracts(tool_names: list[str]) -> list[ToolContract]:
     """Epic 20, US20.1/US20.4 default: one read-only contract per declared
     tool, resource keyed 1:1 to the tool name since the current process
     schema (Epics 1/2) has no separate notion of a "business resource" a
@@ -121,7 +121,7 @@ def _build_tool_contracts(tool_names: list[str]) -> list[ToolContract]:
     ]
 
 
-def _build_default_permissions(tool_names: list[str]) -> list[ResourcePermission]:
+def build_default_permissions(tool_names: list[str]) -> list[ResourcePermission]:
     """Epic 20, US20.1 default: grants exactly what the artifact was
     already allowed to do before this epic (call every declared tool) and
     nothing more -- update/initiate/override start denied until an

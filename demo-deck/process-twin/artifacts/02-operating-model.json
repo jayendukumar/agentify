@@ -1,0 +1,350 @@
+{
+  "currency": "EUR",
+  "monthly_volume": 9000,
+  "productive_hours_per_fte": 1600,
+  "working_minutes_per_day": 480,
+  "roles": [
+    {
+      "role": "Accounts Payable Team",
+      "hourly_cost": 48
+    },
+    {
+      "role": "Finance Controller",
+      "hourly_cost": 95
+    },
+    {
+      "role": "Budget Holder",
+      "hourly_cost": 110
+    },
+    {
+      "role": "Treasury",
+      "hourly_cost": 70
+    }
+  ],
+  "nodes": [
+    {
+      "node_id": "Task_t1",
+      "label": "Capture invoice data from the received document",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 3,
+        "likely": 6,
+        "max": 12
+      },
+      "wait_minutes": {
+        "min": 30,
+        "likely": 120,
+        "max": 480
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t2",
+      "label": "Verify supplier against the vendor master and sanctions list",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 2,
+        "likely": 4,
+        "max": 10
+      },
+      "wait_minutes": {
+        "min": 15,
+        "likely": 60,
+        "max": 240
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t3",
+      "label": "Reject invoice and notify the supplier",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 3,
+        "likely": 5,
+        "max": 10
+      },
+      "wait_minutes": {
+        "min": 15,
+        "likely": 60,
+        "max": 240
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t4",
+      "label": "Check for duplicate invoices and payment fraud signals",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 2,
+        "likely": 4,
+        "max": 8
+      },
+      "wait_minutes": {
+        "min": 15,
+        "likely": 60,
+        "max": 240
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t5",
+      "label": "Investigate suspected duplicate or fraud",
+      "role": "Finance Controller",
+      "handling_minutes": {
+        "min": 30,
+        "likely": 60,
+        "max": 180
+      },
+      "wait_minutes": {
+        "min": 240,
+        "likely": 960,
+        "max": 2400
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 10,
+        "likely": 45,
+        "max": 240
+      }
+    },
+    {
+      "node_id": "Task_t6",
+      "label": "Match invoice to purchase order and goods receipt",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 4,
+        "likely": 8,
+        "max": 20
+      },
+      "wait_minutes": {
+        "min": 30,
+        "likely": 120,
+        "max": 480
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t7",
+      "label": "Resolve the match exception with buyer and supplier",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 15,
+        "likely": 35,
+        "max": 120
+      },
+      "wait_minutes": {
+        "min": 240,
+        "likely": 960,
+        "max": 2880
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t8",
+      "label": "Code invoice to GL accounts and validate VAT",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 3,
+        "likely": 5,
+        "max": 12
+      },
+      "wait_minutes": {
+        "min": 15,
+        "likely": 60,
+        "max": 240
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t9",
+      "label": "Approve invoice spend",
+      "role": "Budget Holder",
+      "handling_minutes": {
+        "min": 3,
+        "likely": 8,
+        "max": 20
+      },
+      "wait_minutes": {
+        "min": 480,
+        "likely": 1440,
+        "max": 3360
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 10,
+        "likely": 45,
+        "max": 240
+      }
+    },
+    {
+      "node_id": "Task_t10",
+      "label": "Post invoice to the ERP ledger",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 2,
+        "likely": 3,
+        "max": 6
+      },
+      "wait_minutes": {
+        "min": 15,
+        "likely": 60,
+        "max": 240
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t11",
+      "label": "Schedule payment in the next payment run",
+      "role": "Treasury",
+      "handling_minutes": {
+        "min": 1,
+        "likely": 2,
+        "max": 5
+      },
+      "wait_minutes": {
+        "min": 240,
+        "likely": 960,
+        "max": 2400
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    },
+    {
+      "node_id": "Task_t12",
+      "label": "Send remittance advice to the supplier",
+      "role": "Accounts Payable Team",
+      "handling_minutes": {
+        "min": 2,
+        "likely": 4,
+        "max": 8
+      },
+      "wait_minutes": {
+        "min": 15,
+        "likely": 60,
+        "max": 240
+      },
+      "hourly_cost": null,
+      "review_minutes": {
+        "min": 1,
+        "likely": 3,
+        "max": 8
+      },
+      "to_be_wait_minutes": {
+        "min": 5,
+        "likely": 20,
+        "max": 90
+      }
+    }
+  ],
+  "end_event_outcomes": {
+    "Event_e1": "reject",
+    "Event_e2": "escalate",
+    "Event_e3": "approve"
+  },
+  "outcome_label": "decision",
+  "usd_to_currency": 0.92,
+  "default_review_minutes": {
+    "min": 1,
+    "likely": 3,
+    "max": 6
+  }
+}

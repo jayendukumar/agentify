@@ -240,7 +240,9 @@ class InferredToolSchema(BaseModel):
     # Epic 29, US29.4/US29.5: "openapi" when built from the linked
     # application's real spec instead of inferred by the LLM; `api_*` is
     # what API mode needs to make the call.
-    source: Literal["inferred", "openapi"] = "inferred"
+    # Epic 36, US36.1: "records" when generated from an environment's
+    # sample data (app/twin/records.py).
+    source: Literal["inferred", "openapi", "records"] = "inferred"
     application_id: str | None = None
     api_base_url: str | None = None
     api_environment: str | None = None

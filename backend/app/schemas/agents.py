@@ -246,6 +246,9 @@ class AgentGovernanceUpdate(BaseModel):
     permissions: list[ResourcePermission] | None = None
     guardrails: RuntimeGuardrails | None = None
     escalation_policy: EscalationPolicy | None = None
+    # US20.8: add or remove systems without regenerating (see
+    # app/db/repository.py's update_agent_governance for the defaults).
+    tools_systems_needed: list[str] | None = None
     tool_contracts: list[ToolContract] | None = None
     knowledge_sources: list[KnowledgeSourceRef] | None = None
     model_policy: ModelPolicy | None = None

@@ -2945,3 +2945,158 @@ model returned `"record": null` for one of 25 cases.
 whole reply before that filter ran. Mocked tests always returned
 well-formed records. A null record is now coerced to `{}` and dropped
 like any other empty one.
+
+## 2026-10-13 -- Epic 36, the process digital twin
+
+### Defect found live: the blueprint for a 20-node process came back truncated
+
+Seeding the Invoice to Pay demo (12 tasks, 4 gateways, 4 events, with a
+31-rule context pack from policy AP-02) failed at blueprint generation:
+`Unterminated string ... (char 58865)`. `evaluate_blueprint` made one call
+for the whole diagram, with `max_tokens=16000`. Every node gets a rationale,
+an agent spec and rule citations, so the reply grew past the cap and was
+cut off mid-JSON. Earlier demos used diagrams of 10-14 nodes with smaller
+packs, and mocked tests return whatever JSON they're given, so the limit
+never showed. Diagrams larger than 10 nodes are now evaluated in chunks of
+8 (`app/blueprint/service.py`, concurrently). Every call still sees the rest
+of the diagram as context-only nodes. The trade-off is that consolidation
+can no longer span chunks: `consolidated_from_nodes` is trimmed to the
+chunk. A reply that stops at the output limit (`finish_reason == "length"`)
+now says so instead of surfacing as a JSON parse error.
+
+### Sample-data systems run in-process, not as mock HTTP servers
+
+The twin needed systems that answer the same way for every case, so ground
+truth means something. Proxy mode lets the LLM invent a vendor record per
+call. The alternative was mock HTTP services behind the existing API mode
+(US29.5). That was rejected as the default: customers rarely have sandboxes
+for every system, but they do have extracts. An environment's
+`system_data` (`app/twin/records.py`) answers lookups from records, with
+AND-matching on the given fields and the oracle's case- and
+number-insensitive equality. Writes go to a per-run copy, and the agent's
+tool is generated from the data, so neither the call nor the schema needs
+an LLM. Static and API stubs still win. API mode remains the path to real
+sandboxes.
+
+### Gateways are routed by the agent before them, or by confirmed rules
+
+A process twin must route each case on its own facts; Epic 16's
+per-scenario `gateway_decisions` can't. There are two data-driven modes,
+chosen per gateway. In `agent` mode, the agent before the gateway is given
+the branch labels and returns one in `route`, because "matched within
+tolerance?" is that agent's judgement to make. In `rules` mode, Epic 33's
+confirmed rules are evaluated on the case file, for policy thresholds like
+"above EUR 10,000". Asking the agent was preferred over writing rules on
+agent output fields, because those field names come from the blueprint LLM
+and change between regenerations. Branch labels come from the flow's
+condition text. An early version read `FlowRef.label`, which `bpmn/nodes.py`
+fills with the *target node's* label; a unit-test fixture had to mirror the
+real parser to catch it. An unknown answer falls back to the configured
+decision, and otherwise fails the case with the agent's actual words.
+
+### As-is and to-be are costed on the same random draws
+
+The efficiency report (`app/process_twin/efficiency.py`) samples handling
+and wait times from the operating model's triangular distributions, seeded
+per case. Both sides of a case share the draws, so the difference between
+them reflects the process, not sampling noise. Savings intervals are
+paired bootstrap intervals over cases. A case the twin couldn't finish is
+costed as fully manual on top of what the twin spent. Ignoring it would
+have made a failing twin look cheaper.
+
+### Defect found live: an agent on an end event blocked every rehearsal run
+
+With chunked blueprint evaluation, the model no longer saw consolidation
+across the whole diagram. It gave three gateways and the end event agent
+specs of their own, including a "Process Completion Logger" with no output
+schema. `_build_node_artifacts` checked simulation readiness for every node
+that had an artifact. The orchestrator never runs an agent on a gateway or
+an event, yet that unready artifact failed every run before it started.
+Only task-type nodes now get a runnable artifact
+(`_TASK_NODE_TYPES` in `db/repository.py`), and the demo seed generates
+agents for task steps only. The blueprint still records the model's spec for
+those nodes; it simply has no effect on the walk.
+
+### Changing an agent's systems is a governance edit (US20.8)
+
+The process twin's first live run showed agents that couldn't reach the
+data their step needs. For example, the supplier check had no sanctions
+list in one blueprint, and the matcher had no goods receipts in another.
+Regenerating from the blueprint resets every governance edit (Epic 20's
+reason for the governance endpoint), so `tools_systems_needed` became a
+governance field. Added systems get the same default read contract and
+permission that generation gives. Removed systems take theirs with them.
+Customised contracts on kept systems are left alone. The alternative,
+editing the blueprint node and regenerating, was rejected because it loses
+those edits.
+
+### Policy extraction varies a lot between runs
+
+Seeding the demo three times extracted 31, 13 and 9 rules from the same
+two-page policy (AP-02). Each run is internally consistent and a person
+confirms the proposals, so this isn't a defect in the code path. It is a
+quality risk for everything downstream, recorded in
+`docs/wiki/Critical-Review.md` (weakness 13). Nothing measures it yet. The
+proposed fix is to treat extraction like an agent: a labelled policy set,
+plus repeat runs.
+
+### Defect found live: agents' own steps were dropped from orchestration traces (Epic 17)
+
+The first complete Invoice to Pay rehearsal looked as if no agent had
+called a tool, yet each agent's node summary showed lookups. The walk passed
+the caller's `on_step` straight into each nested `run_scenario`. Nested steps
+were therefore persisted incrementally, but never added to the walk's own
+`steps` list. That list then overwrote the persisted trace when the run
+finished, so Epic 17's "one trace for the whole run" held only while the run
+was in flight. Mocked orchestrator tests replaced `run_scenario` entirely, so
+nothing exercised the callback path. Nested steps are now relayed through
+the walk with its own sequence numbers (`relay` in `twin/orchestrator.py`).
+This mattered for Epic 36: the efficiency report counts review requests
+from the run trace, and would have undercounted people's time in favour of
+the to-be process.
+
+### Defect found live: the data adapter's 1,000-token cap returned nothing
+
+`_adapt_data` (Epic 16) still had `max_tokens=1000`. That is the same cap
+that already broke Proxy-mode system simulation and tool-schema inference,
+because the model's reasoning tokens count against it. It rarely mattered
+while rehearsals were hand-configured. The case file's `auto` mapping calls
+the adapter for any input field not already in the case file, and the first
+live process twin case failed at its first agent. The cap is now 8,000.
+
+### An agent gets its declared inputs plus the rest of the case file
+
+Blueprint-generated input schemas are loosely named ("Invoice Document",
+"Supplier Name/ID", even "Vendor Master Database" as an *input*). The adapter
+correctly refuses to invent values and maps them to null. Live, that left
+the capture agent with no document reference to look anything up by, and a
+clean invoice was rejected two steps later. The alternatives were to make the
+adapter guess (rejected: it would fabricate data) or to require exact input
+contracts (rejected: generated schemas aren't that precise). With
+`handoff="case_file"`, each agent now also receives the rest of the case file
+under `case_file`. Its declared inputs stay the contract, and the case file
+is context.
+
+### One recorded repair turn when an agent's final answer isn't JSON
+
+In the first full process twin run, 4 of 30 invoices failed because an
+agent ended with prose around its JSON. The final turn runs with tools
+attached, so JSON mode is off, and only a code fence was tolerated before.
+Three options were considered:
+- extract any JSON object from the reply: rejected, it hides a real output
+  defect and can pick the wrong object
+- keep failing: rejected, a production runtime would ask again
+- one repair turn: chosen
+
+The repair turn asks once for "ONLY the JSON object with exactly these
+keys" (`twin/engine.py`). It's recorded as a `RETRY` step, so the trace
+shows it happened. A second failure still fails the run.
+
+### Identical process twin runs disagree
+
+Running the same 30 invoices with the same seed twice gave 67% and 63%
+right outcomes, and a number of individual invoices changed outcome. The
+seeds fix the simulated reviewers, faults and timings, not the model's
+sampling. This is expected of LLM agents, but invisible from one run. It is
+why the deck shows the repeat, and why a process-level release decision
+should use repeated trials per case (Epic 34's `trials`), not one batch.

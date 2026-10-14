@@ -86,3 +86,61 @@ async def test_evaluate_blueprint_raises_on_invalid_json():
 
     with pytest.raises(BlueprintServiceError):
         await evaluate_blueprint(llm, flow_nodes=_nodes())
+
+
+class _ChunkAwareLLM:
+    """Answers each call for exactly the node ids its prompt asks about,
+    with an agent spec that tries to consolidate across the whole diagram."""
+
+    def __init__(self, all_ids: list[str]) -> None:
+        self.all_ids = all_ids
+        self.prompts: list[str] = []
+
+    async def complete(self, messages, **kwargs):
+        prompt = messages[0].content
+        self.prompts.append(prompt)
+        evaluated = prompt.split("context only")[0]
+        ids = [i for i in self.all_ids if f'"id": "{i}"' in evaluated]
+        spec = {"name": "A", "purpose": "p", "trigger": "t", "required_inputs": [], "expected_outputs": [],
+                "tools_systems_needed": [], "human_checkpoint": "none", "consolidated_from_nodes": self.all_ids[:12]}
+        nodes = [{**_result(i), "agent_spec": spec} for i in ids]
+        return _completion(json.dumps({"nodes": nodes}))
+
+
+@pytest.mark.asyncio
+async def test_large_diagrams_are_evaluated_in_chunks_with_the_whole_diagram_as_context():
+    """Epic 36: a 20-node diagram in one call overran the output cap live."""
+    nodes = [FlowNodeInfo(id=f"Task_{i:02d}", label=f"Step {i}", bpmn_type="task", lane_name="AP") for i in range(20)]
+    llm = _ChunkAwareLLM([n.id for n in nodes])
+
+    results = await evaluate_blueprint(llm, flow_nodes=nodes)
+
+    assert len(llm.prompts) == 3  # 8 + 8 + 4
+    assert [r.node_id for r in results] == [n.id for n in nodes]
+    assert "Step 19" in llm.prompts[0]  # every chunk sees the rest of the diagram
+    # Consolidation is trimmed to the chunk the model evaluated.
+    assert results[0].agent_spec.consolidated_from_nodes == [f"Task_{i:02d}" for i in range(8)]
+    assert results[9].agent_spec.consolidated_from_nodes == [f"Task_{i:02d}" for i in range(8, 12)]
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_reply_says_so():
+    llm = _FakeLLM(_completion('{"nodes": [{"node_id": "Task_a", "rationale": "cut', finish_reason="length"))
+    with pytest.raises(BlueprintServiceError, match="cut off at the output limit"):
+        await evaluate_blueprint(llm, flow_nodes=_nodes())
+
+
+@pytest.mark.asyncio
+async def test_one_malformed_reply_is_retried():
+    """Seen live: one chunk's reply missing a comma failed the whole blueprint."""
+    good = _completion(json.dumps({"nodes": [_result("Task_a"), _result("Task_b")]}))
+    replies = iter([_completion('{"nodes": [ {"node_id": "Task_a" "verdict": 1}]}'), good])
+
+    class _Flaky(_FakeLLM):
+        async def complete(self, messages, **kwargs):
+            self.calls.append(kwargs)
+            return next(replies)
+
+    llm = _Flaky(good)
+    results = await evaluate_blueprint(llm, flow_nodes=_nodes())
+    assert [r.node_id for r in results] == ["Task_a", "Task_b"] and len(llm.calls) == 2

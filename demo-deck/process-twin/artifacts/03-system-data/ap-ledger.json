@@ -1,0 +1,428 @@
+{
+  "system": "AP ledger",
+  "description": "Accounts payable sub-ledger: posted and paid invoices; post a new invoice",
+  "records": [
+    {
+      "ledger_id": "AP-2026-00001",
+      "supplier_id": "SUP-012",
+      "supplier_name": "Lumen Lighting BV",
+      "invoice_number": "012-1192",
+      "gross_amount": 1059.92,
+      "currency": "EUR",
+      "posted_on": "2026-09-05",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00002",
+      "supplier_id": "SUP-004",
+      "supplier_name": "Delta Fasteners SpA",
+      "invoice_number": "004-5401",
+      "gross_amount": 6148.4,
+      "currency": "EUR",
+      "posted_on": "2026-06-26",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00003",
+      "supplier_id": "SUP-007",
+      "supplier_name": "Gironde Facility Services SARL",
+      "invoice_number": "007-8489",
+      "gross_amount": 9462.97,
+      "currency": "EUR",
+      "posted_on": "2026-07-16",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00004",
+      "supplier_id": "SUP-013",
+      "supplier_name": "Mosel Catering GmbH",
+      "invoice_number": "013-2294",
+      "gross_amount": 10181.47,
+      "currency": "EUR",
+      "posted_on": "2026-09-09",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00005",
+      "supplier_id": "SUP-022",
+      "supplier_name": "Vltava Engineering s.r.o.",
+      "invoice_number": "022-1186",
+      "gross_amount": 17693.52,
+      "currency": "EUR",
+      "posted_on": "2026-09-14",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00006",
+      "supplier_id": "SUP-012",
+      "supplier_name": "Lumen Lighting BV",
+      "invoice_number": "012-4594",
+      "gross_amount": 16998.37,
+      "currency": "EUR",
+      "posted_on": "2026-09-07",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00007",
+      "supplier_id": "SUP-025",
+      "supplier_name": "Zenith Temporary Staffing BV",
+      "invoice_number": "025-3798",
+      "gross_amount": 12817.08,
+      "currency": "EUR",
+      "posted_on": "2026-09-23",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00008",
+      "supplier_id": "SUP-023",
+      "supplier_name": "Westerland Cleaning GmbH",
+      "invoice_number": "023-7832",
+      "gross_amount": 12928.19,
+      "currency": "EUR",
+      "posted_on": "2026-07-08",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00009",
+      "supplier_id": "SUP-023",
+      "supplier_name": "Westerland Cleaning GmbH",
+      "invoice_number": "023-3183",
+      "gross_amount": 2301.78,
+      "currency": "EUR",
+      "posted_on": "2026-08-30",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00010",
+      "supplier_id": "SUP-016",
+      "supplier_name": "Pavia Chemicals Srl",
+      "invoice_number": "016-1728",
+      "gross_amount": 3660.54,
+      "currency": "EUR",
+      "posted_on": "2026-07-02",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00011",
+      "supplier_id": "SUP-020",
+      "supplier_name": "Tagus Software Lda",
+      "invoice_number": "020-4790",
+      "gross_amount": 17795.82,
+      "currency": "EUR",
+      "posted_on": "2026-08-04",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00012",
+      "supplier_id": "SUP-012",
+      "supplier_name": "Lumen Lighting BV",
+      "invoice_number": "012-6628",
+      "gross_amount": 6514.46,
+      "currency": "EUR",
+      "posted_on": "2026-07-18",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00013",
+      "supplier_id": "SUP-018",
+      "supplier_name": "Rhone Valley Energy SAS",
+      "invoice_number": "018-5183",
+      "gross_amount": 8994.36,
+      "currency": "EUR",
+      "posted_on": "2026-08-23",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00014",
+      "supplier_id": "SUP-010",
+      "supplier_name": "Jura Precision Tools AG",
+      "invoice_number": "010-1601",
+      "gross_amount": 11727.31,
+      "currency": "EUR",
+      "posted_on": "2026-09-16",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00015",
+      "supplier_id": "SUP-001",
+      "supplier_name": "Acme Industrial GmbH",
+      "invoice_number": "001-8875",
+      "gross_amount": 14637.54,
+      "currency": "EUR",
+      "posted_on": "2026-09-01",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00016",
+      "supplier_id": "SUP-017",
+      "supplier_name": "Quayside Marine Supplies Ltd",
+      "invoice_number": "017-4256",
+      "gross_amount": 6868.73,
+      "currency": "EUR",
+      "posted_on": "2026-07-30",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00017",
+      "supplier_id": "SUP-015",
+      "supplier_name": "Orbis Security Services SA",
+      "invoice_number": "015-5981",
+      "gross_amount": 4241.98,
+      "currency": "EUR",
+      "posted_on": "2026-09-27",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00018",
+      "supplier_id": "SUP-016",
+      "supplier_name": "Pavia Chemicals Srl",
+      "invoice_number": "016-2057",
+      "gross_amount": 13175.68,
+      "currency": "EUR",
+      "posted_on": "2026-07-13",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00019",
+      "supplier_id": "SUP-020",
+      "supplier_name": "Tagus Software Lda",
+      "invoice_number": "020-9720",
+      "gross_amount": 13878.92,
+      "currency": "EUR",
+      "posted_on": "2026-08-26",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00020",
+      "supplier_id": "SUP-018",
+      "supplier_name": "Rhone Valley Energy SAS",
+      "invoice_number": "018-2486",
+      "gross_amount": 15413.68,
+      "currency": "EUR",
+      "posted_on": "2026-07-29",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00021",
+      "supplier_id": "SUP-025",
+      "supplier_name": "Zenith Temporary Staffing BV",
+      "invoice_number": "025-6326",
+      "gross_amount": 9010.53,
+      "currency": "EUR",
+      "posted_on": "2026-07-11",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00022",
+      "supplier_id": "SUP-012",
+      "supplier_name": "Lumen Lighting BV",
+      "invoice_number": "012-6899",
+      "gross_amount": 3588.43,
+      "currency": "EUR",
+      "posted_on": "2026-07-24",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00023",
+      "supplier_id": "SUP-006",
+      "supplier_name": "Fjord Cloud Services AS",
+      "invoice_number": "006-5218",
+      "gross_amount": 17365.6,
+      "currency": "EUR",
+      "posted_on": "2026-07-28",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00024",
+      "supplier_id": "SUP-020",
+      "supplier_name": "Tagus Software Lda",
+      "invoice_number": "020-7272",
+      "gross_amount": 11497.53,
+      "currency": "EUR",
+      "posted_on": "2026-07-18",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00025",
+      "supplier_id": "SUP-007",
+      "supplier_name": "Gironde Facility Services SARL",
+      "invoice_number": "007-1473",
+      "gross_amount": 8563.05,
+      "currency": "EUR",
+      "posted_on": "2026-09-07",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00026",
+      "supplier_id": "SUP-016",
+      "supplier_name": "Pavia Chemicals Srl",
+      "invoice_number": "016-9323",
+      "gross_amount": 15456.52,
+      "currency": "EUR",
+      "posted_on": "2026-09-17",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00027",
+      "supplier_id": "SUP-020",
+      "supplier_name": "Tagus Software Lda",
+      "invoice_number": "020-4461",
+      "gross_amount": 14333.59,
+      "currency": "EUR",
+      "posted_on": "2026-08-30",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00028",
+      "supplier_id": "SUP-018",
+      "supplier_name": "Rhone Valley Energy SAS",
+      "invoice_number": "018-3239",
+      "gross_amount": 10236.42,
+      "currency": "EUR",
+      "posted_on": "2026-06-18",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00029",
+      "supplier_id": "SUP-012",
+      "supplier_name": "Lumen Lighting BV",
+      "invoice_number": "012-6959",
+      "gross_amount": 17950.57,
+      "currency": "EUR",
+      "posted_on": "2026-08-14",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00030",
+      "supplier_id": "SUP-022",
+      "supplier_name": "Vltava Engineering s.r.o.",
+      "invoice_number": "022-9832",
+      "gross_amount": 3727.34,
+      "currency": "EUR",
+      "posted_on": "2026-07-18",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00031",
+      "supplier_id": "SUP-022",
+      "supplier_name": "Vltava Engineering s.r.o.",
+      "invoice_number": "022-3508",
+      "gross_amount": 13225.86,
+      "currency": "EUR",
+      "posted_on": "2026-09-17",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00032",
+      "supplier_id": "SUP-023",
+      "supplier_name": "Westerland Cleaning GmbH",
+      "invoice_number": "023-2000",
+      "gross_amount": 14512.61,
+      "currency": "EUR",
+      "posted_on": "2026-06-15",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00033",
+      "supplier_id": "SUP-002",
+      "supplier_name": "Brightline Logistics BV",
+      "invoice_number": "002-5593",
+      "gross_amount": 14295.4,
+      "currency": "EUR",
+      "posted_on": "2026-06-21",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00034",
+      "supplier_id": "SUP-006",
+      "supplier_name": "Fjord Cloud Services AS",
+      "invoice_number": "006-3280",
+      "gross_amount": 5109.03,
+      "currency": "EUR",
+      "posted_on": "2026-07-26",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00035",
+      "supplier_id": "SUP-013",
+      "supplier_name": "Mosel Catering GmbH",
+      "invoice_number": "013-3096",
+      "gross_amount": 8448.38,
+      "currency": "EUR",
+      "posted_on": "2026-09-10",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00036",
+      "supplier_id": "SUP-002",
+      "supplier_name": "Brightline Logistics BV",
+      "invoice_number": "002-4041",
+      "gross_amount": 12366.7,
+      "currency": "EUR",
+      "posted_on": "2026-08-12",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00037",
+      "supplier_id": "SUP-025",
+      "supplier_name": "Zenith Temporary Staffing BV",
+      "invoice_number": "025-9023",
+      "gross_amount": 16457.9,
+      "currency": "EUR",
+      "posted_on": "2026-09-30",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00038",
+      "supplier_id": "SUP-011",
+      "supplier_name": "Kestrel IT Consulting Ltd",
+      "invoice_number": "011-4619",
+      "gross_amount": 9456.56,
+      "currency": "EUR",
+      "posted_on": "2026-07-26",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00039",
+      "supplier_id": "SUP-003",
+      "supplier_name": "Castellan Office Supplies SL",
+      "invoice_number": "003-8629",
+      "gross_amount": 12374.94,
+      "currency": "EUR",
+      "posted_on": "2026-08-12",
+      "status": "paid"
+    },
+    {
+      "ledger_id": "AP-2026-00040",
+      "supplier_id": "SUP-005",
+      "supplier_name": "Elbe Packaging GmbH",
+      "invoice_number": "005-6316",
+      "gross_amount": 2963.37,
+      "currency": "EUR",
+      "posted_on": "2026-07-30",
+      "status": "paid"
+    }
+  ],
+  "lookup_fields": [
+    "invoice_number",
+    "supplier_id",
+    "supplier_name",
+    "ledger_id"
+  ],
+  "operations": [
+    "lookup",
+    "create"
+  ],
+  "reference_prefix": "AP",
+  "keywords": [
+    "ledger",
+    "accounts payable",
+    "payable",
+    "erp",
+    "duplicate",
+    "invoice history",
+    "posting",
+    "sap",
+    "finance system"
+  ]
+}

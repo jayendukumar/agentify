@@ -10,6 +10,7 @@ import GapReviewPage from './pages/GapReviewPage'
 import ProcessDetailPage from './pages/ProcessDetailPage'
 import OrganizationPage from './pages/OrganizationPage'
 import ProcessListPage from './pages/ProcessListPage'
+import ProcessTwinPage from './pages/ProcessTwinPage'
 import RegistriesPage from './pages/RegistriesPage'
 import VersionsPage from './pages/VersionsPage'
 
@@ -88,6 +89,7 @@ function AppRoutes() {
       <Route path="/processes/:processId/gaps" element={<GapReviewPage />} />
       <Route path="/processes/:processId/datasets" element={<DatasetsPage />} />
       <Route path="/processes/:processId/batches/:batchId" element={<BatchResultsPage />} />
+      <Route path="/processes/:processId/process-twin" element={<ProcessTwinPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )

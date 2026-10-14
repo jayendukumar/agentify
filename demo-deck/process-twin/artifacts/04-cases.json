@@ -1,0 +1,1427 @@
+[
+  {
+    "row_key": "INV-2026-0001",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0001",
+      "document_ref": "DOC-40007",
+      "channel": "email",
+      "received_on": "2026-10-03",
+      "amount_eur": 34069.24
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0002",
+    "segment": "messy_capture",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0002",
+      "document_ref": "DOC-40014",
+      "channel": "EDI",
+      "received_on": "2026-10-09",
+      "amount_eur": 2179.36
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "messy_capture"
+  },
+  {
+    "row_key": "INV-2026-0003",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0003",
+      "document_ref": "DOC-40021",
+      "channel": "EDI",
+      "received_on": "2026-10-09",
+      "amount_eur": 1783.61
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0004",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0004",
+      "document_ref": "DOC-40028",
+      "channel": "email",
+      "received_on": "2026-10-11",
+      "amount_eur": 34566.98
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0005",
+    "segment": "bank_change_fraud",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0005",
+      "document_ref": "DOC-40035",
+      "channel": "email",
+      "received_on": "2026-10-08",
+      "amount_eur": 31843.82
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "bank_change_fraud"
+  },
+  {
+    "row_key": "INV-2026-0006",
+    "segment": "price_variance",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0006",
+      "document_ref": "DOC-40042",
+      "channel": "email",
+      "received_on": "2026-10-05",
+      "amount_eur": 2783.5
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "price_variance"
+  },
+  {
+    "row_key": "INV-2026-0007",
+    "segment": "bank_change_fraud",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0007",
+      "document_ref": "DOC-40049",
+      "channel": "email",
+      "received_on": "2026-10-03",
+      "amount_eur": 40791.02
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "bank_change_fraud"
+  },
+  {
+    "row_key": "INV-2026-0008",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0008",
+      "document_ref": "DOC-40056",
+      "channel": "EDI",
+      "received_on": "2026-10-01",
+      "amount_eur": 7438.37
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0009",
+    "segment": "blocked_supplier",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0009",
+      "document_ref": "DOC-40063",
+      "channel": "EDI",
+      "received_on": "2026-10-12",
+      "amount_eur": 5182.68
+    },
+    "labels": {
+      "decision": "reject",
+      "outputs": {
+        "expected_route": "rejected at supplier check"
+      }
+    },
+    "kind": "blocked_supplier"
+  },
+  {
+    "row_key": "INV-2026-0010",
+    "segment": "sanctioned_supplier",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0010",
+      "document_ref": "DOC-40070",
+      "channel": "supplier portal",
+      "received_on": "2026-10-04",
+      "amount_eur": 4331.31
+    },
+    "labels": {
+      "decision": "reject",
+      "outputs": {
+        "expected_route": "rejected at supplier check"
+      }
+    },
+    "kind": "sanctioned_supplier"
+  },
+  {
+    "row_key": "INV-2026-0011",
+    "segment": "bank_change_fraud",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0011",
+      "document_ref": "DOC-40077",
+      "channel": "email",
+      "received_on": "2026-10-14",
+      "amount_eur": 4714.78
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "bank_change_fraud"
+  },
+  {
+    "row_key": "INV-2026-0012",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0012",
+      "document_ref": "DOC-40084",
+      "channel": "supplier portal",
+      "received_on": "2026-10-07",
+      "amount_eur": 7769.25
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0013",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0013",
+      "document_ref": "DOC-40091",
+      "channel": "email",
+      "received_on": "2026-10-13",
+      "amount_eur": 8826.79
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0014",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0014",
+      "document_ref": "DOC-40098",
+      "channel": "email",
+      "received_on": "2026-10-12",
+      "amount_eur": 288.91
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0015",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0015",
+      "document_ref": "DOC-40105",
+      "channel": "EDI",
+      "received_on": "2026-10-12",
+      "amount_eur": 37283.32
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0016",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0016",
+      "document_ref": "DOC-40112",
+      "channel": "supplier portal",
+      "received_on": "2026-10-11",
+      "amount_eur": 1117.54
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0017",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0017",
+      "document_ref": "DOC-40119",
+      "channel": "email",
+      "received_on": "2026-10-14",
+      "amount_eur": 47383.86
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0018",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0018",
+      "document_ref": "DOC-40126",
+      "channel": "email",
+      "received_on": "2026-10-10",
+      "amount_eur": 48844.53
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0019",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0019",
+      "document_ref": "DOC-40133",
+      "channel": "email",
+      "received_on": "2026-10-09",
+      "amount_eur": 1110.47
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0020",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0020",
+      "document_ref": "DOC-40140",
+      "channel": "email",
+      "received_on": "2026-10-09",
+      "amount_eur": 2160.11
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0021",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0021",
+      "document_ref": "DOC-40147",
+      "channel": "EDI",
+      "received_on": "2026-10-03",
+      "amount_eur": 6124.13
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0022",
+    "segment": "missing_goods_receipt",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0022",
+      "document_ref": "DOC-40154",
+      "channel": "supplier portal",
+      "received_on": "2026-10-08",
+      "amount_eur": 40519.67
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "missing_goods_receipt"
+  },
+  {
+    "row_key": "INV-2026-0023",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0023",
+      "document_ref": "DOC-40161",
+      "channel": "EDI",
+      "received_on": "2026-10-11",
+      "amount_eur": 41108.57
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0024",
+    "segment": "messy_capture",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0024",
+      "document_ref": "DOC-40168",
+      "channel": "supplier portal",
+      "received_on": "2026-10-09",
+      "amount_eur": 9733.39
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "messy_capture"
+  },
+  {
+    "row_key": "INV-2026-0025",
+    "segment": "sanctioned_supplier",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0025",
+      "document_ref": "DOC-40175",
+      "channel": "EDI",
+      "received_on": "2026-10-01",
+      "amount_eur": 1025.82
+    },
+    "labels": {
+      "decision": "reject",
+      "outputs": {
+        "expected_route": "rejected at supplier check"
+      }
+    },
+    "kind": "sanctioned_supplier"
+  },
+  {
+    "row_key": "INV-2026-0026",
+    "segment": "missing_goods_receipt",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0026",
+      "document_ref": "DOC-40182",
+      "channel": "supplier portal",
+      "received_on": "2026-10-04",
+      "amount_eur": 17310.86
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "missing_goods_receipt"
+  },
+  {
+    "row_key": "INV-2026-0027",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0027",
+      "document_ref": "DOC-40189",
+      "channel": "email",
+      "received_on": "2026-10-11",
+      "amount_eur": 9990.84
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0028",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0028",
+      "document_ref": "DOC-40196",
+      "channel": "supplier portal",
+      "received_on": "2026-10-04",
+      "amount_eur": 7233.08
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0029",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0029",
+      "document_ref": "DOC-40203",
+      "channel": "supplier portal",
+      "received_on": "2026-10-11",
+      "amount_eur": 48988.0
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0030",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0030",
+      "document_ref": "DOC-40210",
+      "channel": "EDI",
+      "received_on": "2026-10-10",
+      "amount_eur": 5312.07
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0031",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0031",
+      "document_ref": "DOC-40217",
+      "channel": "email",
+      "received_on": "2026-10-01",
+      "amount_eur": 9200.56
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0032",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0032",
+      "document_ref": "DOC-40224",
+      "channel": "email",
+      "received_on": "2026-10-09",
+      "amount_eur": 6383.86
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0033",
+    "segment": "price_variance",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0033",
+      "document_ref": "DOC-40231",
+      "channel": "email",
+      "received_on": "2026-10-07",
+      "amount_eur": 18442.92
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "price_variance"
+  },
+  {
+    "row_key": "INV-2026-0034",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0034",
+      "document_ref": "DOC-40238",
+      "channel": "supplier portal",
+      "received_on": "2026-10-11",
+      "amount_eur": 6850.86
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0035",
+    "segment": "price_variance",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0035",
+      "document_ref": "DOC-40245",
+      "channel": "EDI",
+      "received_on": "2026-10-11",
+      "amount_eur": 23491.18
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "price_variance"
+  },
+  {
+    "row_key": "INV-2026-0036",
+    "segment": "messy_capture",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0036",
+      "document_ref": "DOC-40252",
+      "channel": "EDI",
+      "received_on": "2026-10-09",
+      "amount_eur": 4665.41
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "messy_capture"
+  },
+  {
+    "row_key": "INV-2026-0037",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0037",
+      "document_ref": "DOC-40259",
+      "channel": "email",
+      "received_on": "2026-10-09",
+      "amount_eur": 2792.38
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0038",
+    "segment": "unknown_supplier",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0038",
+      "document_ref": "DOC-40266",
+      "channel": "EDI",
+      "received_on": "2026-10-05",
+      "amount_eur": 2816.42
+    },
+    "labels": {
+      "decision": "reject",
+      "outputs": {
+        "expected_route": "rejected at supplier check"
+      }
+    },
+    "kind": "unknown_supplier"
+  },
+  {
+    "row_key": "INV-2026-0039",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0039",
+      "document_ref": "DOC-40273",
+      "channel": "supplier portal",
+      "received_on": "2026-10-08",
+      "amount_eur": 7715.24
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0040",
+    "segment": "price_variance",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0040",
+      "document_ref": "DOC-40280",
+      "channel": "EDI",
+      "received_on": "2026-10-04",
+      "amount_eur": 2724.65
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "price_variance"
+  },
+  {
+    "row_key": "INV-2026-0041",
+    "segment": "duplicate",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0041",
+      "document_ref": "DOC-40287",
+      "channel": "email",
+      "received_on": "2026-10-08",
+      "amount_eur": 9456.56
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "duplicate"
+  },
+  {
+    "row_key": "INV-2026-0042",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0042",
+      "document_ref": "DOC-40294",
+      "channel": "email",
+      "received_on": "2026-10-09",
+      "amount_eur": 45696.95
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0043",
+    "segment": "blocked_supplier",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0043",
+      "document_ref": "DOC-40301",
+      "channel": "supplier portal",
+      "received_on": "2026-10-06",
+      "amount_eur": 5748.46
+    },
+    "labels": {
+      "decision": "reject",
+      "outputs": {
+        "expected_route": "rejected at supplier check"
+      }
+    },
+    "kind": "blocked_supplier"
+  },
+  {
+    "row_key": "INV-2026-0044",
+    "segment": "duplicate",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0044",
+      "document_ref": "DOC-40308",
+      "channel": "email",
+      "received_on": "2026-10-05",
+      "amount_eur": 2988.28
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "duplicate"
+  },
+  {
+    "row_key": "INV-2026-0045",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0045",
+      "document_ref": "DOC-40315",
+      "channel": "EDI",
+      "received_on": "2026-10-11",
+      "amount_eur": 1284.41
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0046",
+    "segment": "duplicate",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0046",
+      "document_ref": "DOC-40322",
+      "channel": "email",
+      "received_on": "2026-10-05",
+      "amount_eur": 11123.63
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "duplicate"
+  },
+  {
+    "row_key": "INV-2026-0047",
+    "segment": "messy_capture",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0047",
+      "document_ref": "DOC-40329",
+      "channel": "EDI",
+      "received_on": "2026-10-12",
+      "amount_eur": 1752.02
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "messy_capture"
+  },
+  {
+    "row_key": "INV-2026-0048",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0048",
+      "document_ref": "DOC-40336",
+      "channel": "EDI",
+      "received_on": "2026-10-08",
+      "amount_eur": 47499.92
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0049",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0049",
+      "document_ref": "DOC-40343",
+      "channel": "supplier portal",
+      "received_on": "2026-10-10",
+      "amount_eur": 1735.37
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0050",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0050",
+      "document_ref": "DOC-40350",
+      "channel": "supplier portal",
+      "received_on": "2026-10-11",
+      "amount_eur": 8850.02
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0051",
+    "segment": "messy_capture",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0051",
+      "document_ref": "DOC-40357",
+      "channel": "email",
+      "received_on": "2026-10-04",
+      "amount_eur": 1337.5
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "messy_capture"
+  },
+  {
+    "row_key": "INV-2026-0052",
+    "segment": "unknown_supplier",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0052",
+      "document_ref": "DOC-40364",
+      "channel": "email",
+      "received_on": "2026-10-08",
+      "amount_eur": 7036.3
+    },
+    "labels": {
+      "decision": "reject",
+      "outputs": {
+        "expected_route": "rejected at supplier check"
+      }
+    },
+    "kind": "unknown_supplier"
+  },
+  {
+    "row_key": "INV-2026-0053",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0053",
+      "document_ref": "DOC-40371",
+      "channel": "email",
+      "received_on": "2026-10-07",
+      "amount_eur": 1485.72
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0054",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0054",
+      "document_ref": "DOC-40378",
+      "channel": "supplier portal",
+      "received_on": "2026-10-07",
+      "amount_eur": 7961.69
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0055",
+    "segment": "duplicate",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0055",
+      "document_ref": "DOC-40385",
+      "channel": "EDI",
+      "received_on": "2026-10-11",
+      "amount_eur": 2490.23
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "duplicate"
+  },
+  {
+    "row_key": "INV-2026-0056",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0056",
+      "document_ref": "DOC-40392",
+      "channel": "supplier portal",
+      "received_on": "2026-10-09",
+      "amount_eur": 7104.58
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0057",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0057",
+      "document_ref": "DOC-40399",
+      "channel": "email",
+      "received_on": "2026-10-03",
+      "amount_eur": 8876.41
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0058",
+    "segment": "blocked_supplier",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0058",
+      "document_ref": "DOC-40406",
+      "channel": "email",
+      "received_on": "2026-10-10",
+      "amount_eur": 5062.72
+    },
+    "labels": {
+      "decision": "reject",
+      "outputs": {
+        "expected_route": "rejected at supplier check"
+      }
+    },
+    "kind": "blocked_supplier"
+  },
+  {
+    "row_key": "INV-2026-0059",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0059",
+      "document_ref": "DOC-40413",
+      "channel": "email",
+      "received_on": "2026-10-02",
+      "amount_eur": 2994.18
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0060",
+    "segment": "unknown_supplier",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0060",
+      "document_ref": "DOC-40420",
+      "channel": "supplier portal",
+      "received_on": "2026-10-04",
+      "amount_eur": 7156.37
+    },
+    "labels": {
+      "decision": "reject",
+      "outputs": {
+        "expected_route": "rejected at supplier check"
+      }
+    },
+    "kind": "unknown_supplier"
+  },
+  {
+    "row_key": "INV-2026-0061",
+    "segment": "price_variance",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0061",
+      "document_ref": "DOC-40427",
+      "channel": "supplier portal",
+      "received_on": "2026-10-07",
+      "amount_eur": 2438.74
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "price_variance"
+  },
+  {
+    "row_key": "INV-2026-0062",
+    "segment": "clean_large",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0062",
+      "document_ref": "DOC-40434",
+      "channel": "EDI",
+      "received_on": "2026-10-03",
+      "amount_eur": 41327.48
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_large"
+  },
+  {
+    "row_key": "INV-2026-0063",
+    "segment": "missing_goods_receipt",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0063",
+      "document_ref": "DOC-40441",
+      "channel": "supplier portal",
+      "received_on": "2026-10-06",
+      "amount_eur": 1422.5
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "missing_goods_receipt"
+  },
+  {
+    "row_key": "INV-2026-0064",
+    "segment": "duplicate",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0064",
+      "document_ref": "DOC-40448",
+      "channel": "supplier portal",
+      "received_on": "2026-10-04",
+      "amount_eur": 17506.46
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "duplicate"
+  },
+  {
+    "row_key": "INV-2026-0065",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0065",
+      "document_ref": "DOC-40455",
+      "channel": "EDI",
+      "received_on": "2026-10-08",
+      "amount_eur": 7903.03
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0066",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0066",
+      "document_ref": "DOC-40462",
+      "channel": "email",
+      "received_on": "2026-10-14",
+      "amount_eur": 3945.21
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0067",
+    "segment": "missing_goods_receipt",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0067",
+      "document_ref": "DOC-40469",
+      "channel": "email",
+      "received_on": "2026-10-03",
+      "amount_eur": 405.56
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "missing_goods_receipt"
+  },
+  {
+    "row_key": "INV-2026-0068",
+    "segment": "duplicate",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0068",
+      "document_ref": "DOC-40476",
+      "channel": "EDI",
+      "received_on": "2026-10-13",
+      "amount_eur": 17950.57
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "duplicate"
+  },
+  {
+    "row_key": "INV-2026-0069",
+    "segment": "messy_capture",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0069",
+      "document_ref": "DOC-40483",
+      "channel": "email",
+      "received_on": "2026-10-11",
+      "amount_eur": 7327.8
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "messy_capture"
+  },
+  {
+    "row_key": "INV-2026-0070",
+    "segment": "price_variance",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0070",
+      "document_ref": "DOC-40490",
+      "channel": "email",
+      "received_on": "2026-10-13",
+      "amount_eur": 23442.74
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "price_variance"
+  },
+  {
+    "row_key": "INV-2026-0071",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0071",
+      "document_ref": "DOC-40497",
+      "channel": "email",
+      "received_on": "2026-10-13",
+      "amount_eur": 3425.2
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0072",
+    "segment": "bank_change_fraud",
+    "critical": true,
+    "inputs": {
+      "invoice_id": "INV-2026-0072",
+      "document_ref": "DOC-40504",
+      "channel": "email",
+      "received_on": "2026-10-01",
+      "amount_eur": 1023.23
+    },
+    "labels": {
+      "decision": "escalate",
+      "outputs": {
+        "expected_route": "blocked for investigation"
+      }
+    },
+    "kind": "bank_change_fraud"
+  },
+  {
+    "row_key": "INV-2026-0073",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0073",
+      "document_ref": "DOC-40511",
+      "channel": "supplier portal",
+      "received_on": "2026-10-04",
+      "amount_eur": 7047.79
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0074",
+    "segment": "clean_small",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0074",
+      "document_ref": "DOC-40518",
+      "channel": "EDI",
+      "received_on": "2026-10-04",
+      "amount_eur": 6800.16
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid"
+      }
+    },
+    "kind": "clean_small"
+  },
+  {
+    "row_key": "INV-2026-0075",
+    "segment": "price_variance",
+    "critical": false,
+    "inputs": {
+      "invoice_id": "INV-2026-0075",
+      "document_ref": "DOC-40525",
+      "channel": "email",
+      "received_on": "2026-10-09",
+      "amount_eur": 35317.26
+    },
+    "labels": {
+      "decision": "approve",
+      "outputs": {
+        "expected_route": "paid via exception"
+      }
+    },
+    "kind": "price_variance"
+  }
+]

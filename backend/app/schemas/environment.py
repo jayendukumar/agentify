@@ -49,6 +49,29 @@ class FaultConfig(BaseModel):
     config: dict[str, Any] = {}
 
 
+SystemOperation = Literal["lookup", "create", "update"]
+
+
+class SimulatedSystemData(BaseModel):
+    """Epic 36, US36.1: sample records that stand in for one system during
+    a twin run -- a vendor master extract, the open purchase orders, the
+    invoice ledger. Agents' calls to the system are answered from these
+    records (app/twin/records.py), deterministically and with no LLM call,
+    so every case sees the same consistent world and ground truth holds.
+
+    `aliases` let one data set serve the slightly different names agents
+    give the same system ("ERP", "SAP S/4HANA ERP"). `lookup_fields` are
+    what an agent can search by; `operations` what it may do."""
+
+    description: str = ""
+    aliases: list[str] = []
+    records: list[dict[str, Any]] = []
+    lookup_fields: list[str] = []
+    operations: list[SystemOperation] = ["lookup"]
+    # Reference prefix for acknowledged writes, e.g. "PAY" -> "PAY-00001".
+    reference_prefix: str = "REF"
+
+
 class TwinEnvironmentCreate(BaseModel):
     name: str
     systems: list[str] = []
@@ -56,6 +79,8 @@ class TwinEnvironmentCreate(BaseModel):
     personas: dict[str, Any] = {}
     events: list[dict[str, Any]] = []
     faults: dict[str, list[FaultConfig]] = {}
+    # Epic 36, US36.1: system name -> sample data the twin answers from.
+    system_data: dict[str, SimulatedSystemData] = {}
 
 
 class TwinEnvironmentUpdate(TwinEnvironmentCreate):

@@ -1,0 +1,44 @@
+{
+  "name": "Invoice to Pay -- whole process",
+  "handoff": "case_file",
+  "default_gateway_routing": "agent",
+  "gateway_routing": {
+    "Gateway_g4": "rules"
+  },
+  "rules": {
+    "Gateway_g4": {
+      "Task_t9": {
+        "field": "amount_eur",
+        "op": "gt",
+        "value": 10000
+      },
+      "Task_t10": {
+        "field": "amount_eur",
+        "op": "lte",
+        "value": 10000
+      }
+    }
+  },
+  "manual_node_config": {
+    "Task_t5": {
+      "mode": "human_checkpoint",
+      "human_checkpoint_config": {
+        "mode": "probability",
+        "approve_probability": 1.0
+      }
+    },
+    "Task_t9": {
+      "mode": "human_checkpoint",
+      "human_checkpoint_config": {
+        "mode": "probability",
+        "approve_probability": 0.97
+      }
+    }
+  },
+  "reviewer": {
+    "mode": "probability",
+    "approve_probability": 1.0
+  },
+  "approval_limit_eur": 10000,
+  "price_tolerance": 0.02
+}

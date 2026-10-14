@@ -1,4 +1,10 @@
 import type {
+  EfficiencyReport,
+  OperatingModel,
+  OperatingModelView,
+  ProcessTwinBatch,
+  ProcessTwinEstimate,
+  ProcessTwinRequest,
   AgentArtifact,
   BatchComparison,
   BatchResults,
@@ -1111,4 +1117,37 @@ export function setReleaseCriteria(processId: string, artifactId: string, body: 
 
 export function getReleaseGate(processId: string, artifactId: string): Promise<GateResult> {
   return request(`/api/processes/${processId}/agent-artifacts/${artifactId}/release-gate`)
+}
+
+// ---- Epic 36: process digital twin ----------------------------------------
+
+export function getOperatingModel(processId: string): Promise<OperatingModelView> {
+  return request(`/api/processes/${processId}/process-twin/operating-model`)
+}
+
+export function saveOperatingModel(processId: string, model: OperatingModel): Promise<OperatingModelView> {
+  return request(`/api/processes/${processId}/process-twin/operating-model`, { method: 'PUT', body: JSON.stringify(model) })
+}
+
+export function estimateProcessTwin(processId: string, body: ProcessTwinRequest): Promise<ProcessTwinEstimate> {
+  return request(`/api/processes/${processId}/process-twin/estimate`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function startProcessTwin(processId: string, body: ProcessTwinRequest): Promise<ProcessTwinBatch> {
+  return request(`/api/processes/${processId}/process-twin/batches`, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function listProcessTwinBatches(processId: string): Promise<ProcessTwinBatch[]> {
+  return request(`/api/processes/${processId}/process-twin/batches`)
+}
+
+export function controlProcessTwin(processId: string, batchId: string, action: 'pause' | 'resume' | 'cancel'): Promise<ProcessTwinBatch> {
+  return request(`/api/processes/${processId}/process-twin/batches/${batchId}/control`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  })
+}
+
+export function getProcessTwinReport(processId: string, batchId: string): Promise<EfficiencyReport> {
+  return request(`/api/processes/${processId}/process-twin/batches/${batchId}/report`)
 }

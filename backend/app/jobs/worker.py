@@ -51,6 +51,7 @@ def _load_handlers() -> None:
     from app.connectors import jobs as _connector_jobs  # noqa: F401
     from app.context import jobs as _context_jobs  # noqa: F401
     from app.oracles import jobs as _oracle_jobs  # noqa: F401
+    from app.process_twin import jobs as _process_twin_jobs  # noqa: F401
 
 
 async def run_job(job_id: str) -> None:

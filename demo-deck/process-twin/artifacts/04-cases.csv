@@ -1,0 +1,76 @@
+invoice_id,kind,document_ref,channel,received_on,amount_eur,expected_decision,expected_route
+INV-2026-0001,clean_large,DOC-40007,email,2026-10-03,34069.24,approve,paid
+INV-2026-0002,messy_capture,DOC-40014,EDI,2026-10-09,2179.36,approve,paid
+INV-2026-0003,clean_small,DOC-40021,EDI,2026-10-09,1783.61,approve,paid
+INV-2026-0004,clean_large,DOC-40028,email,2026-10-11,34566.98,approve,paid
+INV-2026-0005,bank_change_fraud,DOC-40035,email,2026-10-08,31843.82,escalate,blocked for investigation
+INV-2026-0006,price_variance,DOC-40042,email,2026-10-05,2783.5,approve,paid via exception
+INV-2026-0007,bank_change_fraud,DOC-40049,email,2026-10-03,40791.02,escalate,blocked for investigation
+INV-2026-0008,clean_small,DOC-40056,EDI,2026-10-01,7438.37,approve,paid
+INV-2026-0009,blocked_supplier,DOC-40063,EDI,2026-10-12,5182.68,reject,rejected at supplier check
+INV-2026-0010,sanctioned_supplier,DOC-40070,supplier portal,2026-10-04,4331.31,reject,rejected at supplier check
+INV-2026-0011,bank_change_fraud,DOC-40077,email,2026-10-14,4714.78,escalate,blocked for investigation
+INV-2026-0012,clean_small,DOC-40084,supplier portal,2026-10-07,7769.25,approve,paid
+INV-2026-0013,clean_small,DOC-40091,email,2026-10-13,8826.79,approve,paid
+INV-2026-0014,clean_small,DOC-40098,email,2026-10-12,288.91,approve,paid
+INV-2026-0015,clean_large,DOC-40105,EDI,2026-10-12,37283.32,approve,paid
+INV-2026-0016,clean_small,DOC-40112,supplier portal,2026-10-11,1117.54,approve,paid
+INV-2026-0017,clean_large,DOC-40119,email,2026-10-14,47383.86,approve,paid
+INV-2026-0018,clean_large,DOC-40126,email,2026-10-10,48844.53,approve,paid
+INV-2026-0019,clean_small,DOC-40133,email,2026-10-09,1110.47,approve,paid
+INV-2026-0020,clean_small,DOC-40140,email,2026-10-09,2160.11,approve,paid
+INV-2026-0021,clean_small,DOC-40147,EDI,2026-10-03,6124.13,approve,paid
+INV-2026-0022,missing_goods_receipt,DOC-40154,supplier portal,2026-10-08,40519.67,approve,paid via exception
+INV-2026-0023,clean_large,DOC-40161,EDI,2026-10-11,41108.57,approve,paid
+INV-2026-0024,messy_capture,DOC-40168,supplier portal,2026-10-09,9733.39,approve,paid
+INV-2026-0025,sanctioned_supplier,DOC-40175,EDI,2026-10-01,1025.82,reject,rejected at supplier check
+INV-2026-0026,missing_goods_receipt,DOC-40182,supplier portal,2026-10-04,17310.86,approve,paid via exception
+INV-2026-0027,clean_small,DOC-40189,email,2026-10-11,9990.84,approve,paid
+INV-2026-0028,clean_small,DOC-40196,supplier portal,2026-10-04,7233.08,approve,paid
+INV-2026-0029,clean_large,DOC-40203,supplier portal,2026-10-11,48988.0,approve,paid
+INV-2026-0030,clean_small,DOC-40210,EDI,2026-10-10,5312.07,approve,paid
+INV-2026-0031,clean_small,DOC-40217,email,2026-10-01,9200.56,approve,paid
+INV-2026-0032,clean_small,DOC-40224,email,2026-10-09,6383.86,approve,paid
+INV-2026-0033,price_variance,DOC-40231,email,2026-10-07,18442.92,approve,paid via exception
+INV-2026-0034,clean_small,DOC-40238,supplier portal,2026-10-11,6850.86,approve,paid
+INV-2026-0035,price_variance,DOC-40245,EDI,2026-10-11,23491.18,approve,paid via exception
+INV-2026-0036,messy_capture,DOC-40252,EDI,2026-10-09,4665.41,approve,paid
+INV-2026-0037,clean_small,DOC-40259,email,2026-10-09,2792.38,approve,paid
+INV-2026-0038,unknown_supplier,DOC-40266,EDI,2026-10-05,2816.42,reject,rejected at supplier check
+INV-2026-0039,clean_small,DOC-40273,supplier portal,2026-10-08,7715.24,approve,paid
+INV-2026-0040,price_variance,DOC-40280,EDI,2026-10-04,2724.65,approve,paid via exception
+INV-2026-0041,duplicate,DOC-40287,email,2026-10-08,9456.56,escalate,blocked for investigation
+INV-2026-0042,clean_large,DOC-40294,email,2026-10-09,45696.95,approve,paid
+INV-2026-0043,blocked_supplier,DOC-40301,supplier portal,2026-10-06,5748.46,reject,rejected at supplier check
+INV-2026-0044,duplicate,DOC-40308,email,2026-10-05,2988.28,escalate,blocked for investigation
+INV-2026-0045,clean_small,DOC-40315,EDI,2026-10-11,1284.41,approve,paid
+INV-2026-0046,duplicate,DOC-40322,email,2026-10-05,11123.63,escalate,blocked for investigation
+INV-2026-0047,messy_capture,DOC-40329,EDI,2026-10-12,1752.02,approve,paid
+INV-2026-0048,clean_large,DOC-40336,EDI,2026-10-08,47499.92,approve,paid
+INV-2026-0049,clean_small,DOC-40343,supplier portal,2026-10-10,1735.37,approve,paid
+INV-2026-0050,clean_small,DOC-40350,supplier portal,2026-10-11,8850.02,approve,paid
+INV-2026-0051,messy_capture,DOC-40357,email,2026-10-04,1337.5,approve,paid
+INV-2026-0052,unknown_supplier,DOC-40364,email,2026-10-08,7036.3,reject,rejected at supplier check
+INV-2026-0053,clean_small,DOC-40371,email,2026-10-07,1485.72,approve,paid
+INV-2026-0054,clean_small,DOC-40378,supplier portal,2026-10-07,7961.69,approve,paid
+INV-2026-0055,duplicate,DOC-40385,EDI,2026-10-11,2490.23,escalate,blocked for investigation
+INV-2026-0056,clean_small,DOC-40392,supplier portal,2026-10-09,7104.58,approve,paid
+INV-2026-0057,clean_small,DOC-40399,email,2026-10-03,8876.41,approve,paid
+INV-2026-0058,blocked_supplier,DOC-40406,email,2026-10-10,5062.72,reject,rejected at supplier check
+INV-2026-0059,clean_small,DOC-40413,email,2026-10-02,2994.18,approve,paid
+INV-2026-0060,unknown_supplier,DOC-40420,supplier portal,2026-10-04,7156.37,reject,rejected at supplier check
+INV-2026-0061,price_variance,DOC-40427,supplier portal,2026-10-07,2438.74,approve,paid via exception
+INV-2026-0062,clean_large,DOC-40434,EDI,2026-10-03,41327.48,approve,paid
+INV-2026-0063,missing_goods_receipt,DOC-40441,supplier portal,2026-10-06,1422.5,approve,paid via exception
+INV-2026-0064,duplicate,DOC-40448,supplier portal,2026-10-04,17506.46,escalate,blocked for investigation
+INV-2026-0065,clean_small,DOC-40455,EDI,2026-10-08,7903.03,approve,paid
+INV-2026-0066,clean_small,DOC-40462,email,2026-10-14,3945.21,approve,paid
+INV-2026-0067,missing_goods_receipt,DOC-40469,email,2026-10-03,405.56,approve,paid via exception
+INV-2026-0068,duplicate,DOC-40476,EDI,2026-10-13,17950.57,escalate,blocked for investigation
+INV-2026-0069,messy_capture,DOC-40483,email,2026-10-11,7327.8,approve,paid
+INV-2026-0070,price_variance,DOC-40490,email,2026-10-13,23442.74,approve,paid via exception
+INV-2026-0071,clean_small,DOC-40497,email,2026-10-13,3425.2,approve,paid
+INV-2026-0072,bank_change_fraud,DOC-40504,email,2026-10-01,1023.23,escalate,blocked for investigation
+INV-2026-0073,clean_small,DOC-40511,supplier portal,2026-10-04,7047.79,approve,paid
+INV-2026-0074,clean_small,DOC-40518,EDI,2026-10-04,6800.16,approve,paid
+INV-2026-0075,price_variance,DOC-40525,email,2026-10-09,35317.26,approve,paid via exception

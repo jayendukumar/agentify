@@ -1,0 +1,121 @@
+{
+  "system": "Chart of accounts and tax rules",
+  "description": "GL accounts and VAT rates by supplier country",
+  "records": [
+    {
+      "gl_account": "610100",
+      "description": "Office supplies"
+    },
+    {
+      "gl_account": "620200",
+      "description": "IT services and software"
+    },
+    {
+      "gl_account": "630300",
+      "description": "Logistics and freight"
+    },
+    {
+      "gl_account": "640400",
+      "description": "Facility services"
+    },
+    {
+      "gl_account": "650500",
+      "description": "Raw materials"
+    },
+    {
+      "gl_account": "660600",
+      "description": "Energy"
+    },
+    {
+      "gl_account": "670700",
+      "description": "Professional services"
+    },
+    {
+      "gl_account": "680800",
+      "description": "Catering and hospitality"
+    },
+    {
+      "country": "DE",
+      "standard_vat_rate_percent": 19,
+      "reverse_charge": false
+    },
+    {
+      "country": "NL",
+      "standard_vat_rate_percent": 21,
+      "reverse_charge": false
+    },
+    {
+      "country": "ES",
+      "standard_vat_rate_percent": 21,
+      "reverse_charge": false
+    },
+    {
+      "country": "IT",
+      "standard_vat_rate_percent": 22,
+      "reverse_charge": false
+    },
+    {
+      "country": "FR",
+      "standard_vat_rate_percent": 20,
+      "reverse_charge": false
+    },
+    {
+      "country": "IE",
+      "standard_vat_rate_percent": 23,
+      "reverse_charge": false
+    },
+    {
+      "country": "PT",
+      "standard_vat_rate_percent": 23,
+      "reverse_charge": false
+    },
+    {
+      "country": "PL",
+      "standard_vat_rate_percent": 23,
+      "reverse_charge": false
+    },
+    {
+      "country": "CZ",
+      "standard_vat_rate_percent": 21,
+      "reverse_charge": false
+    },
+    {
+      "country": "SE",
+      "standard_vat_rate_percent": 25,
+      "reverse_charge": false
+    },
+    {
+      "country": "NO",
+      "standard_vat_rate_percent": 0,
+      "reverse_charge": true
+    },
+    {
+      "country": "CH",
+      "standard_vat_rate_percent": 0,
+      "reverse_charge": true
+    },
+    {
+      "country": "RU",
+      "standard_vat_rate_percent": 0,
+      "reverse_charge": true
+    }
+  ],
+  "lookup_fields": [
+    "gl_account",
+    "country",
+    "description"
+  ],
+  "operations": [
+    "lookup"
+  ],
+  "reference_prefix": "TAX",
+  "keywords": [
+    "chart of accounts",
+    "general ledger",
+    "gl",
+    "tax",
+    "vat",
+    "coding",
+    "account"
+  ]
+}

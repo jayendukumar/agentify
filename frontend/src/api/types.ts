@@ -852,7 +852,10 @@ export interface RegistrySearchResult {
 // rather than redefining them.
 export type NodeRunKind = 'agent' | 'manual' | 'gateway' | 'start_event' | 'end_event'
 export type ManualNodeMode = 'human_checkpoint' | 'fixed_stub'
-export type DataMappingMode = 'llm_adapter' | 'exact_field_contract'
+export type DataMappingMode = 'llm_adapter' | 'exact_field_contract' | 'auto'
+// Epic 36, US36.2/US36.3.
+export type HandoffMode = 'previous_output' | 'case_file'
+export type GatewayRouting = 'configured' | 'rules' | 'agent'
 
 export interface ManualNodeConfig {
   mode: ManualNodeMode
@@ -880,6 +883,9 @@ export interface OrchestrationScenarioCreate {
   // always has both populated.
   environment_id?: string | null
   environment_version?: number | null
+  handoff?: HandoffMode
+  default_gateway_routing?: GatewayRouting
+  gateway_routing?: Record<string, GatewayRouting>
 }
 
 export interface OrchestrationScenario extends OrchestrationScenarioCreate {
@@ -1693,4 +1699,152 @@ export interface GateResult {
   batch_id: string | null
   reasons: string[]
   checked_at: string
+}
+
+// ---- Epic 36: process digital twin ----------------------------------------
+
+export interface Triangular {
+  min: number
+  likely: number
+  max: number
+}
+
+export interface RoleCost {
+  role: string
+  hourly_cost: number
+}
+
+export interface NodeOperatingModel {
+  node_id: string
+  label: string
+  role: string
+  handling_minutes: Triangular | null
+  wait_minutes: Triangular | null
+  hourly_cost: number | null
+  review_minutes: Triangular | null
+  to_be_wait_minutes: Triangular | null
+}
+
+export interface OperatingModel {
+  currency: string
+  monthly_volume: number
+  productive_hours_per_fte: number
+  working_minutes_per_day: number
+  roles: RoleCost[]
+  nodes: NodeOperatingModel[]
+  end_event_outcomes: Record<string, string>
+  outcome_label: string
+  usd_to_currency: number
+  default_review_minutes: Triangular
+}
+
+export interface OperatingModelView extends OperatingModel {
+  process_id: string
+  version: number
+  is_default: boolean
+  updated_at: string | null
+}
+
+export interface ProcessTwinRequest {
+  scenario_id: string
+  dataset_id: string
+  name?: string
+  sample_size?: number | null
+  budget_usd?: number | null
+  seed?: number
+}
+
+export interface ProcessTwinEstimate {
+  cases: number
+  cost_per_case_usd: number
+  total_cost_usd: number
+  basis: string
+}
+
+export interface ProcessTwinBatch {
+  id: string
+  process_id: string
+  name: string
+  scenario_id: string
+  dataset_id: string
+  dataset_version: number
+  status: string
+  budget_usd: number | null
+  seed: number
+  cases: number
+  finished: number
+  spent_usd: number
+  operating_model_version: number
+  created_at: string
+  finished_at: string | null
+}
+
+export interface Interval {
+  mean: number | null
+  low: number | null
+  high: number | null
+}
+
+export interface CaseEfficiency {
+  run_id: string
+  row_key: string | null
+  segment: string
+  status: string
+  outcome: string | null
+  expected_outcome: string | null
+  correct: boolean | null
+  path: string[]
+  straight_through: boolean
+  human_touches: number
+  as_is_cycle_minutes: number
+  to_be_cycle_minutes: number
+  as_is_touch_minutes: number
+  to_be_touch_minutes: number
+  as_is_cost: number
+  to_be_labour_cost: number
+  llm_cost_usd: number
+  agent_seconds: number
+  failure: string | null
+}
+
+export interface NodeEfficiency {
+  node_id: string
+  label: string
+  kind: string
+  visits: number
+  failures: number
+  mean_agent_seconds: number | null
+  review_rate: number | null
+  mean_llm_cost_usd: number | null
+  as_is_touch_minutes: number
+  to_be_touch_minutes: number
+}
+
+export interface EfficiencyReport {
+  cases: number
+  completed: number
+  failed: number
+  currency: string
+  straight_through: Rate
+  accuracy: Rate
+  as_is_cycle_minutes: Interval
+  to_be_cycle_minutes: Interval
+  cycle_time_reduction: Interval
+  as_is_touch_minutes: Interval
+  to_be_touch_minutes: Interval
+  touch_time_reduction: Interval
+  as_is_cost_per_case: Interval
+  to_be_cost_per_case: Interval
+  llm_cost_per_case_usd: Interval
+  annual_hours_released: Interval
+  annual_fte_released: Interval
+  annual_cost_saved: Interval
+  assumptions: string[]
+  headline: string
+  nodes: NodeEfficiency[]
+  segments: { segment: string; cases: number; accuracy: Rate; straight_through: number; mean_touch_saved_minutes: number }[]
+  outcome_matrix: { expected: string; actual: string; count: number }[]
+  path_variants: { path: string[]; cases: number }[]
+  cases_detail: CaseEfficiency[]
+  usd_to_currency: number
 }

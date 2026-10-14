@@ -31,7 +31,8 @@ from app.schemas.agents import AgentDefinition
 from app.schemas.datasets import DatasetRowInput, RowLabels
 from app.store import NotFoundError
 
-from .rules import RuleSyntaxError, RuleView, render, run_oracle, validate_expression
+from .rules import RuleSyntaxError, RuleView, run_oracle, validate_expression
+from .store import confirmed_views, list_rules, to_view  # noqa: F401 -- re-exported for callers
 
 _GATEWAY_TYPES = {"exclusiveGateway", "inclusiveGateway"}
 
@@ -41,36 +42,6 @@ class OracleError(Exception):
 
 
 # ---- rules (US33.1) -------------------------------------------------------
-
-
-def to_view(rule: DecisionRuleModel) -> RuleView:
-    return RuleView(
-        id=rule.id,
-        gateway_id=rule.gateway_id,
-        gateway_label=rule.gateway_label,
-        branch_target_id=rule.branch_target_id,
-        branch_label=rule.branch_label,
-        condition_text=rule.condition_text,
-        expression=rule.expression,
-        rendered=render(rule.expression) if rule.expression else "",
-        outcome=rule.outcome,
-        priority=rule.priority,
-        is_default=rule.is_default,
-        status=rule.status,
-        note=rule.note,
-        control_id=rule.control_id,
-        version=rule.version,
-    )
-
-
-def list_rules(session: Session, process_id: str) -> list[DecisionRuleModel]:
-    return list(
-        session.scalars(
-            select(DecisionRuleModel)
-            .where(DecisionRuleModel.process_id == process_id)
-            .order_by(DecisionRuleModel.gateway_id, DecisionRuleModel.is_default, DecisionRuleModel.priority)
-        )
-    )
 
 
 def process_fields(session: Session, process_id: str) -> list[str]:
@@ -236,10 +207,6 @@ def update_rule(session: Session, process_id: str, rule_id: str, data: RuleUpdat
         rule.confirmed_at = utcnow().replace(tzinfo=None)
     session.flush()
     return rule
-
-
-def confirmed_views(session: Session, process_id: str) -> list[RuleView]:
-    return [to_view(r) for r in list_rules(session, process_id) if r.status == "confirmed"]
 
 
 # ---- oracle labelling and conflicts (US33.2/US33.3) -----------------------

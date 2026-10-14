@@ -25,7 +25,17 @@ from .twin import TwinHumanCheckpointConfig, TwinSystemStub
 
 NodeRunKind = Literal["agent", "manual", "gateway", "start_event", "end_event"]
 ManualNodeMode = Literal["human_checkpoint", "fixed_stub"]
-DataMappingMode = Literal["llm_adapter", "exact_field_contract"]
+# Epic 36, US36.2: "auto" copies fields whose names already exist in the
+# hand-off source and only asks the LLM adapter for the missing ones.
+DataMappingMode = Literal["llm_adapter", "exact_field_contract", "auto"]
+# Epic 36, US36.2: what each agent's input is built from -- the previous
+# node's output (Epic 16's original behaviour) or the whole case file (the
+# start inputs plus every node's output so far).
+HandoffMode = Literal["previous_output", "case_file"]
+# Epic 36, US36.3: how a gateway picks its branch -- the scenario's fixed
+# `gateway_decisions`, the process's confirmed decision rules (Epic 33)
+# evaluated against the case file, or the preceding agent's own `route`.
+GatewayRouting = Literal["configured", "rules", "agent"]
 
 
 class ManualNodeConfig(BaseModel):
@@ -73,6 +83,10 @@ class OrchestrationScenarioCreate(BaseModel):
     # whole rehearsal walk -- see TwinScenarioCreate's equivalent field.
     environment_id: str | None = None
     environment_version: int | None = None
+    # Epic 36, US36.2/US36.3 -- defaults keep Epic 16's behaviour.
+    handoff: HandoffMode = "previous_output"
+    default_gateway_routing: GatewayRouting = "configured"
+    gateway_routing: dict[str, GatewayRouting] = {}
 
 
 class OrchestrationScenario(OrchestrationScenarioCreate):

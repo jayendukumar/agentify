@@ -175,6 +175,18 @@ run, then 35's US35.1-35.4 so results are readable. 33 can start as soon
 as 32 lands. Its rule oracle (US33.1-33.2) has the biggest payoff, since
 it labels any number of rows for free.
 
+## Phase 7 epic (groomed 2026-10-13 while building the multi-agent process demo)
+
+Epics 14-35 prove one agent at a time. Building a 9-agent "Invoice to
+Pay" demo showed the twin could not yet run a *whole process* over many
+cases: gateways were fixed per scenario, hand-offs carried only the
+previous agent's output, simulated systems were invented per call, and
+nothing measured the to-be process against today's.
+
+| # | Epic | Summary |
+|---|---|---|
+| 36 | [Process Digital Twin at Volume: Efficiency & Readiness](epics/36-process-twin-efficiency.md) | Sample-data-backed systems; case file hand-off; rule- and agent-routed gateways; as-is operating model; whole-process batches; efficiency report (STP, accuracy, cycle/touch time, cost, FTE) with confidence ranges; Process twin page. Still open: capacity/queueing simulation (US36.9), parallel gateways |
+
 ## Backlog (superseded by the Phase 2 epics above)
 
 See [backlog.md](backlog.md) -- kept as the historical record of the

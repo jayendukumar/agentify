@@ -269,3 +269,25 @@ def test_update_agent_governance_requires_editor(client, viewer_client):
         json={"guardrails": {"max_steps": 5}},
     )
     assert r.status_code == 403
+
+
+def test_update_agent_governance_changes_systems_with_default_contracts(client):
+    """US20.8: the twin showed an agent lacks a system -- add it without regenerating."""
+    process = client.post("/api/processes", json={"name": "P"}).json()
+    version = _finalize(client, process["id"])
+    _seed_blueprint(process["id"], version["id"], [_automatable_node("a")])
+    artifact = client.post(f"/api/processes/{process['id']}/blueprint/nodes/a/agent-artifact").json()
+    url = f"/api/processes/{process['id']}/blueprint/agent-artifacts/{artifact['id']}/governance"
+    client.patch(url, json={"tool_contracts": [{"system_name": "CRM API", "resource": "CRM API", "action": "read",
+                                                "timeout_seconds": 5}]})
+
+    updated = client.patch(url, json={"tools_systems_needed": ["CRM API", "Vendor master"]}).json()["definition"]
+    assert updated["tools_systems_needed"] == ["CRM API", "Vendor master"]
+    contracts = {c["system_name"]: c for c in updated["tool_contracts"]}
+    assert contracts["CRM API"]["timeout_seconds"] == 5  # a customised contract is kept
+    assert contracts["Vendor master"]["action"] == "read"
+    assert {p["resource"] for p in updated["permissions"]} == {"CRM API", "Vendor master"}
+
+    removed = client.patch(url, json={"tools_systems_needed": ["Vendor master"]}).json()["definition"]
+    assert [c["system_name"] for c in removed["tool_contracts"]] == ["Vendor master"]
+    assert [p["resource"] for p in removed["permissions"]] == ["Vendor master"]

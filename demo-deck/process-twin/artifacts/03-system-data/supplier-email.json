@@ -1,0 +1,24 @@
+{
+  "system": "Supplier email",
+  "description": "Outbound supplier correspondence (rejections, queries, remittance advice)",
+  "records": [],
+  "lookup_fields": [
+    "invoice_id"
+  ],
+  "operations": [
+    "create"
+  ],
+  "reference_prefix": "MSG",
+  "keywords": [
+    "email",
+    "mail",
+    "notification",
+    "communication",
+    "portal",
+    "correspondence",
+    "messag",
+    "template",
+    "generat",
+    "remittance"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "system": "Payment system",
+  "description": "Treasury payment runs; schedule a payment, look up scheduled payments",
+  "records": [],
+  "lookup_fields": [
+    "invoice_id",
+    "supplier_id"
+  ],
+  "operations": [
+    "lookup",
+    "create"
+  ],
+  "reference_prefix": "PAY",
+  "keywords": [
+    "payment",
+    "treasury",
+    "bank",
+    "pay run",
+    "remit"
+  ]
+}

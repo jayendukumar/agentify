@@ -23,6 +23,7 @@ from app.api import (
     gap_analysis,
     orchestration,
     organization,
+    process_twin,
     processes,
     publish,
     registries,
@@ -141,6 +142,7 @@ app.include_router(datasets.router)
 app.include_router(oracles.router)
 app.include_router(batches.router)
 app.include_router(results.router)
+app.include_router(process_twin.router)
 
 
 @app.exception_handler(NotFoundError)

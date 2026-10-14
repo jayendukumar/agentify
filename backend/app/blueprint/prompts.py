@@ -117,11 +117,28 @@ _APPLICABLE_RULES_FIELD = """,
       "applicable_rules": ["<label from the Organization context section, e.g. C3>"]"""
 
 
-def build_system_prompt(nodes: list[FlowNodeInfo], context_text: str = "") -> str:
+_REST_OF_DIAGRAM = """
+
+## The rest of the diagram -- context only. Do NOT return results for these nodes, and only \
+consolidate among the nodes listed above:
+"""
+
+
+def build_system_prompt(
+    nodes: list[FlowNodeInfo], context_text: str = "", context_nodes: list[FlowNodeInfo] | None = None
+) -> str:
     """Epic 28, US28.5: `context_text` is a rendered Context Pack
     (app/context/resolver.py's render_pack); empty when no organization
-    context applies, which leaves the prompt as it was before Epic 28."""
+    context applies, which leaves the prompt as it was before Epic 28.
+
+    `context_nodes`: the rest of the diagram when only `nodes` are being
+    evaluated in this call (a large diagram is evaluated in chunks, see
+    app/blueprint/service.py), so the model still sees the whole process."""
     nodes_json = json.dumps([_node_context(n) for n in nodes], indent=2)
+    if context_nodes:
+        nodes_json += _REST_OF_DIAGRAM + json.dumps(
+            [{"id": n.id, "label": n.label, "bpmn_type": n.bpmn_type, "actor_or_lane": n.lane_name} for n in context_nodes]
+        )
     prompt = _INSTRUCTIONS.replace("##NODES_JSON##", nodes_json)
     if not context_text:
         return prompt.replace("##CONTEXT_RULES##", "").replace("##APPLICABLE_RULES_FIELD##", "")

@@ -11,6 +11,7 @@ US7.1 ("every node ... evaluated").
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -34,10 +35,44 @@ class _ParsedOverlay(BaseModel):
     nodes: list[BlueprintNodeResult]
 
 
-async def evaluate_blueprint(
-    llm: LLMClient, *, flow_nodes: list[FlowNodeInfo], context_text: str = ""
+# Epic 36 (found seeding a 20-node process with a 31-rule context pack):
+# one call for the whole diagram ran past the output token cap and came
+# back truncated mid-JSON. Larger diagrams are evaluated in chunks, each
+# call seeing the whole diagram for context; consolidation stays within a
+# chunk (see planning/decision-log.md, 2026-10-13).
+CHUNK_SIZE = 8
+
+
+def _chunks(flow_nodes: list[FlowNodeInfo]) -> list[list[FlowNodeInfo]]:
+    if len(flow_nodes) <= CHUNK_SIZE + 2:
+        return [flow_nodes]
+    return [flow_nodes[i : i + CHUNK_SIZE] for i in range(0, len(flow_nodes), CHUNK_SIZE)]
+
+
+async def _evaluate_chunk(
+    llm: LLMClient, chunk: list[FlowNodeInfo], flow_nodes: list[FlowNodeInfo], context_text: str
 ) -> list[BlueprintNodeResult]:
-    system_prompt = build_system_prompt(flow_nodes, context_text)
+    """One retry on malformed output: with several chunks per blueprint, one
+    occasionally-invalid reply (seen live: a missing comma mid-JSON) would
+    otherwise fail the whole generation."""
+    try:
+        return await _evaluate_chunk_once(llm, chunk, flow_nodes, context_text)
+    except _MalformedReply:
+        try:
+            return await _evaluate_chunk_once(llm, chunk, flow_nodes, context_text)
+        except _MalformedReply as exc:
+            raise BlueprintServiceError(str(exc)) from exc
+
+
+class _MalformedReply(BlueprintServiceError):
+    pass
+
+
+async def _evaluate_chunk_once(
+    llm: LLMClient, chunk: list[FlowNodeInfo], flow_nodes: list[FlowNodeInfo], context_text: str
+) -> list[BlueprintNodeResult]:
+    rest = [n for n in flow_nodes if n not in chunk]
+    system_prompt = build_system_prompt(chunk, context_text, context_nodes=rest or None)
 
     result = await llm.complete(
         [ChatMessage(role="system", content=system_prompt)],
@@ -52,15 +87,34 @@ async def evaluate_blueprint(
 
     if not result.text:
         raise BlueprintServiceError("LLM returned no content while evaluating the blueprint")
+    if result.finish_reason == "length":
+        raise BlueprintServiceError(
+            f"The blueprint for {len(chunk)} steps was cut off at the output limit -- lower CHUNK_SIZE in "
+            "app/blueprint/service.py"
+        )
 
     try:
         payload: Any = json.loads(result.text)
         parsed = _ParsedOverlay.model_validate(payload)
     except (json.JSONDecodeError, ValidationError) as exc:
-        raise BlueprintServiceError(f"LLM returned invalid structured output for the blueprint: {exc}") from exc
+        raise _MalformedReply(f"LLM returned invalid structured output for the blueprint: {exc}") from exc
+
+    chunk_ids = {node.id for node in chunk}
+    results = [r for r in parsed.nodes if r.node_id in chunk_ids]
+    for r in results:
+        # Consolidation can't reach outside the chunk the model evaluated.
+        if r.agent_spec is not None and r.agent_spec.consolidated_from_nodes:
+            r.agent_spec.consolidated_from_nodes = [n for n in r.agent_spec.consolidated_from_nodes if n in chunk_ids]
+    return results
+
+
+async def evaluate_blueprint(
+    llm: LLMClient, *, flow_nodes: list[FlowNodeInfo], context_text: str = ""
+) -> list[BlueprintNodeResult]:
+    parts = await asyncio.gather(*(_evaluate_chunk(llm, chunk, flow_nodes, context_text) for chunk in _chunks(flow_nodes)))
 
     valid_ids = {node.id for node in flow_nodes}
-    by_id = {node_result.node_id: node_result for node_result in parsed.nodes if node_result.node_id in valid_ids}
+    by_id = {node_result.node_id: node_result for part in parts for node_result in part if node_result.node_id in valid_ids}
     missing = valid_ids - set(by_id)
     if missing:
         raise BlueprintServiceError(

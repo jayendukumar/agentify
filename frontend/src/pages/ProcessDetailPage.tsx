@@ -193,6 +193,12 @@ export default function ProcessDetailPage() {
         </p>
       )}
 
+      {process.finalized_version_count > 0 && (
+        <p>
+          <Link to={`/processes/${processId}/process-twin`}>Process twin &rarr;</Link>
+        </p>
+      )}
+
       {(process.document_count > 0 || openGapCount > 0) && (
         <p>
           <Link to={`/processes/${processId}/gaps`}>

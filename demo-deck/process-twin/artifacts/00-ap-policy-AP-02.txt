@@ -1,0 +1,31 @@
+MERIDIAN GROUP -- ACCOUNTS PAYABLE POLICY (AP-02)
+Owner: Group Finance. Effective 1 January 2026. Applies to all supplier invoices paid by Group Finance in the EU.
+
+1. Supplier verification
+1.1 An invoice may only be processed for a supplier that exists in the vendor master with status "active". Invoices from suppliers that are blocked, inactive, or not in the vendor master must be rejected and the supplier notified with the reason.
+1.2 Every supplier must be screened against the EU consolidated sanctions list and other applicable watchlists before payment. An invoice from a supplier with a sanctions match must be rejected and must not be paid.
+
+2. Duplicate and fraud controls
+2.1 An invoice whose supplier and invoice number match an invoice already posted or paid is a duplicate. Duplicates must be blocked and referred to the Finance Controller; they must never be paid.
+2.2 If the bank account (IBAN) on an invoice differs from the vendor master, and the supplier's bank details were changed in the last 30 days, the invoice must be blocked and referred to the Finance Controller for investigation, including a call-back to the supplier on a known phone number. No payment may be made to an unverified account.
+
+3. Three-way match
+3.1 Every invoice that references a purchase order must be matched to the purchase order and the goods receipt.
+3.2 The invoice net amount may exceed the purchase order net amount by at most 2% (the price tolerance). A larger difference, or a missing goods receipt, is a match exception.
+3.3 Match exceptions are resolved by Accounts Payable with the buyer and the supplier (for example a credit note, a purchase order amendment, or a goods receipt being recorded) before the invoice is coded and posted.
+
+4. Coding and VAT
+4.1 Invoices are coded to the general ledger account on the purchase order, or the supplier's default account.
+4.2 The VAT on the invoice must match the standard rate of the supplier's country; reverse charge applies where the rate is zero.
+
+5. Approval authority
+5.1 Invoices with a gross amount above EUR 10,000 require approval of the spend by the Budget Holder before posting.
+5.2 The Finance Controller may approve invoices up to EUR 100,000 in the Budget Holder's absence.
+
+6. Posting and payment
+6.1 Approved invoices are posted to the accounts payable ledger.
+6.2 Payments are scheduled in the payment run that meets the supplier's payment terms; invoices are not paid early unless an early payment discount applies.
+6.3 A remittance advice is sent to the supplier when a payment is scheduled.
+
+7. Records
+7.1 Every decision to reject, block, or pay an invoice must be recorded with its reason.

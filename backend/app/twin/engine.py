@@ -61,6 +61,7 @@ from app.schemas.twin import InferredToolSchema, TwinExpectedStep, TwinScenario,
 from .environments import roll_fault, roll_faults
 from .errors import TwinServiceError
 from .gateway import GuardrailExceeded, GuardrailTracker, check_tool_permission
+from .records import RecordsSession, find_system_data, records_tool_schema
 from .compliance import grade_compliance
 from .simulators import resolve_human_decision, resolve_tool_call
 
@@ -84,6 +85,9 @@ _HUMAN_DECISION_TOOL = ToolDefinition(
 )
 
 _MISSING = object()
+# Epic 36, US36.3: the output field an agent sets when the gateway after it
+# is agent-routed.
+ROUTE_FIELD = "route"
 
 
 class RunCancelled(Exception):
@@ -114,7 +118,10 @@ class _Suspend:
     pending_calls: list[ToolCall]
 
 
-def _twin_instructions(*, has_checkpoint: bool, output_fields: list[str], decision_field: str | None = None) -> str:
+def _twin_instructions(
+    *, has_checkpoint: bool, output_fields: list[str], decision_field: str | None = None,
+    routing: tuple[str, list[str]] | None = None,
+) -> str:
     lines = [
         "Digital twin simulation instructions for this test run only (not part of your normal "
         "operating instructions above):",
@@ -141,6 +148,12 @@ def _twin_instructions(*, has_checkpoint: bool, output_fields: list[str], decisi
         lines.append(
             f'- Set "{decision_field}" to how you decided the case: "approve", "reject", or "escalate" '
             "(you could not decide it yourself and passed it to someone else)."
+        )
+    if routing:
+        question, options = routing
+        lines.append(
+            f'- Set "{ROUTE_FIELD}" to exactly one of {json.dumps(options)}: the branch the next decision point '
+            f'("{question}") should take for this case, based on what you found.'
         )
     return "\n".join(lines)
 
@@ -302,7 +315,21 @@ async def run_scenario(
     node_id: str | None = None,
     on_step: Callable[[RunStep], Awaitable[None]] | None = None,
     on_phase: Callable[[RunStatus], Awaitable[None]] | None = None,
+    routing: tuple[str, list[str]] | None = None,
 ) -> RunOutcome:
+    # Epic 36, US36.1: systems the environment has sample data for get a
+    # tool generated from that data, answered from it below.
+    # Static and API stubs still win over sample data.
+    records_data = {
+        name: data for name in tool_schemas
+        if (scenario.system_stubs.get(name) or TwinSystemStub()).mode == "proxy"
+        and (data := find_system_data(environment, name)) is not None
+    }
+    tool_schemas = {
+        name: (records_tool_schema(name, records_data[name]) if name in records_data else schema)
+        for name, schema in tool_schemas.items()
+    }
+    records_session = RecordsSession()
     tool_name_to_system = {schema.tool_name: system_name for system_name, schema in tool_schemas.items()}
     tools = [
         ToolDefinition(name=schema.tool_name, description=schema.description, parameters=schema.parameters)
@@ -319,6 +346,8 @@ async def run_scenario(
     decision_field = scenario.decision_field if scenario.expected_decision is not None else None
     if decision_field and output_fields and decision_field not in output_fields:
         output_fields.append(decision_field)
+    if routing and output_fields and ROUTE_FIELD not in output_fields:
+        output_fields.append(ROUTE_FIELD)
     rng = random.Random(scenario.human_checkpoint_config.seed)
 
     steps: list[RunStep] = []
@@ -355,7 +384,9 @@ async def run_scenario(
     if resume_state is None:
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=artifact.system_prompt),
-            ChatMessage(role="system", content=_twin_instructions(has_checkpoint=has_checkpoint, output_fields=output_fields, decision_field=decision_field)),
+            ChatMessage(role="system", content=_twin_instructions(
+                has_checkpoint=has_checkpoint, output_fields=output_fields, decision_field=decision_field, routing=routing,
+            )),
             ChatMessage(role="user", content=json.dumps(scenario.inputs)),
         ]
         tracker = GuardrailTracker(guardrails=artifact.guardrails)
@@ -369,6 +400,7 @@ async def run_scenario(
 
     final_output: dict[str, Any] | None = None
     turns_used = resume_state["turn"] if resume_state is not None else 0
+    repaired = False
     terminal_status: RunStatus | None = None
     terminal_deviation: TwinDeviation | None = None
 
@@ -452,9 +484,13 @@ async def run_scenario(
                         if scenario.stub_latency_ms:
                             await asyncio.sleep(scenario.stub_latency_ms / 1000)
                         try:
-                            tool_response, static_fallback, llm_call = await resolve_tool_call(
-                                llm, system_name=system_name, call_arguments=call.arguments, schema=schema, stub=stub
-                            )
+                            if system_name in records_data:
+                                tool_response = records_session.call(records_data[system_name], system_name, call.arguments)
+                                static_fallback, llm_call = False, None
+                            else:
+                                tool_response, static_fallback, llm_call = await resolve_tool_call(
+                                    llm, system_name=system_name, call_arguments=call.arguments, schema=schema, stub=stub
+                                )
                         except TwinServiceError as exc:
                             await emit("TOOL_FAILED", target=system_name, arguments=call.arguments, reason=str(exc))
                             raise
@@ -513,6 +549,17 @@ async def run_scenario(
 
             if not result.tool_calls:
                 final_output = _parse_json_object(result.text)
+                if final_output is None and not repaired and turn < effective_max_turns:
+                    # Epic 36: one repair turn, as a production runtime would
+                    # do -- seen live, 4 of 30 process twin cases ended on a
+                    # final answer with prose around the JSON. Recorded as a
+                    # RETRY step, so it's visible rather than silently forgiven.
+                    repaired = True
+                    await emit("RETRY", reason="Final answer was not a valid JSON object; asked once to restate it")
+                    keys = f" with exactly these keys: {output_fields}" if output_fields else ""
+                    messages.append(ChatMessage(role="assistant", content=result.text or ""))
+                    messages.append(ChatMessage(role="user", content=f"That was not a valid JSON object. Reply with ONLY the JSON object{keys}."))
+                    continue
                 break
 
             messages.append(ChatMessage(role="assistant", content=result.text or "", tool_calls=result.tool_calls))

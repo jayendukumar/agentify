@@ -14,7 +14,13 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.agents.generation import build_agent_definition, group_key_for, resolve_group
+from app.agents.generation import (
+    build_agent_definition,
+    build_default_permissions,
+    build_tool_contracts,
+    group_key_for,
+    resolve_group,
+)
 from app.agents.validation import compute_checklist
 from app.bpmn.nodes import FlowNodeInfo, extract_flow_nodes
 from app.catalog.service import apply_catalog_to_definition, spec_tool_schemas
@@ -73,6 +79,8 @@ from app.twin.engine import RunCancelled, run_scenario
 from app.twin.errors import TwinServiceError
 from app.twin.evaluation import evaluate_run
 from app.twin.orchestrator import NodeArtifact, run_orchestration
+from app.twin.records import find_system_data, records_tool_schema
+from app.oracles.store import confirmed_views
 from app.twin.schema_inference import infer_tool_schemas
 from app.twin.snapshot import build_run_snapshot
 
@@ -763,6 +771,33 @@ def get_agent_artifact(session: Session, process_id: str, artifact_id: str) -> A
     return artifact
 
 
+def _kept_contracts(current: AgentDefinition, systems: list[str], added: list[str]) -> list[dict]:
+    kept = [c.model_dump() for c in current.tool_contracts if c.system_name in systems]
+    return kept + [c.model_dump() for c in build_tool_contracts(added)]
+
+
+def _kept_permissions(current: AgentDefinition, resources: set[str], added: list[str]) -> list[dict]:
+    kept = [p for p in current.permissions if p.resource in resources]
+    have = {p.resource for p in kept}
+    return [p.model_dump() for p in kept] + [p.model_dump() for p in build_default_permissions([s for s in added if s not in have])]
+
+
+def _with_system_defaults(current: AgentDefinition, update: AgentGovernanceUpdate, fields: dict) -> dict:
+    """US20.8: a changed system list carries its tool contracts and
+    permissions along -- defaults for added systems (as generation makes
+    them), removal for dropped ones -- unless the caller set those lists
+    explicitly in the same update."""
+    systems = list(dict.fromkeys(update.tools_systems_needed or []))
+    added = [s for s in systems if s not in current.tools_systems_needed]
+    if update.tool_contracts is None:
+        fields["tool_contracts"] = _kept_contracts(current, systems, added)
+    if update.permissions is None:
+        resources = {c["resource"] for c in fields.get("tool_contracts", [])} | set(systems)
+        fields["permissions"] = _kept_permissions(current, resources, added)
+    fields["tools_systems_needed"] = systems
+    return fields
+
+
 def update_agent_governance(
     session: Session, process_id: str, artifact_id: str, update: AgentGovernanceUpdate
 ) -> AgentArtifact:
@@ -781,6 +816,8 @@ def update_agent_governance(
     specifically "last regenerated")."""
     artifact = get_agent_artifact(session, process_id, artifact_id)
     updated_fields = update.model_dump(exclude_unset=True)
+    if update.tools_systems_needed is not None:
+        updated_fields = _with_system_defaults(AgentDefinition.model_validate(artifact.definition), update, updated_fields)
     # Re-validate through AgentDefinition rather than BaseModel.model_copy
     # (which assigns the update's raw dicts without re-running nested
     # model validation) so the stored definition's nested governance
@@ -831,6 +868,7 @@ def _to_pydantic_twin_environment(session: Session, environment: TwinEnvironment
         personas=environment.personas,
         events=environment.events,
         faults=environment.faults,
+        system_data=environment.system_data or {},
         created_at=environment.created_at,
         created_by=environment.created_by,
         created_by_name=_resolve_user_name(session, environment.created_by),
@@ -851,6 +889,7 @@ def create_twin_environment(
         personas=data.personas,
         events=data.events,
         faults={name: [f.model_dump() for f in faults] for name, faults in data.faults.items()},
+        system_data={name: d.model_dump() for name, d in data.system_data.items()},
         created_by=created_by,
     )
     session.add(environment)
@@ -891,6 +930,7 @@ def update_twin_environment(
     environment.personas = data.personas
     environment.events = data.events
     environment.faults = {name: [f.model_dump() for f in faults] for name, faults in data.faults.items()}
+    environment.system_data = {name: d.model_dump() for name, d in data.system_data.items()}
     environment.version += 1
     session.flush()
     return _to_pydantic_twin_environment(session, environment)
@@ -1085,7 +1125,7 @@ def delete_twin_scenario(session: Session, process_id: str, scenario_id: str) ->
 
 
 async def _get_or_infer_tool_schemas(
-    llm: LLMClient, session: Session, artifact: AgentArtifactModel
+    llm: LLMClient, session: Session, artifact: AgentArtifactModel, environment: TwinEnvironment | None = None
 ) -> dict[str, InferredToolSchema]:
     """Caches the LLM-inferred tool schema per artifact (TwinToolSchemaModel,
     one row per artifact, replaced wholesale) -- regenerated only when the
@@ -1099,21 +1139,32 @@ async def _get_or_infer_tool_schemas(
     # and a re-attached spec takes effect immediately); only the rest are
     # inferred and cached.
     from_specs = spec_tool_schemas(session, artifact.process_id, definition.tools_systems_needed)
-    to_infer = [name for name in definition.tools_systems_needed if name not in from_specs]
+    # Epic 36, US36.1: systems the environment has sample data for get a
+    # tool generated from that data -- nothing to infer.
+    from_records = {
+        name: records_tool_schema(name, data)
+        for name in definition.tools_systems_needed
+        if name not in from_specs and (data := find_system_data(environment, name)) is not None
+    }
+    to_infer = [name for name in definition.tools_systems_needed if name not in from_specs and name not in from_records]
     cached = session.get(TwinToolSchemaModel, artifact.id)
-    if cached is not None and set(cached.schemas) == set(to_infer):
-        inferred = {name: InferredToolSchema.model_validate(value) for name, value in cached.schemas.items()}
-        return {**inferred, **from_specs}
+    if cached is not None and set(to_infer) <= set(cached.schemas):
+        inferred = {name: InferredToolSchema.model_validate(cached.schemas[name]) for name in to_infer}
+        return {**inferred, **from_records, **from_specs}
+    if not to_infer:
+        return {**from_records, **from_specs}
 
     schemas = await infer_tool_schemas(llm, definition.model_copy(update={"tools_systems_needed": to_infer}))
-    dumped = {name: schema.model_dump() for name, schema in schemas.items()}
+    # Keep anything inferred earlier for systems now served by sample data,
+    # so switching environments doesn't force a re-inference.
+    dumped = {**(cached.schemas if cached is not None else {}), **{name: schema.model_dump() for name, schema in schemas.items()}}
     if cached is None:
         session.add(TwinToolSchemaModel(agent_artifact_id=artifact.id, schemas=dumped))
     else:
         cached.schemas = dumped
         cached.generated_at = utcnow()
     session.flush()
-    return {**schemas, **from_specs}
+    return {**schemas, **from_records, **from_specs}
 
 
 def start_twin_run(
@@ -1543,6 +1594,7 @@ def _to_pydantic_orchestration_scenario(session: Session, scenario: Orchestratio
         expected_final_output=scenario.expected_final_output,
         environment_id=scenario.environment_id,
         environment_version=scenario.environment_version,
+        **(scenario.routing or {}),
         created_at=scenario.created_at,
         created_by=scenario.created_by,
         created_by_name=_resolve_user_name(session, scenario.created_by),
@@ -1576,6 +1628,11 @@ def create_orchestration_scenario(
             node_id: config.model_dump() for node_id, config in data.human_checkpoint_config.items()
         },
         data_mapping_mode=dict(data.data_mapping_mode),
+        routing={
+            "handoff": data.handoff,
+            "default_gateway_routing": data.default_gateway_routing,
+            "gateway_routing": dict(data.gateway_routing),
+        },
         expected_path=list(data.expected_path),
         expected_final_output=data.expected_final_output,
         environment_id=data.environment_id,
@@ -1737,8 +1794,12 @@ def list_orchestration_runs(
     return runs
 
 
+_TASK_NODE_TYPES = frozenset({"task", "userTask", "serviceTask", "manualTask", "scriptTask", "businessRuleTask", "sendTask", "receiveTask"})
+
+
 async def _build_node_artifacts(
-    llm: LLMClient, session: Session, process_id: str, flow_nodes: list[FlowNodeInfo]
+    llm: LLMClient, session: Session, process_id: str, flow_nodes: list[FlowNodeInfo],
+    environment: TwinEnvironment | None = None,
 ) -> dict[str, NodeArtifact]:
     """Maps every flow node with a generated agent to a runnable
     `NodeArtifact`, reusing `_get_or_infer_tool_schemas`'s per-artifact
@@ -1754,13 +1815,18 @@ async def _build_node_artifacts(
     node_artifacts: dict[str, NodeArtifact] = {}
     for node in flow_nodes:
         artifact_model = artifact_by_node_id.get(node.id)
-        if artifact_model is None:
+        # Only task steps run an agent in the walk; a blueprint can also
+        # give a gateway or event an agent spec (seen live with chunked
+        # evaluation), and such an artifact must not block the whole run.
+        if artifact_model is None or node.bpmn_type not in _TASK_NODE_TYPES:
             continue
         if artifact_model.id not in tool_schema_cache:
             # US23.3: same precondition start_twin_run enforces, checked
             # once per distinct artifact before its tools are even inferred.
             _require_simulation_ready(session, artifact_model)
-            tool_schema_cache[artifact_model.id] = await _get_or_infer_tool_schemas(llm, session, artifact_model)
+            tool_schema_cache[artifact_model.id] = await _get_or_infer_tool_schemas(
+                llm, session, artifact_model, environment
+            )
         node_artifacts[node.id] = NodeArtifact(
             artifact_id=artifact_model.id,
             definition=AgentDefinition.model_validate(artifact_model.definition),
@@ -1814,6 +1880,13 @@ async def _execute_orchestration_run(
             version = get_version(session, run_model.process_id, scenario_model.baseline_version_id)
             flow_nodes = extract_flow_nodes(version.xml)
             scenario = _to_pydantic_orchestration_scenario(session, scenario_model)
+            # Epic 36, US36.5: a process twin case runs the scenario on its
+            # dataset row's inputs.
+            if run_model.dataset_id and run_model.row_key and run_model.dataset_version is not None:
+                row = row_at(session, run_model.dataset_id, run_model.row_key, run_model.dataset_version)
+                scenario = scenario.model_copy(update={"inputs": dict(row.inputs or {})})
+            uses_rules = scenario.default_gateway_routing == "rules" or "rules" in scenario.gateway_routing.values()
+            decision_rules = confirmed_views(session, run_model.process_id) if uses_rules else None
             environment_model = (
                 session.get(TwinEnvironmentModel, scenario_model.environment_id)
                 if scenario_model.environment_id
@@ -1822,7 +1895,7 @@ async def _execute_orchestration_run(
             environment = (
                 _to_pydantic_twin_environment(session, environment_model) if environment_model is not None else None
             )
-            node_artifacts = await _build_node_artifacts(llm, session, run_model.process_id, flow_nodes)
+            node_artifacts = await _build_node_artifacts(llm, session, run_model.process_id, flow_nodes, environment)
             # Epic 22, US22.1: built once node artifacts are actually known
             # (unlike a twin run, they can't be resolved synchronously at
             # start_orchestration_run -- schema inference is an LLM call).
@@ -1865,6 +1938,8 @@ async def _execute_orchestration_run(
                 on_node_run=on_node_run,
                 on_step=on_step,
                 on_phase=on_phase,
+                decision_rules=decision_rules,
+                seed=run_model.seed,
             )
         except (TwinServiceError, NotFoundError) as exc:
             run_model.status = "FAILED"

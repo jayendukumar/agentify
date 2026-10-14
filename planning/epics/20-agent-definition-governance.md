@@ -152,6 +152,20 @@ tool allowlisting -- enforced by the same Tool Gateway as US20.1, so
 "the sandbox is isolated" is a checked property, not just a stated
 intent.
 
+US20.8 -- Change the systems an agent can use, without regenerating it.
+(Added 2026-10-13 from the Epic 36 process twin demo; implemented.)
+As an Automation Architect, when the twin shows that an agent lacks a system
+it needs, I want to add or remove that system on the agent directly. The
+blueprint gave the supplier-verification agent OCR tools but no vendor
+master or sanctions list. Regenerating from the blueprint would reset every
+governance edit, so I want a targeted change instead. Adding a system brings
+a default read-only tool contract and permission, as generation does.
+Removing one drops its contract and permission, and contracts I've
+customised for kept systems stay as they are.
+Acceptance: `tools_systems_needed` on the governance update; tool schemas
+are re-derived on the next run (sample data, OpenAPI, or inference for the
+new system only).
+
 ## Notes / Open Questions
 
 Grounded in the real gap found while scoping this: `app/twin/engine.py`

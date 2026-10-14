@@ -24,8 +24,10 @@ nested agent's own manual checkpoint, or at a manual node's own checkpoint
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
+import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Literal
 
@@ -43,12 +45,61 @@ from app.schemas.orchestration import (
 from app.schemas.run import RunStatus, RunStep, StepType, TwinDeviation
 from app.schemas.twin import InferredToolSchema, TwinHumanCheckpointConfig, TwinScenario
 
-from .engine import RunCancelled, run_scenario
+from app.oracles.rules import RuleView, evaluate
+
+from .engine import ROUTE_FIELD, RunCancelled, run_scenario
 from .errors import TwinServiceError
 from .simulators import resolve_human_decision
 
 _MISSING = object()
 _PARALLEL_GATEWAY_TYPES = {"parallelGateway"}
+_WORDS = re.compile(r"[a-z0-9]+")
+# Epic 36, US36.2: where an agent finds the rest of the case file.
+CASE_FILE_FIELD = "case_file"
+
+
+def branch_options(gateway: FlowNodeInfo, by_id: dict[str, FlowNodeInfo]) -> dict[str, str]:
+    """Epic 36, US36.3: branch label -> target node id. The label is the
+    business wording on the outgoing flow, its condition ("No -- exception");
+    a flow without one falls back to its target's label (`FlowRef.label`
+    is the target node's label, see app/bpmn/nodes.py)."""
+    options: dict[str, str] = {}
+    for ref in gateway.successors:
+        label = (ref.condition or "").strip() or (ref.label or "").strip() or ref.node_id
+        options[label] = ref.node_id
+    return options
+
+
+def match_branch(choice: Any, options: dict[str, str]) -> str | None:
+    """An agent's `route` matched to a branch label, ignoring case and
+    punctuation: exact words first, then a label that starts with the
+    choice or vice versa ("No" -> "No -- exception"). Ambiguous or unknown
+    choices return None rather than guessing."""
+    if not isinstance(choice, str) or not choice.strip():
+        return None
+    words = " ".join(_WORDS.findall(choice.lower()))
+    normalized = {" ".join(_WORDS.findall(label.lower())): target for label, target in options.items()}
+    if words in normalized:
+        return normalized[words]
+    prefix = {target for label, target in normalized.items() if label and (label.startswith(words) or words.startswith(label))}
+    return prefix.pop() if len(prefix) == 1 else None
+
+
+def first_matching_rule(rules: list[RuleView], record: dict[str, Any]) -> RuleView | None:
+    """Epic 36, US36.3: one gateway's confirmed rules in priority order --
+    the first whose expression holds, else the default rule (the same
+    choice the Epic 33 oracle makes per gateway)."""
+    default = None
+    for rule in sorted(rules, key=lambda r: (r.is_default, r.priority)):
+        if rule.is_default:
+            default = default or rule
+        elif rule.expression and evaluate(rule.expression, record):
+            return rule
+    return default
+
+
+def _derived_seed(seed: int, node_id: str) -> int:
+    return int.from_bytes(hashlib.sha256(f"{seed}:{node_id}".encode()).digest()[:6], "big")
 
 
 class _StopWalk(Exception):
@@ -100,6 +151,18 @@ async def _adapt_data(
     if not target_fields:
         return current_data, None
 
+    if mode == "auto":
+        # Epic 36, US36.2: copy what already exists under the same name;
+        # only the remainder costs an LLM call.
+        copied = {f.name: current_data[f.name] for f in target_fields if f.name in current_data}
+        missing = [f for f in target_fields if f.name not in current_data]
+        if not missing:
+            return copied, None
+        adapted, usage = await _adapt_data(
+            llm, to_node_id=to_node_id, target_fields=missing, current_data=current_data, mode="llm_adapter"
+        )
+        return {**copied, **{f.name: adapted.get(f.name) for f in missing}}, usage
+
     if mode == "exact_field_contract":
         missing = [f.name for f in target_fields if f.name not in current_data]
         if missing:
@@ -123,7 +186,11 @@ async def _adapt_data(
         [ChatMessage(role="system", content=prompt)],
         operation="orchestration_data_adapter",
         response_format={"type": "json_object"},
-        max_tokens=1000,
+        # Was 1000: the model's reasoning tokens count against the cap and a
+        # live process twin run came back empty at the first agent (Epic 36
+        # makes this call routine for case-file fields). Same failure, and
+        # fix, as twin/simulators.py and schema_inference.py.
+        max_tokens=8000,
     )
     if not result.text:
         raise TwinServiceError(f"LLM returned no content while adapting data for node '{to_node_id}'")
@@ -180,8 +247,38 @@ async def run_orchestration(
     on_node_run: Callable[[NodeRun], Awaitable[None]] | None = None,
     on_step: Callable[[RunStep], Awaitable[None]] | None = None,
     on_phase: Callable[[RunStatus], Awaitable[None]] | None = None,
+    decision_rules: list[RuleView] | None = None,
+    seed: int | None = None,
 ) -> OrchestrationOutcome:
+    """Epic 36: `decision_rules` are the process's confirmed rules, used by
+    `rules`-routed gateways; `seed` (a batch case's own) seeds every manual
+    node and reviewer that doesn't set its own, so a case replays exactly."""
     by_id = {node.id: node for node in flow_nodes}
+    use_case_file = scenario.handoff == "case_file"
+    rules_by_gateway: dict[str, list[RuleView]] = {}
+    for rule in decision_rules or []:
+        if rule.status == "confirmed":
+            rules_by_gateway.setdefault(rule.gateway_id, []).append(rule)
+    # Epic 36, US36.2: the start inputs plus every node's output so far.
+    case_data: dict[str, Any] = dict(resume_state.get("case_data") or {}) if resume_state else dict(scenario.inputs)
+
+    def routing_of(gateway_id: str) -> str:
+        return scenario.gateway_routing.get(gateway_id, scenario.default_gateway_routing)
+
+    def checkpoint_config(config: TwinHumanCheckpointConfig, node_id: str) -> TwinHumanCheckpointConfig:
+        if seed is None or config.seed is not None:
+            return config
+        return config.model_copy(update={"seed": _derived_seed(seed, node_id)})
+
+    def routing_for(node: FlowNodeInfo) -> tuple[str, list[str]] | None:
+        """US36.3: if this node leads straight into an agent-routed
+        gateway, the agent is asked to pick the branch."""
+        if len(node.successors) != 1:
+            return None
+        nxt = by_id.get(node.successors[0].node_id)
+        if nxt is None or "Gateway" not in nxt.bpmn_type or len(nxt.successors) < 2 or routing_of(nxt.id) != "agent":
+            return None
+        return nxt.label, list(branch_options(nxt, by_id))
 
     steps: list[RunStep] = []
     node_runs: list[NodeRun] = []
@@ -195,6 +292,16 @@ async def run_orchestration(
         if on_step is not None:
             await on_step(step)
         return step
+
+    async def relay(step: RunStep) -> None:
+        """A nested agent run's step, added to this run's one trace (Epic 17)
+        with the walk's own sequence number. Before Epic 36 these went
+        straight to the caller's `on_step` and were dropped when the final
+        `steps` overwrote the incrementally persisted ones."""
+        step = step.model_copy(update={"seq": len(steps)})
+        steps.append(step)
+        if on_step is not None:
+            await on_step(step)
 
     async def emit_node_run(node_run: NodeRun) -> None:
         node_runs.append(node_run)
@@ -218,23 +325,43 @@ async def run_orchestration(
         else:
             total_cost += cost_usd
 
-    def resolve_branch(node: FlowNodeInfo) -> tuple[str | None, TwinDeviation | None]:
-        """Returns (next_node_id, error_deviation). `next_node_id is None`
-        with `error_deviation is None` means a clean end of the walk (not
-        every diagram uses an explicit endEvent)."""
+    def resolve_branch(
+        node: FlowNodeInfo, current_data: dict[str, Any] | None = None
+    ) -> tuple[str | None, TwinDeviation | None, dict[str, Any]]:
+        """Returns (next_node_id, error_deviation, how). `next_node_id is
+        None` with `error_deviation is None` means a clean end of the walk
+        (not every diagram uses an explicit endEvent). `how` records which
+        routing decided it, for the DECISION step (US36.3)."""
         successors = node.successors
         if len(successors) == 1:
-            return successors[0].node_id, None
+            return successors[0].node_id, None, {}
         if not successors:
-            return None, None
+            return None, None, {}
         valid_targets = {s.node_id for s in successors}
+        mode = routing_of(node.id)
+        how: dict[str, Any] = {"mode": mode}
+        if mode == "agent":
+            choice = (current_data or {}).get(ROUTE_FIELD)
+            how["agent_choice"] = choice
+            target = match_branch(choice, branch_options(node, by_id))
+            if target is not None:
+                return target, None, how
+            how["fallback"] = f"the agent's route {choice!r} is not one of {sorted(branch_options(node, by_id))}"
+        elif mode == "rules":
+            chosen = first_matching_rule(rules_by_gateway.get(node.id, []), case_data)
+            if chosen is not None and chosen.branch_target_id in valid_targets:
+                how.update(rule_id=chosen.id, rule=chosen.rendered or chosen.condition_text)
+                return chosen.branch_target_id, None, how
+            how["fallback"] = "no confirmed decision rule matched this case"
         decision = scenario.gateway_decisions.get(node.id)
         if decision is None or decision.to_node_id not in valid_targets:
-            return None, TwinDeviation(
-                reason=f"Node '{node.id}' ({node.label}) branches to multiple flows but has no valid configured "
-                f"gateway decision (options: {sorted(valid_targets)})"
-            )
-        return decision.to_node_id, None
+            reason = f"Node '{node.id}' ({node.label}) branches to multiple flows but has no valid configured gateway decision"
+            if "fallback" in how:
+                reason = f"Node '{node.id}' ({node.label}): {how['fallback']}, and there is no configured decision to fall back on"
+            return None, TwinDeviation(reason=f"{reason} (options: {sorted(valid_targets)})"), how
+        if mode != "configured":
+            how["used_configured_decision"] = True
+        return decision.to_node_id, None, how
 
     class _NodeSuspend:
         def __init__(self, manual: bool, node_resume_state: dict[str, Any] | None):
@@ -264,18 +391,34 @@ async def run_orchestration(
                     scenario=TwinScenario(
                         id="orchestration-inline", agent_artifact_id=artifact.artifact_id, name=node.label,
                         inputs=current_data, system_stubs=scenario.system_stubs.get(node.id, {}),
-                        human_checkpoint_config=scenario.human_checkpoint_config.get(node.id, TwinHumanCheckpointConfig()),
+                        human_checkpoint_config=checkpoint_config(
+                            scenario.human_checkpoint_config.get(node.id, TwinHumanCheckpointConfig()), node.id
+                        ),
                         expected_steps=[], expected_outputs={}, created_at=utcnow(),
                     ),
                     max_turns=max_turns_per_node, environment=environment, resume_state=node_resume_state,
-                    human_decision=human_decision, node_id=node.id, on_step=on_step, on_phase=on_phase,
+                    human_decision=human_decision, node_id=node.id, on_step=relay, on_phase=on_phase,
+                    routing=routing_for(node),
                 )
             else:
-                mapping_mode = scenario.data_mapping_mode.get(node.id, "llm_adapter")
+                # Epic 36, US36.2: with a case file, every earlier fact is
+                # available and same-named fields are copied for free.
+                source = case_data if use_case_file else current_data
+                mapping_mode = scenario.data_mapping_mode.get(node.id, "auto" if use_case_file else "llm_adapter")
                 mapped_input, adapter_usage = await _adapt_data(
                     llm, to_node_id=node.id, target_fields=artifact.definition.input_schema,
-                    current_data=current_data, mode=mapping_mode,
+                    current_data=source, mode=mapping_mode,
                 )
+                copied = [f.name for f in artifact.definition.input_schema if f.name in source]
+                # The agent's declared inputs come from a blueprint and are
+                # often loosely named ("Invoice Document"); seen live, an
+                # honest adapter maps them to null and the agent is left with
+                # nothing to look anything up by. With a case file, the agent
+                # also gets the rest of it for reference.
+                if use_case_file:
+                    rest = {k: v for k, v in case_data.items() if k not in mapped_input}
+                    if rest:
+                        mapped_input = {**mapped_input, CASE_FILE_FIELD: rest}
                 adapter_tokens: int | None = None
                 adapter_cost: float | None = None
                 if adapter_usage is not None:
@@ -285,19 +428,30 @@ async def run_orchestration(
                     adapter_cost = estimate_cost_usd(model, usage)
                 await emit(
                     "AGENT_DELEGATED", node_id=node.id, target=node.id,
-                    arguments={"from_node_id": last_node_id, "mode": mapping_mode, "input_before": current_data},
-                    result={"input_after": mapped_input}, tokens=adapter_tokens, cost_usd=adapter_cost,
+                    arguments={
+                        "from_node_id": last_node_id, "mode": mapping_mode, "handoff": scenario.handoff,
+                        "input_before": source,
+                    },
+                    result={
+                        "input_after": mapped_input,
+                        "copied": copied if mapping_mode != "llm_adapter" else [],
+                        "adapted": [f.name for f in artifact.definition.input_schema
+                                    if mapping_mode == "llm_adapter" or f.name not in source],
+                    },
+                    tokens=adapter_tokens, cost_usd=adapter_cost,
                 )
                 node_scenario = TwinScenario(
                     id="orchestration-inline", agent_artifact_id=artifact.artifact_id, name=node.label,
                     inputs=mapped_input, system_stubs=scenario.system_stubs.get(node.id, {}),
-                    human_checkpoint_config=scenario.human_checkpoint_config.get(node.id, TwinHumanCheckpointConfig()),
+                    human_checkpoint_config=checkpoint_config(
+                        scenario.human_checkpoint_config.get(node.id, TwinHumanCheckpointConfig()), node.id
+                    ),
                     expected_steps=[], expected_outputs={}, created_at=utcnow(),
                 )
                 outcome = await run_scenario(
                     llm, artifact=artifact.definition, tool_schemas=artifact.tool_schemas, scenario=node_scenario,
                     max_turns=max_turns_per_node, environment=environment, node_id=node.id,
-                    on_step=on_step, on_phase=on_phase,
+                    on_step=relay, on_phase=on_phase, routing=routing_for(node),
                 )
 
             account_outcome(outcome.total_cost_usd, outcome.total_tokens)
@@ -320,7 +474,9 @@ async def run_orchestration(
                 total_cost_usd=outcome.total_cost_usd, total_tokens=outcome.total_tokens,
                 started_at=started, completed_at=utcnow(),
             )
-            return node_run, (outcome.final_output or {}), None
+            output = outcome.final_output or {}
+            case_data.update({k: v for k, v in output.items() if k != ROUTE_FIELD})
+            return node_run, output, None
 
         # Manual (non-automatable) node.
         manual_cfg = scenario.manual_node_config.get(node.id) or ManualNodeConfig()
@@ -335,13 +491,17 @@ async def run_orchestration(
             if manual_resume and human_decision is not None:
                 decision = human_decision
             else:
-                rng = random.Random(manual_cfg.human_checkpoint_config.seed)
-                decision = resolve_human_decision(current_data, manual_cfg.human_checkpoint_config, rng)
+                config = checkpoint_config(manual_cfg.human_checkpoint_config, node.id)
+                rng = random.Random(config.seed)
+                decision = resolve_human_decision(case_data if use_case_file else current_data, config, rng)
             await emit(
                 "HUMAN_APPROVED" if decision == "approve" else "HUMAN_REJECTED",
                 node_id=node.id, target=node.id, decision=decision,
             )
             output = {**current_data, "human_decision": decision}
+            case_data.update({"human_decision": decision, f"decision_{node.id}": decision})
+        if manual_cfg.mode == "fixed_stub":
+            case_data.update(output)
         node_run = NodeRun(
             node_id=node.id, node_label=node.label, kind="manual", status="COMPLETED",
             steps=[s for s in steps[steps_before:] if s.node_id == node.id], output=output,
@@ -356,6 +516,7 @@ async def run_orchestration(
         return {
             "current_id": current_id,
             "current_data": current_data,
+            "case_data": case_data,
             "visited_path": visited_path,
             "last_node_id": last_node_id,
             "node_runs": [nr.model_dump(mode="json") for nr in node_runs],
@@ -397,13 +558,13 @@ async def run_orchestration(
                 terminal_status = node_run.status
                 terminal_deviation = TwinDeviation(reason=f"Node '{node.id}' ({node.label}): {node_run.error_message}")
                 raise _StopWalk()
-            next_id, error_deviation = resolve_branch(node)
+            next_id, error_deviation, how = resolve_branch(node, current_data)
             if error_deviation is not None:
                 terminal_status = "FAILED"
                 terminal_deviation = error_deviation
                 raise _StopWalk()
             if next_id is None:
-                final_output = current_data
+                final_output = dict(case_data) if use_case_file else current_data
                 raise _StopWalk()
             last_node_id = node.id
             current_id = next_id
@@ -462,7 +623,7 @@ async def run_orchestration(
             visited_path.append(node.id)
 
             if node.bpmn_type == "startEvent":
-                next_id, error_deviation = resolve_branch(node)
+                next_id, error_deviation, how = resolve_branch(node, current_data)
                 if next_id is None:
                     terminal_status = "FAILED"
                     terminal_deviation = error_deviation or TwinDeviation(
@@ -474,7 +635,7 @@ async def run_orchestration(
                 continue
 
             if node.bpmn_type == "endEvent":
-                final_output = current_data
+                final_output = dict(case_data) if use_case_file else current_data
                 started = utcnow()
                 await emit("RUN_COMPLETED", node_id=node.id, target=node.id, result=current_data)
                 await emit_node_run(
@@ -494,9 +655,12 @@ async def run_orchestration(
                         "slice (see planning/epics/16-orchestration-rehearsal.md)"
                     )
                     break
-                next_id, error_deviation = resolve_branch(node)
+                next_id, error_deviation, how = resolve_branch(node, current_data)
                 started = utcnow()
-                await emit("DECISION", node_id=node.id, target=node.id, result={"to_node_id": next_id})
+                await emit("DECISION", node_id=node.id, target=node.id, result={"to_node_id": next_id, **how})
+                # The route was this gateway's to consume; a later gateway
+                # must get its own.
+                current_data = {k: v for k, v in current_data.items() if k != ROUTE_FIELD}
                 await emit_node_run(
                     NodeRun(
                         node_id=node.id, node_label=node.label, kind="gateway", status="COMPLETED",
@@ -509,7 +673,7 @@ async def run_orchestration(
                     break
                 if next_id is None:
                     # No outgoing flow: a clean end of the walk.
-                    final_output = current_data
+                    final_output = dict(case_data) if use_case_file else current_data
                     terminal_status = "COMPLETED"
                     break
                 last_node_id = node.id
@@ -547,13 +711,13 @@ async def run_orchestration(
                 terminal_deviation = TwinDeviation(reason=f"Node '{node.id}' ({node.label}): {node_run.error_message}")
                 break
 
-            next_id, error_deviation = resolve_branch(node)
+            next_id, error_deviation, how = resolve_branch(node, current_data)
             if error_deviation is not None:
                 terminal_status = "FAILED"
                 terminal_deviation = error_deviation
                 break
             if next_id is None:
-                final_output = current_data
+                final_output = dict(case_data) if use_case_file else current_data
                 terminal_status = "COMPLETED"
                 break
             last_node_id = node.id

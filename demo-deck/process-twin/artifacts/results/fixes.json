@@ -1,0 +1,18 @@
+[
+  {
+    "system": "Document Generation Service",
+    "before": [
+      "Invoice inbox"
+    ],
+    "after": [
+      "Supplier email"
+    ]
+  },
+  {
+    "system": "NLP Entity Recognition Model",
+    "before": null,
+    "after": [
+      "Invoice inbox"
+    ]
+  }
+]
