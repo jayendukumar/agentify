@@ -1,0 +1,19 @@
+{
+  "over_cognitive_limit": 121,
+  "over_cyclomatic_limit": 165,
+  "duplication_percent_backend": 0.25,
+  "duplication_percent_frontend": 0.1,
+  "structural_duplication_percent": 4.87,
+  "module_cycles": 0,
+  "package_cycles_incl_deferred": 2,
+  "unused_definitions": 24,
+  "unused_dependencies": 0,
+  "mutation_scores": {
+    "app/oracles/rules.py": 0.68,
+    "app/twin/gateway.py": 0.84,
+    "app/batches/results.py": 0.72,
+    "app/twin/orchestrator.py": 0.56,
+    "app/process_twin/efficiency.py": 0.76,
+    "app/twin/records.py": 0.88
+  }
+}

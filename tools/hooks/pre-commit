@@ -1,0 +1,5 @@
+#!/bin/sh
+# Install with: git config core.hooksPath tools/hooks
+# Blocks a commit that leaves the wiki stale or makes code health worse.
+python -m tools.docs check || { echo "Docs are stale: run 'python -m tools.docs sync'"; exit 1; }
+python -m tools.code_health check || { echo "Code health regressed (see above)"; exit 1; }

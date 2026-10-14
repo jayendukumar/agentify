@@ -1,0 +1,326 @@
+{
+  "app/oracles/rules.py": {
+    "module": "app/oracles/rules.py",
+    "tests": [
+      "tests/test_oracles.py"
+    ],
+    "sites": 116,
+    "tested": 25,
+    "killed": 17,
+    "survived": 8,
+    "errors": 0,
+    "score": 0.68,
+    "measured_at": "2026-10-13",
+    "survivors": [
+      {
+        "index": 146,
+        "line": 31,
+        "description": "number 0 -> 1",
+        "outcome": "survived"
+      },
+      {
+        "index": 148,
+        "line": 31,
+        "description": "number 2 -> 3",
+        "outcome": "survived"
+      },
+      {
+        "index": 154,
+        "line": 38,
+        "description": "number 0 -> 1",
+        "outcome": "survived"
+      },
+      {
+        "index": 216,
+        "line": 110,
+        "description": "return value -> None",
+        "outcome": "survived"
+      },
+      {
+        "index": 234,
+        "line": 125,
+        "description": "return value -> None",
+        "outcome": "survived"
+      },
+      {
+        "index": 245,
+        "line": 137,
+        "description": "constant False -> True",
+        "outcome": "survived"
+      },
+      {
+        "index": 312,
+        "line": 174,
+        "description": "constant False -> True",
+        "outcome": "survived"
+      },
+      {
+        "index": 977,
+        "line": 51,
+        "description": "arithmetic Add -> Sub",
+        "outcome": "survived"
+      }
+    ]
+  },
+  "app/twin/gateway.py": {
+    "module": "app/twin/gateway.py",
+    "tests": [
+      "tests/test_twin_gateway.py"
+    ],
+    "sites": 39,
+    "tested": 25,
+    "killed": 21,
+    "survived": 4,
+    "errors": 0,
+    "score": 0.84,
+    "measured_at": "2026-10-13",
+    "survivors": [
+      {
+        "index": 94,
+        "line": 102,
+        "description": "number 0 -> 1",
+        "outcome": "survived"
+      },
+      {
+        "index": 205,
+        "line": 118,
+        "description": "comparison Gt -> GtE",
+        "outcome": "survived"
+      },
+      {
+        "index": 343,
+        "line": 146,
+        "description": "comparison Gt -> GtE",
+        "outcome": "survived"
+      },
+      {
+        "index": 493,
+        "line": 160,
+        "description": "arithmetic Sub -> Add",
+        "outcome": "survived"
+      }
+    ]
+  },
+  "app/batches/results.py": {
+    "module": "app/batches/results.py",
+    "tests": [
+      "tests/test_results.py"
+    ],
+    "sites": 239,
+    "tested": 25,
+    "killed": 18,
+    "survived": 7,
+    "errors": 0,
+    "score": 0.72,
+    "measured_at": "2026-10-13",
+    "survivors": [
+      {
+        "index": 794,
+        "line": 63,
+        "description": "number 0 -> 1",
+        "outcome": "survived"
+      },
+      {
+        "index": 1769,
+        "line": 247,
+        "description": "boolean or -> and",
+        "outcome": "survived"
+      },
+      {
+        "index": 2174,
+        "line": 51,
+        "description": "number 0 -> 1",
+        "outcome": "survived"
+      },
+      {
+        "index": 2193,
+        "line": 56,
+        "description": "number 4 -> 5",
+        "outcome": "survived"
+      },
+      {
+        "index": 2391,
+        "line": 247,
+        "description": "comparison Is -> IsNot",
+        "outcome": "survived"
+      },
+      {
+        "index": 2630,
+        "line": 366,
+        "description": "number 4 -> 5",
+        "outcome": "survived"
+      },
+      {
+        "index": 3833,
+        "line": 503,
+        "description": "comparison Eq -> NotEq",
+        "outcome": "survived"
+      }
+    ]
+  },
+  "app/twin/orchestrator.py": {
+    "module": "app/twin/orchestrator.py",
+    "tests": [
+      "tests/test_orchestrator.py"
+    ],
+    "sites": 172,
+    "tested": 25,
+    "killed": 14,
+    "survived": 11,
+    "errors": 0,
+    "score": 0.56,
+    "measured_at": "2026-10-13",
+    "survivors": [
+      {
+        "index": 243,
+        "line": 118,
+        "description": "number 0 -> 1",
+        "outcome": "survived"
+      },
+      {
+        "index": 266,
+        "line": 158,
+        "description": "return value -> None",
+        "outcome": "survived"
+      },
+      {
+        "index": 314,
+        "line": 223,
+        "description": "number 50 -> 51",
+        "outcome": "survived"
+      },
+      {
+        "index": 342,
+        "line": 251,
+        "description": "return value -> None",
+        "outcome": "survived"
+      },
+      {
+        "index": 349,
+        "line": 261,
+        "description": "return value -> None",
+        "outcome": "survived"
+      },
+      {
+        "index": 457,
+        "line": 65,
+        "description": "boolean or -> and",
+        "outcome": "survived"
+      },
+      {
+        "index": 815,
+        "line": 471,
+        "description": "comparison Eq -> NotEq",
+        "outcome": "survived"
+      },
+      {
+        "index": 1328,
+        "line": 320,
+        "description": "comparison Eq -> NotEq",
+        "outcome": "survived"
+      },
+      {
+        "index": 2039,
+        "line": 331,
+        "description": "return value -> None",
+        "outcome": "survived"
+      },
+      {
+        "index": 2778,
+        "line": 314,
+        "description": "boolean or -> and",
+        "outcome": "survived"
+      },
+      {
+        "index": 4579,
+        "line": 657,
+        "description": "comparison IsNot -> Is",
+        "outcome": "survived"
+      }
+    ]
+  },
+  "app/process_twin/efficiency.py": {
+    "module": "app/process_twin/efficiency.py",
+    "tests": [
+      "tests/test_process_twin.py"
+    ],
+    "sites": 167,
+    "tested": 25,
+    "killed": 19,
+    "survived": 6,
+    "errors": 0,
+    "score": 0.76,
+    "measured_at": "2026-10-13",
+    "survivors": [
+      {
+        "index": 1842,
+        "line": 190,
+        "description": "number 2 -> 3",
+        "outcome": "survived"
+      },
+      {
+        "index": 1857,
+        "line": 195,
+        "description": "number 1 -> 2",
+        "outcome": "survived"
+      },
+      {
+        "index": 1924,
+        "line": 229,
+        "description": "number 4 -> 5",
+        "outcome": "survived"
+      },
+      {
+        "index": 2382,
+        "line": 230,
+        "description": "arithmetic Sub -> Add",
+        "outcome": "survived"
+      },
+      {
+        "index": 2687,
+        "line": 210,
+        "description": "arithmetic Mult -> Div",
+        "outcome": "survived"
+      },
+      {
+        "index": 2764,
+        "line": 260,
+        "description": "number 6 -> 7",
+        "outcome": "survived"
+      }
+    ]
+  },
+  "app/twin/records.py": {
+    "module": "app/twin/records.py",
+    "tests": [
+      "tests/test_process_twin.py"
+    ],
+    "sites": 74,
+    "tested": 25,
+    "killed": 22,
+    "survived": 3,
+    "errors": 0,
+    "score": 0.88,
+    "measured_at": "2026-10-13",
+    "survivors": [
+      {
+        "index": 708,
+        "line": 114,
+        "description": "number 0 -> 1",
+        "outcome": "survived"
+      },
+      {
+        "index": 978,
+        "line": 133,
+        "description": "number 1 -> 2",
+        "outcome": "survived"
+      },
+      {
+        "index": 1066,
+        "line": 74,
+        "description": "boolean or -> and",
+        "outcome": "survived"
+      }
+    ]
+  }
+}

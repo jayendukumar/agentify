@@ -1,0 +1,2632 @@
+{
+ "complexity": {
+  "backend": {
+   "functions": 916,
+   "mean_cyclomatic": 5.0,
+   "mean_cognitive": 5.0,
+   "max_cognitive": 98,
+   "over_cognitive_limit": 78,
+   "over_cyclomatic_limit": 106
+  },
+  "frontend": {
+   "functions": 504,
+   "mean_cyclomatic": 5.05,
+   "mean_cognitive": 5.24,
+   "max_cognitive": 93,
+   "over_cognitive_limit": 43,
+   "over_cyclomatic_limit": 59
+  },
+  "limits": {
+   "cognitive": 15,
+   "cyclomatic": 10
+  },
+  "top_cognitive": [
+   {
+    "lang": "python",
+    "file": "backend/app/twin/orchestrator.py",
+    "name": "run_orchestration",
+    "line": 236,
+    "length": 517,
+    "cyclomatic": 55,
+    "cognitive": 98
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/DigitalTwinAdvancedPanel.tsx",
+    "name": "DigitalTwinAdvancedPanel",
+    "line": 48,
+    "length": 466,
+    "cyclomatic": 51,
+    "cognitive": 93
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/pages/BlueprintPage.tsx",
+    "name": "BlueprintPage",
+    "line": 34,
+    "length": 420,
+    "cyclomatic": 71,
+    "cognitive": 91
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/twin/engine.py",
+    "name": "run_scenario",
+    "line": 305,
+    "length": 350,
+    "cyclomatic": 63,
+    "cognitive": 83
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/batches/results.py",
+    "name": "batch_results",
+    "line": 201,
+    "length": 111,
+    "cyclomatic": 67,
+    "cognitive": 78
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/twin/engine.py",
+    "name": "run_scenario.process_calls",
+    "line": 407,
+    "length": 104,
+    "cyclomatic": 21,
+    "cognitive": 66
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/OrchestrationPanel.tsx",
+    "name": "OrchestrationPanel",
+    "line": 53,
+    "length": 433,
+    "cyclomatic": 37,
+    "cognitive": 65
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/ingestion/merge.py",
+    "name": "merge_process_schemas",
+    "line": 37,
+    "length": 80,
+    "cyclomatic": 24,
+    "cognitive": 62
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/twin/orchestrator.py",
+    "name": "run_orchestration.run_task_node",
+    "line": 371,
+    "length": 140,
+    "cyclomatic": 35,
+    "cognitive": 60
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/twin/test_builder.py",
+    "name": "_sanitize_situation",
+    "line": 264,
+    "length": 72,
+    "cyclomatic": 52,
+    "cognitive": 57
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/bpmn/chat_ops.py",
+    "name": "_apply_operation",
+    "line": 81,
+    "length": 71,
+    "cyclomatic": 36,
+    "cognitive": 53
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/pages/BatchResultsPage.tsx",
+    "name": "BatchResultsPage",
+    "line": 41,
+    "length": 243,
+    "cyclomatic": 44,
+    "cognitive": 53
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/context/compliance.py",
+    "name": "compliance_evidence",
+    "line": 89,
+    "length": 94,
+    "cyclomatic": 37,
+    "cognitive": 52
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/datasets/BatchPanel.tsx",
+    "name": "BatchPanel",
+    "line": 32,
+    "length": 215,
+    "cyclomatic": 33,
+    "cognitive": 52
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/bpmn/validation.py",
+    "name": "_validate",
+    "line": 32,
+    "length": 115,
+    "cyclomatic": 36,
+    "cognitive": 51
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/TwinTestBuilder.tsx",
+    "name": "TwinTestBuilder",
+    "line": 85,
+    "length": 549,
+    "cyclomatic": 43,
+    "cognitive": 51
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/context/ingestion.py",
+    "name": "reconcile_proposals",
+    "line": 479,
+    "length": 116,
+    "cyclomatic": 33,
+    "cognitive": 50
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/RunDetailView.tsx",
+    "name": "RunDetailView",
+    "line": 35,
+    "length": 200,
+    "cyclomatic": 41,
+    "cognitive": 50
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/pages/ProcessDetailPage.tsx",
+    "name": "ProcessDetailPage",
+    "line": 49,
+    "length": 266,
+    "cyclomatic": 51,
+    "cognitive": 48
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/catalog/service.py",
+    "name": "import_applications_csv",
+    "line": 246,
+    "length": 72,
+    "cyclomatic": 31,
+    "cognitive": 46
+   }
+  ],
+  "longest": [
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/TwinTestBuilder.tsx",
+    "name": "TwinTestBuilder",
+    "line": 85,
+    "length": 549,
+    "cyclomatic": 43,
+    "cognitive": 51
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/twin/orchestrator.py",
+    "name": "run_orchestration",
+    "line": 236,
+    "length": 517,
+    "cyclomatic": 55,
+    "cognitive": 98
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/DigitalTwinAdvancedPanel.tsx",
+    "name": "DigitalTwinAdvancedPanel",
+    "line": 48,
+    "length": 466,
+    "cyclomatic": 51,
+    "cognitive": 93
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/OrchestrationPanel.tsx",
+    "name": "OrchestrationPanel",
+    "line": 53,
+    "length": 433,
+    "cyclomatic": 37,
+    "cognitive": 65
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/pages/BlueprintPage.tsx",
+    "name": "BlueprintPage",
+    "line": 34,
+    "length": 420,
+    "cyclomatic": 71,
+    "cognitive": 91
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/twin/engine.py",
+    "name": "run_scenario",
+    "line": 305,
+    "length": 350,
+    "cyclomatic": 63,
+    "cognitive": 83
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/pages/DiagramPage.tsx",
+    "name": "DiagramPage",
+    "line": 11,
+    "length": 279,
+    "cyclomatic": 36,
+    "cognitive": 44
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/TestDataKitchen.tsx",
+    "name": "TestDataKitchen",
+    "line": 32,
+    "length": 266,
+    "cyclomatic": 31,
+    "cognitive": 38
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/pages/ProcessDetailPage.tsx",
+    "name": "ProcessDetailPage",
+    "line": 49,
+    "length": 266,
+    "cyclomatic": 51,
+    "cognitive": 48
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/components/datasets/OraclePanel.tsx",
+    "name": "OraclePanel",
+    "line": 28,
+    "length": 265,
+    "cyclomatic": 29,
+    "cognitive": 38
+   }
+  ]
+ },
+ "duplication": {
+  "backend": {
+   "loc": 20996,
+   "duplicated_lines": 52,
+   "percent": 0.25,
+   "clones": [
+    {
+     "tokens": 90,
+     "a_file": "backend/app/twin/engine.py",
+     "a_start": 516,
+     "a_end": 527,
+     "b_file": "backend/app/twin/engine.py",
+     "b_start": 566,
+     "b_end": 577,
+     "lines": 12
+    },
+    {
+     "tokens": 85,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 1328,
+     "a_end": 1341,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 1915,
+     "b_end": 1928,
+     "lines": 14
+    }
+   ],
+   "clone_count": 2,
+   "structural_percent": 4.13,
+   "structural_clone_count": 32,
+   "structural_clones": [
+    {
+     "tokens": 283,
+     "a_file": "backend/app/api/orchestration.py",
+     "a_start": 45,
+     "a_end": 78,
+     "b_file": "backend/app/api/twin.py",
+     "b_start": 57,
+     "b_end": 90,
+     "lines": 34
+    },
+    {
+     "tokens": 242,
+     "a_file": "backend/app/api/evaluation.py",
+     "a_start": 11,
+     "a_end": 44,
+     "b_file": "backend/app/api/orchestration.py",
+     "b_start": 12,
+     "b_end": 43,
+     "lines": 34
+    },
+    {
+     "tokens": 185,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 1643,
+     "a_end": 1674,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 2038,
+     "b_end": 2070,
+     "lines": 33
+    },
+    {
+     "tokens": 149,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 892,
+     "a_end": 918,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 1643,
+     "b_end": 1668,
+     "lines": 27
+    },
+    {
+     "tokens": 149,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 892,
+     "a_end": 918,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 2038,
+     "b_end": 2063,
+     "lines": 27
+    },
+    {
+     "tokens": 143,
+     "a_file": "backend/app/db/models.py",
+     "a_start": 545,
+     "a_end": 558,
+     "b_file": "backend/app/db/models.py",
+     "b_start": 657,
+     "b_end": 673,
+     "lines": 17
+    },
+    {
+     "tokens": 132,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 1254,
+     "a_end": 1280,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 1838,
+     "b_end": 1866,
+     "lines": 29
+    },
+    {
+     "tokens": 130,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 483,
+     "a_end": 501,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 894,
+     "b_end": 914,
+     "lines": 21
+    },
+    {
+     "tokens": 130,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 483,
+     "a_end": 501,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 1645,
+     "b_end": 1665,
+     "lines": 21
+    },
+    {
+     "tokens": 130,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 483,
+     "a_end": 501,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 2040,
+     "b_end": 2060,
+     "lines": 21
+    },
+    {
+     "tokens": 129,
+     "a_file": "backend/app/db/models.py",
+     "a_start": 565,
+     "a_end": 603,
+     "b_file": "backend/app/db/models.py",
+     "b_start": 635,
+     "b_end": 655,
+     "lines": 39
+    },
+    {
+     "tokens": 126,
+     "a_file": "backend/app/db/models.py",
+     "a_start": 698,
+     "a_end": 705,
+     "b_file": "backend/app/db/models.py",
+     "b_start": 742,
+     "b_end": 751,
+     "lines": 10
+    },
+    {
+     "tokens": 124,
+     "a_file": "backend/app/api/environments.py",
+     "a_start": 11,
+     "a_end": 27,
+     "b_file": "backend/app/api/evaluation.py",
+     "b_start": 15,
+     "b_end": 33,
+     "lines": 19
+    },
+    {
+     "tokens": 124,
+     "a_file": "backend/app/api/environments.py",
+     "a_start": 11,
+     "a_end": 27,
+     "b_file": "backend/app/api/orchestration.py",
+     "b_start": 16,
+     "b_end": 34,
+     "lines": 19
+    },
+    {
+     "tokens": 122,
+     "a_file": "backend/app/main.py",
+     "a_start": 116,
+     "a_end": 132,
+     "b_file": "backend/app/main.py",
+     "b_start": 130,
+     "b_end": 145,
+     "lines": 17
+    }
+   ],
+   "worst_files": [
+    {
+     "file": "backend/app/db/repository.py",
+     "duplicated_lines": 28,
+     "percent": 1.3
+    },
+    {
+     "file": "backend/app/twin/engine.py",
+     "duplicated_lines": 24,
+     "percent": 4.0
+    }
+   ]
+  },
+  "frontend": {
+   "loc": 14036,
+   "duplicated_lines": 14,
+   "percent": 0.1,
+   "clones": [
+    {
+     "tokens": 81,
+     "a_file": "frontend/src/components/org/ApplicableContextView.tsx",
+     "a_start": 48,
+     "a_end": 54,
+     "b_file": "frontend/src/components/org/PolicyReviewPanel.tsx",
+     "b_start": 145,
+     "b_end": 151,
+     "lines": 7
+    }
+   ],
+   "clone_count": 1,
+   "structural_percent": 0.74,
+   "structural_clone_count": 2,
+   "structural_clones": [
+    {
+     "tokens": 156,
+     "a_file": "frontend/src/components/org/ApplicableContextView.tsx",
+     "a_start": 46,
+     "a_end": 56,
+     "b_file": "frontend/src/components/ProcessScopeEditor.tsx",
+     "b_start": 78,
+     "b_end": 88,
+     "lines": 11
+    },
+    {
+     "tokens": 110,
+     "a_file": "frontend/src/components/DigitalTwinPreview.tsx",
+     "a_start": 26,
+     "a_end": 64,
+     "b_file": "frontend/src/components/DigitalTwinPreviewOrchestrated.tsx",
+     "b_start": 32,
+     "b_end": 74,
+     "lines": 43
+    }
+   ],
+   "worst_files": [
+    {
+     "file": "frontend/src/components/org/ApplicableContextView.tsx",
+     "duplicated_lines": 7,
+     "percent": 9.1
+    },
+    {
+     "file": "frontend/src/components/org/PolicyReviewPanel.tsx",
+     "duplicated_lines": 7,
+     "percent": 3.4
+    }
+   ]
+  }
+ },
+ "coupling": {
+  "backend_packages": [
+   {
+    "node": "app.agents",
+    "afferent": 2,
+    "efferent": 2,
+    "instability": 0.5
+   },
+   {
+    "node": "app.api",
+    "afferent": 1,
+    "efferent": 22,
+    "instability": 0.96
+   },
+   {
+    "node": "app.batches",
+    "afferent": 5,
+    "efferent": 9,
+    "instability": 0.64
+   },
+   {
+    "node": "app.blueprint",
+    "afferent": 1,
+    "efferent": 3,
+    "instability": 0.75
+   },
+   {
+    "node": "app.bpmn",
+    "afferent": 7,
+    "efferent": 3,
+    "instability": 0.3
+   },
+   {
+    "node": "app.catalog",
+    "afferent": 3,
+    "efferent": 6,
+    "instability": 0.67
+   },
+   {
+    "node": "app.chat",
+    "afferent": 1,
+    "efferent": 3,
+    "instability": 0.75
+   },
+   {
+    "node": "app.config",
+    "afferent": 13,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.connectors",
+    "afferent": 5,
+    "efferent": 9,
+    "instability": 0.64
+   },
+   {
+    "node": "app.context",
+    "afferent": 10,
+    "efferent": 10,
+    "instability": 0.5
+   },
+   {
+    "node": "app.datasets",
+    "afferent": 6,
+    "efferent": 4,
+    "instability": 0.4
+   },
+   {
+    "node": "app.db",
+    "afferent": 14,
+    "efferent": 14,
+    "instability": 0.5
+   },
+   {
+    "node": "app.gap_analysis",
+    "afferent": 2,
+    "efferent": 4,
+    "instability": 0.67
+   },
+   {
+    "node": "app.ids",
+    "afferent": 14,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.ingestion",
+    "afferent": 3,
+    "efferent": 7,
+    "instability": 0.7
+   },
+   {
+    "node": "app.jobs",
+    "afferent": 7,
+    "efferent": 8,
+    "instability": 0.53
+   },
+   {
+    "node": "app.llm",
+    "afferent": 11,
+    "efferent": 3,
+    "instability": 0.21
+   },
+   {
+    "node": "app.main",
+    "afferent": 1,
+    "efferent": 7,
+    "instability": 0.88
+   },
+   {
+    "node": "app.oracles",
+    "afferent": 5,
+    "efferent": 10,
+    "instability": 0.67
+   },
+   {
+    "node": "app.process_twin",
+    "afferent": 2,
+    "efferent": 9,
+    "instability": 0.82
+   },
+   {
+    "node": "app.registry",
+    "afferent": 2,
+    "efferent": 3,
+    "instability": 0.6
+   },
+   {
+    "node": "app.request_context",
+    "afferent": 1,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.schemas",
+    "afferent": 17,
+    "efferent": 1,
+    "instability": 0.06
+   },
+   {
+    "node": "app.store",
+    "afferent": 9,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.twin",
+    "afferent": 4,
+    "efferent": 9,
+    "instability": 0.69
+   }
+  ],
+  "backend_modules_top": [
+   {
+    "node": "app.db.repository",
+    "afferent": 28,
+    "efferent": 43,
+    "instability": 0.61
+   },
+   {
+    "node": "app.db.models",
+    "afferent": 34,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.main",
+    "afferent": 1,
+    "efferent": 30,
+    "instability": 0.97
+   },
+   {
+    "node": "app.api.deps",
+    "afferent": 24,
+    "efferent": 6,
+    "instability": 0.2
+   },
+   {
+    "node": "app.ids",
+    "afferent": 25,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.config",
+    "afferent": 24,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.context.repository",
+    "afferent": 14,
+    "efferent": 6,
+    "instability": 0.3
+   },
+   {
+    "node": "app.llm",
+    "afferent": 16,
+    "efferent": 4,
+    "instability": 0.2
+   },
+   {
+    "node": "app.schemas.context",
+    "afferent": 20,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.api.organization",
+    "afferent": 1,
+    "efferent": 16,
+    "instability": 0.94
+   },
+   {
+    "node": "app.context.resolver",
+    "afferent": 9,
+    "efferent": 8,
+    "instability": 0.47
+   },
+   {
+    "node": "app.jobs.worker",
+    "afferent": 8,
+    "efferent": 9,
+    "instability": 0.53
+   },
+   {
+    "node": "app.oracles.service",
+    "afferent": 3,
+    "efferent": 14,
+    "instability": 0.82
+   },
+   {
+    "node": "app.schemas.twin",
+    "afferent": 14,
+    "efferent": 2,
+    "instability": 0.12
+   },
+   {
+    "node": "app.context.ingestion",
+    "afferent": 4,
+    "efferent": 11,
+    "instability": 0.73
+   }
+  ],
+  "frontend_dirs": [
+   {
+    "node": "frontend/brandassets",
+    "afferent": 1,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "frontend/src",
+    "afferent": 0,
+    "efferent": 4,
+    "instability": 1.0
+   },
+   {
+    "node": "frontend/src/api",
+    "afferent": 6,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "frontend/src/auth",
+    "afferent": 3,
+    "efferent": 3,
+    "instability": 0.5
+   },
+   {
+    "node": "frontend/src/components",
+    "afferent": 3,
+    "efferent": 5,
+    "instability": 0.62
+   },
+   {
+    "node": "frontend/src/components/datasets",
+    "afferent": 2,
+    "efferent": 1,
+    "instability": 0.33
+   },
+   {
+    "node": "frontend/src/components/org",
+    "afferent": 2,
+    "efferent": 2,
+    "instability": 0.5
+   },
+   {
+    "node": "frontend/src/lib",
+    "afferent": 3,
+    "efferent": 1,
+    "instability": 0.25
+   },
+   {
+    "node": "frontend/src/pages",
+    "afferent": 1,
+    "efferent": 7,
+    "instability": 0.88
+   },
+   {
+    "node": "frontend/src/styles",
+    "afferent": 2,
+    "efferent": 0,
+    "instability": 0.0
+   }
+  ],
+  "frontend_files_top": [
+   {
+    "node": "frontend/src/api/types.ts",
+    "afferent": 62,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "frontend/src/api/client.ts",
+    "afferent": 42,
+    "efferent": 1,
+    "instability": 0.02
+   },
+   {
+    "node": "frontend/src/auth/AuthContext.tsx",
+    "afferent": 13,
+    "efferent": 2,
+    "instability": 0.13
+   },
+   {
+    "node": "frontend/src/App.tsx",
+    "afferent": 1,
+    "efferent": 13,
+    "instability": 0.93
+   },
+   {
+    "node": "frontend/src/pages/BlueprintPage.tsx",
+    "afferent": 0,
+    "efferent": 14,
+    "instability": 1.0
+   },
+   {
+    "node": "frontend/src/pages/OrganizationPage.tsx",
+    "afferent": 1,
+    "efferent": 12,
+    "instability": 0.92
+   },
+   {
+    "node": "frontend/src/components/TwinTestBuilder.tsx",
+    "afferent": 1,
+    "efferent": 11,
+    "instability": 0.92
+   },
+   {
+    "node": "frontend/src/components/RunDetailView.tsx",
+    "afferent": 3,
+    "efferent": 8,
+    "instability": 0.73
+   },
+   {
+    "node": "frontend/src/lib/blueprintLabels.ts",
+    "afferent": 10,
+    "efferent": 1,
+    "instability": 0.09
+   },
+   {
+    "node": "frontend/src/components/DigitalTwinAdvancedPanel.tsx",
+    "afferent": 1,
+    "efferent": 9,
+    "instability": 0.9
+   }
+  ]
+ },
+ "cycles": {
+  "backend_modules": [],
+  "backend_modules_incl_deferred": [
+   [
+    "app.api.batches",
+    "app.api.connectors",
+    "app.api.process_twin",
+    "app.connectors.jobs",
+    "app.context.jobs",
+    "app.jobs.worker",
+    "app.main",
+    "app.oracles.jobs",
+    "app.process_twin.jobs"
+   ],
+   [
+    "app.context.consumers",
+    "app.db.repository"
+   ]
+  ],
+  "backend_packages": [
+   [
+    "app.agents",
+    "app.batches",
+    "app.bpmn",
+    "app.catalog",
+    "app.context",
+    "app.datasets",
+    "app.db",
+    "app.gap_analysis",
+    "app.ingestion",
+    "app.jobs",
+    "app.llm",
+    "app.oracles",
+    "app.registry",
+    "app.schemas",
+    "app.twin"
+   ]
+  ],
+  "backend_packages_incl_deferred": [
+   [
+    "app.agents",
+    "app.api",
+    "app.batches",
+    "app.blueprint",
+    "app.bpmn",
+    "app.catalog",
+    "app.chat",
+    "app.connectors",
+    "app.context",
+    "app.datasets",
+    "app.db",
+    "app.gap_analysis",
+    "app.ingestion",
+    "app.jobs",
+    "app.llm",
+    "app.main",
+    "app.oracles",
+    "app.process_twin",
+    "app.registry",
+    "app.schemas",
+    "app.twin"
+   ]
+  ],
+  "frontend_files": [],
+  "frontend_dirs": [
+   [
+    "frontend/src/auth",
+    "frontend/src/components"
+   ]
+  ],
+  "deferred_import_count": 48
+ },
+ "dead_code": {
+  "python": [
+   {
+    "file": "backend/app/ingestion/structuring.py",
+    "line": 352,
+    "name": "structure_process",
+    "kind": "function",
+    "status": "test-only"
+   },
+   {
+    "file": "backend/app/ingestion/structuring.py",
+    "line": 424,
+    "name": "structure_process_from_image",
+    "kind": "function",
+    "status": "test-only"
+   },
+   {
+    "file": "backend/app/llm/usage.py",
+    "line": 134,
+    "name": "grand_total_tokens",
+    "kind": "method",
+    "status": "test-only"
+   },
+   {
+    "file": "backend/app/registry/base.py",
+    "line": 78,
+    "name": "pull",
+    "kind": "method",
+    "status": "test-only"
+   },
+   {
+    "file": "backend/app/registry/local.py",
+    "line": 85,
+    "name": "pull",
+    "kind": "method",
+    "status": "test-only"
+   },
+   {
+    "file": "backend/app/bpmn/chat_ops.py",
+    "line": 45,
+    "name": "bpmn_id_for_lane",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/context/consumers.py",
+    "line": 178,
+    "name": "citations_from_labels",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/context/ingestion.py",
+    "line": 85,
+    "name": "delete_policy_file",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/context/repository.py",
+    "line": 174,
+    "name": "get_entity",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/context/repository.py",
+    "line": 328,
+    "name": "get_entity_version_snapshot",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/context/repository.py",
+    "line": 438,
+    "name": "list_context_documents",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/context/resolver.py",
+    "line": 399,
+    "name": "cited_entities",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/db/repository.py",
+    "line": 332,
+    "name": "list_schema_changes",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/jobs/worker.py",
+    "line": 44,
+    "name": "registered_kinds",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/llm/usage.py",
+    "line": 137,
+    "name": "grand_total_cost_usd",
+    "kind": "method",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/registry/manager.py",
+    "line": 45,
+    "name": "get_registry",
+    "kind": "function",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/schemas/common.py",
+    "line": 55,
+    "name": "Timestamped",
+    "kind": "class",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/schemas/versions.py",
+    "line": 24,
+    "name": "VersionDiffRequest",
+    "kind": "class",
+    "status": "unused"
+   }
+  ],
+  "typescript": [
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 12,
+    "name": "Confidence",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 13,
+    "name": "ElementType",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 14,
+    "name": "ActorType",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 16,
+    "name": "SourceRef",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 22,
+    "name": "Actor",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 28,
+    "name": "ProcessElement",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 40,
+    "name": "ProcessFlow",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 58,
+    "name": "IngestionStatus",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 76,
+    "name": "ChatIntent",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 86,
+    "name": "ChatReplyKind",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 97,
+    "name": "DiagramDiff",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 150,
+    "name": "BlueprintStepType",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 161,
+    "name": "AgentIOField",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 205,
+    "name": "AgentArtifactStatus",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 208,
+    "name": "PermissionAction",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 210,
+    "name": "ResourcePermission",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 215,
+    "name": "RuntimeGuardrails",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 226,
+    "name": "EscalationTarget",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 231,
+    "name": "EscalationPolicy",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 236,
+    "name": "KnowledgeSourceRef",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 244,
+    "name": "ToolSandboxMode",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 246,
+    "name": "ToolContract",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 257,
+    "name": "ModelPolicy",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 316,
+    "name": "ChecklistItemKey",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 334,
+    "name": "ChecklistItem",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 368,
+    "name": "GapKind",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 371,
+    "name": "GapFindingOption",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 483,
+    "name": "EvaluationDimensionName",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 497,
+    "name": "EvaluationDimension",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 503,
+    "name": "EvaluationResult",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 524,
+    "name": "RegressionSuiteScenarioResult",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 554,
+    "name": "FaultType",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 596,
+    "name": "ReproducibilityTier",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 607,
+    "name": "TwinSystemStubMode",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 608,
+    "name": "TwinHumanCheckpointMode",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 609,
+    "name": "TwinRuleOperator",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 611,
+    "name": "TwinStaticResponseRule",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 621,
+    "name": "TwinHumanDecisionRule",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 639,
+    "name": "TwinExpectedStepKind",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 675,
+    "name": "TwinStepMatch",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 695,
+    "name": "CoverageKind",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 697,
+    "name": "ReviewerBehaviour",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 746,
+    "name": "GatewayContext",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 787,
+    "name": "TwinDeviation",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 827,
+    "name": "TwinBaselineComparison",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 853,
+    "name": "NodeRunKind",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 854,
+    "name": "ManualNodeMode",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 857,
+    "name": "HandoffMode",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 858,
+    "name": "GatewayRouting",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 937,
+    "name": "PublicationStatus",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 941,
+    "name": "AgentLifecycleStatus",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 994,
+    "name": "ContextStatus",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 996,
+    "name": "AppliesTo",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1150,
+    "name": "ContextPackEntry",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1160,
+    "name": "ContextPackPassage",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1170,
+    "name": "StaleEntry",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1214,
+    "name": "ApiOperation",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1231,
+    "name": "ApplicationImportRow",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1266,
+    "name": "SituationEvidence",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1381,
+    "name": "Provenance",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1442,
+    "name": "RowChange",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1623,
+    "name": "SegmentResult",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1629,
+    "name": "FailureCluster",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1637,
+    "name": "Distribution",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1712,
+    "name": "RoleCost",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1788,
+    "name": "CaseEfficiency",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1810,
+    "name": "NodeEfficiency",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/components/BlueprintCanvas.tsx",
+    "line": 6,
+    "name": "BlueprintCanvasHandle",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/components/ProcessStepper.tsx",
+    "line": 1,
+    "name": "StepStatus",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/lib/digitalTwinChain.ts",
+    "line": 14,
+    "name": "BaseChainItem",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/lib/digitalTwinChain.ts",
+    "line": 39,
+    "name": "SuggestedAgent",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/lib/runSteps.ts",
+    "line": 59,
+    "name": "CumulativeUsage",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 167,
+    "name": "AgentSpec",
+    "kind": "export",
+    "status": "test-only"
+   },
+   {
+    "file": "frontend/src/lib/twinSituations.ts",
+    "line": 36,
+    "name": "emptyReviewer",
+    "kind": "export",
+    "status": "test-only"
+   },
+   {
+    "file": "frontend/src/lib/twinSituations.ts",
+    "line": 106,
+    "name": "expectedSteps",
+    "kind": "export",
+    "status": "test-only"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 256,
+    "name": "updateAgentGovernance",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 402,
+    "name": "pushToRegistry",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 504,
+    "name": "cancelTwinRun",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 508,
+    "name": "resumeTwinRun",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 673,
+    "name": "updateOrganization",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 753,
+    "name": "listPolicyPassages",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 766,
+    "name": "getProcessScope",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 779,
+    "name": "previewContextPack",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 915,
+    "name": "getDataset",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/client.ts",
+    "line": 929,
+    "name": "addDatasetRows",
+    "kind": "export",
+    "status": "unused"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 72,
+    "name": "DocumentDetail",
+    "kind": "export",
+    "status": "unused"
+   }
+  ],
+  "unreachable_files": []
+ },
+ "unused_dependencies": [],
+ "hotspots": [
+  {
+   "file": "backend/app/db/repository.py",
+   "commits": 19,
+   "lines_changed": 2604,
+   "cognitive": 325,
+   "loc": 2113,
+   "score": 6175
+  },
+  {
+   "file": "backend/app/twin/engine.py",
+   "commits": 8,
+   "lines_changed": 997,
+   "cognitive": 219,
+   "loc": 596,
+   "score": 1752
+  },
+  {
+   "file": "frontend/src/pages/BlueprintPage.tsx",
+   "commits": 11,
+   "lines_changed": 529,
+   "cognitive": 106,
+   "loc": 419,
+   "score": 1166
+  },
+  {
+   "file": "frontend/src/api/client.ts",
+   "commits": 19,
+   "lines_changed": 1194,
+   "cognitive": 54,
+   "loc": 971,
+   "score": 1026
+  },
+  {
+   "file": "backend/app/twin/orchestrator.py",
+   "commits": 4,
+   "lines_changed": 1074,
+   "cognitive": 246,
+   "loc": 685,
+   "score": 984
+  },
+  {
+   "file": "frontend/src/pages/ProcessDetailPage.tsx",
+   "commits": 8,
+   "lines_changed": 346,
+   "cognitive": 74,
+   "loc": 287,
+   "score": 592
+  },
+  {
+   "file": "frontend/src/components/OrchestrationPanel.tsx",
+   "commits": 5,
+   "lines_changed": 525,
+   "cognitive": 103,
+   "loc": 461,
+   "score": 515
+  },
+  {
+   "file": "backend/app/oracles/service.py",
+   "commits": 2,
+   "lines_changed": 714,
+   "cognitive": 241,
+   "loc": 580,
+   "score": 482
+  },
+  {
+   "file": "frontend/src/pages/DiagramPage.tsx",
+   "commits": 7,
+   "lines_changed": 315,
+   "cognitive": 68,
+   "loc": 260,
+   "score": 476
+  },
+  {
+   "file": "backend/app/batches/results.py",
+   "commits": 2,
+   "lines_changed": 519,
+   "cognitive": 201,
+   "loc": 434,
+   "score": 402
+  },
+  {
+   "file": "backend/app/twin/test_builder.py",
+   "commits": 2,
+   "lines_changed": 564,
+   "cognitive": 177,
+   "loc": 491,
+   "score": 354
+  },
+  {
+   "file": "backend/app/context/ingestion.py",
+   "commits": 2,
+   "lines_changed": 662,
+   "cognitive": 175,
+   "loc": 552,
+   "score": 350
+  },
+  {
+   "file": "backend/app/ingestion/structuring.py",
+   "commits": 5,
+   "lines_changed": 511,
+   "cognitive": 49,
+   "loc": 409,
+   "score": 245
+  },
+  {
+   "file": "frontend/src/components/TwinTestBuilder.tsx",
+   "commits": 2,
+   "lines_changed": 633,
+   "cognitive": 115,
+   "loc": 593,
+   "score": 230
+  },
+  {
+   "file": "backend/app/llm/client.py",
+   "commits": 3,
+   "lines_changed": 294,
+   "cognitive": 66,
+   "loc": 256,
+   "score": 198
+  },
+  {
+   "file": "backend/app/datasets/service.py",
+   "commits": 1,
+   "lines_changed": 598,
+   "cognitive": 196,
+   "loc": 517,
+   "score": 196
+  },
+  {
+   "file": "frontend/src/pages/ProcessListPage.tsx",
+   "commits": 5,
+   "lines_changed": 296,
+   "cognitive": 38,
+   "loc": 158,
+   "score": 190
+  },
+  {
+   "file": "backend/app/catalog/service.py",
+   "commits": 1,
+   "lines_changed": 459,
+   "cognitive": 188,
+   "loc": 391,
+   "score": 188
+  },
+  {
+   "file": "backend/app/bpmn/chat_ops.py",
+   "commits": 2,
+   "lines_changed": 258,
+   "cognitive": 91,
+   "loc": 213,
+   "score": 182
+  },
+  {
+   "file": "frontend/src/components/RunDetailView.tsx",
+   "commits": 3,
+   "lines_changed": 236,
+   "cognitive": 57,
+   "loc": 217,
+   "score": 171
+  }
+ ],
+ "growth": [
+  {
+   "commit": "be8e9cb",
+   "date": "2026-09-18",
+   "subject": "Initial commit: Epics 1-3 implemented (ingestion, persistence, BPMN generation)",
+   "prod_loc": 2985,
+   "test_loc": 1577,
+   "endpoints": 22,
+   "stories": 64,
+   "stories_implemented": 21
+  },
+  {
+   "commit": "bc2f433",
+   "date": "2026-09-18",
+   "subject": "Epic 4: interactive BPMN diagram UI",
+   "prod_loc": 3456,
+   "test_loc": 1820,
+   "endpoints": 22,
+   "stories": 64,
+   "stories_implemented": 21
+  },
+  {
+   "commit": "1d8fca7",
+   "date": "2026-09-18",
+   "subject": "Log Epic 4 decisions: bpmn-js choice, client-side metadata join, dirty tracking, test bootstrap",
+   "prod_loc": 3456,
+   "test_loc": 1820,
+   "endpoints": 22,
+   "stories": 64,
+   "stories_implemented": 21
+  },
+  {
+   "commit": "375fa95",
+   "date": "2026-09-18",
+   "subject": "Epic 5: conversational diagram editing, plus real BPMN layout fixes",
+   "prod_loc": 4578,
+   "test_loc": 2799,
+   "endpoints": 22,
+   "stories": 64,
+   "stories_implemented": 21
+  },
+  {
+   "commit": "2c3c2a8",
+   "date": "2026-09-19",
+   "subject": "Epic 6: diagram finalization & versioning, Epic 7: agentic blueprint engine",
+   "prod_loc": 5131,
+   "test_loc": 3149,
+   "endpoints": 22,
+   "stories": 64,
+   "stories_implemented": 21
+  },
+  {
+   "commit": "c45a4af",
+   "date": "2026-09-19",
+   "subject": "Epic 8: agentic blueprint interactive visualization",
+   "prod_loc": 5707,
+   "test_loc": 3357,
+   "endpoints": 22,
+   "stories": 64,
+   "stories_implemented": 21
+  },
+  {
+   "commit": "c501202",
+   "date": "2026-09-19",
+   "subject": "Fix HR Onboarding 2 Finalize failure, propose gap-analysis epic",
+   "prod_loc": 5707,
+   "test_loc": 3357,
+   "endpoints": 22,
+   "stories": 69,
+   "stories_implemented": 21
+  },
+  {
+   "commit": "8ea641e",
+   "date": "2026-09-19",
+   "subject": "Epic 11: process gap analysis & clarification",
+   "prod_loc": 6371,
+   "test_loc": 3810,
+   "endpoints": 26,
+   "stories": 69,
+   "stories_implemented": 26
+  },
+  {
+   "commit": "1a5f00d",
+   "date": "2026-09-19",
+   "subject": "Fix gap-analysis prompt: verbose reasoning leakage and spurious cross_document",
+   "prod_loc": 6404,
+   "test_loc": 3810,
+   "endpoints": 26,
+   "stories": 69,
+   "stories_implemented": 26
+  },
+  {
+   "commit": "f209e84",
+   "date": "2026-09-19",
+   "subject": "Epic 9/10: auth & access control, top-level error boundary",
+   "prod_loc": 6892,
+   "test_loc": 3987,
+   "endpoints": 29,
+   "stories": 69,
+   "stories_implemented": 26
+  },
+  {
+   "commit": "560080b",
+   "date": "2026-09-19",
+   "subject": "Epic 10, US10.1: per-request log correlation id",
+   "prod_loc": 6941,
+   "test_loc": 3999,
+   "endpoints": 29,
+   "stories": 69,
+   "stories_implemented": 26
+  },
+  {
+   "commit": "4f3fdef",
+   "date": "2026-09-19",
+   "subject": "Epic 9, US9.7: Docker Compose full-stack bring-up",
+   "prod_loc": 6941,
+   "test_loc": 3999,
+   "endpoints": 29,
+   "stories": 69,
+   "stories_implemented": 26
+  },
+  {
+   "commit": "f8cb6c8",
+   "date": "2026-09-19",
+   "subject": "Epic 10, US10.5: data privacy decision for the default LLM provider",
+   "prod_loc": 6941,
+   "test_loc": 3999,
+   "endpoints": 29,
+   "stories": 69,
+   "stories_implemented": 26
+  },
+  {
+   "commit": "3c33d32",
+   "date": "2026-09-19",
+   "subject": "Epics 9 & 10: mark all stories implemented, live-verify Docker stack",
+   "prod_loc": 6941,
+   "test_loc": 3999,
+   "endpoints": 29,
+   "stories": 69,
+   "stories_implemented": 41
+  },
+  {
+   "commit": "5c09a4f",
+   "date": "2026-09-20",
+   "subject": "Rebrand as Axyntro, redesign home screen, fix session-expiry redirect",
+   "prod_loc": 7041,
+   "test_loc": 4053,
+   "endpoints": 29,
+   "stories": 69,
+   "stories_implemented": 41
+  },
+  {
+   "commit": "3158dec",
+   "date": "2026-09-20",
+   "subject": "Groom Phase 2 backlog into epics 13-15",
+   "prod_loc": 7041,
+   "test_loc": 4053,
+   "endpoints": 29,
+   "stories": 87,
+   "stories_implemented": 41
+  },
+  {
+   "commit": "5a4c725",
+   "date": "2026-09-20",
+   "subject": "Epic 12: agent artifact generation",
+   "prod_loc": 7438,
+   "test_loc": 4353,
+   "endpoints": 31,
+   "stories": 93,
+   "stories_implemented": 47
+  },
+  {
+   "commit": "1b89bfc",
+   "date": "2026-09-20",
+   "subject": "Split blueprint visualization into Blueprint/Agents/Digital Twin tabs",
+   "prod_loc": 7862,
+   "test_loc": 4462,
+   "endpoints": 31,
+   "stories": 93,
+   "stories_implemented": 47
+  },
+  {
+   "commit": "d0a4359",
+   "date": "2026-09-20",
+   "subject": "Epic 13: agent registry connectivity",
+   "prod_loc": 8526,
+   "test_loc": 4702,
+   "endpoints": 34,
+   "stories": 93,
+   "stories_implemented": 53
+  },
+  {
+   "commit": "7ca7cfe",
+   "date": "2026-09-21",
+   "subject": "Epic 14: capture human/system/agent simulation design discussion",
+   "prod_loc": 8526,
+   "test_loc": 4702,
+   "endpoints": 34,
+   "stories": 93,
+   "stories_implemented": 53
+  },
+  {
+   "commit": "0c76d64",
+   "date": "2026-09-21",
+   "subject": "Epics 14 & 15: digital twin simulation and agent publishing lifecycle",
+   "prod_loc": 10393,
+   "test_loc": 5565,
+   "endpoints": 45,
+   "stories": 93,
+   "stories_implemented": 65
+  },
+  {
+   "commit": "f4e1ec6",
+   "date": "2026-09-22",
+   "subject": "Add BPMN alternative view to Digital Twin Preview",
+   "prod_loc": 10714,
+   "test_loc": 5716,
+   "endpoints": 45,
+   "stories": 93,
+   "stories_implemented": 65
+  },
+  {
+   "commit": "562c57f",
+   "date": "2026-09-22",
+   "subject": "Apply relogin-role fix and interface accessibility/UX pass",
+   "prod_loc": 10861,
+   "test_loc": 5807,
+   "endpoints": 45,
+   "stories": 93,
+   "stories_implemented": 65
+  },
+  {
+   "commit": "84e5516",
+   "date": "2026-09-23",
+   "subject": "Add per-document process-definition validation, block BPMN generation until documents finish",
+   "prod_loc": 11009,
+   "test_loc": 5869,
+   "endpoints": 45,
+   "stories": 93,
+   "stories_implemented": 65
+  },
+  {
+   "commit": "532d1f2",
+   "date": "2026-09-24",
+   "subject": "Fix process-definition validation reliability against the real LLM",
+   "prod_loc": 11101,
+   "test_loc": 5972,
+   "endpoints": 45,
+   "stories": 93,
+   "stories_implemented": 65
+  },
+  {
+   "commit": "840c7e1",
+   "date": "2026-09-24",
+   "subject": "Add Editor-only delete for failed documents/processes, fix login redirect loop, add blueprint generation progress bar",
+   "prod_loc": 11220,
+   "test_loc": 6215,
+   "endpoints": 46,
+   "stories": 93,
+   "stories_implemented": 65
+  },
+  {
+   "commit": "84fe302",
+   "date": "2026-09-24",
+   "subject": "Add Digital Twin Preview Orchestrated: suggested agents woven into the core sequence",
+   "prod_loc": 11400,
+   "test_loc": 6369,
+   "endpoints": 46,
+   "stories": 93,
+   "stories_implemented": 65
+  },
+  {
+   "commit": "f07b887",
+   "date": "2026-09-29",
+   "subject": "Add orchestration rehearsal (Epic 16) and agent-definition governance (Epic 20)",
+   "prod_loc": 13139,
+   "test_loc": 7067,
+   "endpoints": 53,
+   "stories": 134,
+   "stories_implemented": 79
+  },
+  {
+   "commit": "712f2b0",
+   "date": "2026-09-29",
+   "subject": "Add Simulation Run Lifecycle & Execution Trace Model (Epic 17)",
+   "prod_loc": 14081,
+   "test_loc": 7354,
+   "endpoints": 58,
+   "stories": 134,
+   "stories_implemented": 85
+  },
+  {
+   "commit": "3f59952",
+   "date": "2026-09-29",
+   "subject": "Add Live Observability (Epic 18) and Evaluation/Regression Suites (Epic 19)",
+   "prod_loc": 15447,
+   "test_loc": 7683,
+   "endpoints": 64,
+   "stories": 134,
+   "stories_implemented": 95
+  },
+  {
+   "commit": "6eed71b",
+   "date": "2026-09-29",
+   "subject": "Add Digital Twin Environments & Fault Injection Catalog (Epic 21)",
+   "prod_loc": 16076,
+   "test_loc": 7903,
+   "endpoints": 68,
+   "stories": 134,
+   "stories_implemented": 99
+  },
+  {
+   "commit": "901a38f",
+   "date": "2026-09-29",
+   "subject": "Add Reproducibility: Execution Snapshots (Epic 22)",
+   "prod_loc": 16286,
+   "test_loc": 7993,
+   "endpoints": 69,
+   "stories": 134,
+   "stories_implemented": 102
+  },
+  {
+   "commit": "5a35dcf",
+   "date": "2026-09-30",
+   "subject": "Add Agent Definition Quality Gate & Unified Release Lifecycle (Epic 23)",
+   "prod_loc": 16688,
+   "test_loc": 8103,
+   "endpoints": 71,
+   "stories": 134,
+   "stories_implemented": 106
+  },
+  {
+   "commit": "88fbd39",
+   "date": "2026-10-09",
+   "subject": "Raise twin tool-schema inference max_tokens; add digital twin manual test packs",
+   "prod_loc": 16688,
+   "test_loc": 8103,
+   "endpoints": 71,
+   "stories": 134,
+   "stories_implemented": 106
+  },
+  {
+   "commit": "b6e8148",
+   "date": "2026-10-11",
+   "subject": "Add Guided Twin Test Builder, Test Data Kitchen, business-readable results (Epics 24-26)",
+   "prod_loc": 19104,
+   "test_loc": 8771,
+   "endpoints": 76,
+   "stories": 152,
+   "stories_implemented": 124
+  },
+  {
+   "commit": "fa287e9",
+   "date": "2026-10-11",
+   "subject": "Add enterprise context strategy and Epics 27-31; index Phases 4-5",
+   "prod_loc": 19104,
+   "test_loc": 8771,
+   "endpoints": 76,
+   "stories": 195,
+   "stories_implemented": 124
+  },
+  {
+   "commit": "504e8b6",
+   "date": "2026-10-11",
+   "subject": "Add ground truth and volume testing Epics 32-35; index Phase 6",
+   "prod_loc": 19104,
+   "test_loc": 8771,
+   "endpoints": 76,
+   "stories": 229,
+   "stories_implemented": 124
+  },
+  {
+   "commit": "d716ee4",
+   "date": "2026-10-11",
+   "subject": "Build Epics 27-35: organization context, catalog, compliance testing, enterprise, datasets, oracles, batches, statistical results",
+   "prod_loc": 32949,
+   "test_loc": 10979,
+   "endpoints": 161,
+   "stories": 229,
+   "stories_implemented": 201
+  },
+  {
+   "commit": "b2e3f78",
+   "date": "2026-10-12",
+   "subject": "Fix issues found in the live smoke test of Epics 29-35",
+   "prod_loc": 32987,
+   "test_loc": 10992,
+   "endpoints": 161,
+   "stories": 229,
+   "stories_implemented": 201
+  },
+  {
+   "commit": "a59bed0",
+   "date": "2026-10-13",
+   "subject": "Add a seeded demo environment for Epics 27-35",
+   "prod_loc": 32993,
+   "test_loc": 11004,
+   "endpoints": 161,
+   "stories": 229,
+   "stories_implemented": 201
+  },
+  {
+   "commit": "a3700bc",
+   "date": "2026-10-13",
+   "subject": "Add the Meridian demo decks, simulation guide and their build tooling",
+   "prod_loc": 32993,
+   "test_loc": 11004,
+   "endpoints": 161,
+   "stories": 229,
+   "stories_implemented": 201
+  }
+ ],
+ "mutation": {
+  "app/oracles/rules.py": {
+   "module": "app/oracles/rules.py",
+   "tests": [
+    "tests/test_oracles.py"
+   ],
+   "sites": 116,
+   "tested": 25,
+   "killed": 17,
+   "survived": 8,
+   "errors": 0,
+   "score": 0.68,
+   "measured_at": "2026-10-13",
+   "survivors": [
+    {
+     "index": 146,
+     "line": 31,
+     "description": "number 0 -> 1",
+     "outcome": "survived"
+    },
+    {
+     "index": 148,
+     "line": 31,
+     "description": "number 2 -> 3",
+     "outcome": "survived"
+    },
+    {
+     "index": 154,
+     "line": 38,
+     "description": "number 0 -> 1",
+     "outcome": "survived"
+    },
+    {
+     "index": 216,
+     "line": 110,
+     "description": "return value -> None",
+     "outcome": "survived"
+    },
+    {
+     "index": 234,
+     "line": 125,
+     "description": "return value -> None",
+     "outcome": "survived"
+    },
+    {
+     "index": 245,
+     "line": 137,
+     "description": "constant False -> True",
+     "outcome": "survived"
+    },
+    {
+     "index": 312,
+     "line": 174,
+     "description": "constant False -> True",
+     "outcome": "survived"
+    },
+    {
+     "index": 977,
+     "line": 51,
+     "description": "arithmetic Add -> Sub",
+     "outcome": "survived"
+    }
+   ]
+  },
+  "app/twin/gateway.py": {
+   "module": "app/twin/gateway.py",
+   "tests": [
+    "tests/test_twin_gateway.py"
+   ],
+   "sites": 39,
+   "tested": 25,
+   "killed": 21,
+   "survived": 4,
+   "errors": 0,
+   "score": 0.84,
+   "measured_at": "2026-10-13",
+   "survivors": [
+    {
+     "index": 94,
+     "line": 102,
+     "description": "number 0 -> 1",
+     "outcome": "survived"
+    },
+    {
+     "index": 205,
+     "line": 118,
+     "description": "comparison Gt -> GtE",
+     "outcome": "survived"
+    },
+    {
+     "index": 343,
+     "line": 146,
+     "description": "comparison Gt -> GtE",
+     "outcome": "survived"
+    },
+    {
+     "index": 493,
+     "line": 160,
+     "description": "arithmetic Sub -> Add",
+     "outcome": "survived"
+    }
+   ]
+  },
+  "app/batches/results.py": {
+   "module": "app/batches/results.py",
+   "tests": [
+    "tests/test_results.py"
+   ],
+   "sites": 239,
+   "tested": 25,
+   "killed": 18,
+   "survived": 7,
+   "errors": 0,
+   "score": 0.72,
+   "measured_at": "2026-10-13",
+   "survivors": [
+    {
+     "index": 794,
+     "line": 63,
+     "description": "number 0 -> 1",
+     "outcome": "survived"
+    },
+    {
+     "index": 1769,
+     "line": 247,
+     "description": "boolean or -> and",
+     "outcome": "survived"
+    },
+    {
+     "index": 2174,
+     "line": 51,
+     "description": "number 0 -> 1",
+     "outcome": "survived"
+    },
+    {
+     "index": 2193,
+     "line": 56,
+     "description": "number 4 -> 5",
+     "outcome": "survived"
+    },
+    {
+     "index": 2391,
+     "line": 247,
+     "description": "comparison Is -> IsNot",
+     "outcome": "survived"
+    },
+    {
+     "index": 2630,
+     "line": 366,
+     "description": "number 4 -> 5",
+     "outcome": "survived"
+    },
+    {
+     "index": 3833,
+     "line": 503,
+     "description": "comparison Eq -> NotEq",
+     "outcome": "survived"
+    }
+   ]
+  },
+  "app/twin/orchestrator.py": {
+   "module": "app/twin/orchestrator.py",
+   "tests": [
+    "tests/test_orchestrator.py"
+   ],
+   "sites": 172,
+   "tested": 25,
+   "killed": 14,
+   "survived": 11,
+   "errors": 0,
+   "score": 0.56,
+   "measured_at": "2026-10-13",
+   "survivors": [
+    {
+     "index": 243,
+     "line": 118,
+     "description": "number 0 -> 1",
+     "outcome": "survived"
+    },
+    {
+     "index": 266,
+     "line": 158,
+     "description": "return value -> None",
+     "outcome": "survived"
+    },
+    {
+     "index": 314,
+     "line": 223,
+     "description": "number 50 -> 51",
+     "outcome": "survived"
+    },
+    {
+     "index": 342,
+     "line": 251,
+     "description": "return value -> None",
+     "outcome": "survived"
+    },
+    {
+     "index": 349,
+     "line": 261,
+     "description": "return value -> None",
+     "outcome": "survived"
+    },
+    {
+     "index": 457,
+     "line": 65,
+     "description": "boolean or -> and",
+     "outcome": "survived"
+    },
+    {
+     "index": 815,
+     "line": 471,
+     "description": "comparison Eq -> NotEq",
+     "outcome": "survived"
+    },
+    {
+     "index": 1328,
+     "line": 320,
+     "description": "comparison Eq -> NotEq",
+     "outcome": "survived"
+    },
+    {
+     "index": 2039,
+     "line": 331,
+     "description": "return value -> None",
+     "outcome": "survived"
+    },
+    {
+     "index": 2778,
+     "line": 314,
+     "description": "boolean or -> and",
+     "outcome": "survived"
+    },
+    {
+     "index": 4579,
+     "line": 657,
+     "description": "comparison IsNot -> Is",
+     "outcome": "survived"
+    }
+   ]
+  },
+  "app/process_twin/efficiency.py": {
+   "module": "app/process_twin/efficiency.py",
+   "tests": [
+    "tests/test_process_twin.py"
+   ],
+   "sites": 167,
+   "tested": 25,
+   "killed": 19,
+   "survived": 6,
+   "errors": 0,
+   "score": 0.76,
+   "measured_at": "2026-10-13",
+   "survivors": [
+    {
+     "index": 1842,
+     "line": 190,
+     "description": "number 2 -> 3",
+     "outcome": "survived"
+    },
+    {
+     "index": 1857,
+     "line": 195,
+     "description": "number 1 -> 2",
+     "outcome": "survived"
+    },
+    {
+     "index": 1924,
+     "line": 229,
+     "description": "number 4 -> 5",
+     "outcome": "survived"
+    },
+    {
+     "index": 2382,
+     "line": 230,
+     "description": "arithmetic Sub -> Add",
+     "outcome": "survived"
+    },
+    {
+     "index": 2687,
+     "line": 210,
+     "description": "arithmetic Mult -> Div",
+     "outcome": "survived"
+    },
+    {
+     "index": 2764,
+     "line": 260,
+     "description": "number 6 -> 7",
+     "outcome": "survived"
+    }
+   ]
+  },
+  "app/twin/records.py": {
+   "module": "app/twin/records.py",
+   "tests": [
+    "tests/test_process_twin.py"
+   ],
+   "sites": 74,
+   "tested": 25,
+   "killed": 22,
+   "survived": 3,
+   "errors": 0,
+   "score": 0.88,
+   "measured_at": "2026-10-13",
+   "survivors": [
+    {
+     "index": 708,
+     "line": 114,
+     "description": "number 0 -> 1",
+     "outcome": "survived"
+    },
+    {
+     "index": 978,
+     "line": 133,
+     "description": "number 1 -> 2",
+     "outcome": "survived"
+    },
+    {
+     "index": 1066,
+     "line": 74,
+     "description": "boolean or -> and",
+     "outcome": "survived"
+    }
+   ]
+  }
+ },
+ "size": {
+  "backend_prod_loc": 20996,
+  "backend_test_loc": 8649,
+  "frontend_prod_loc": 14036,
+  "frontend_test_loc": 2978
+ }
+}

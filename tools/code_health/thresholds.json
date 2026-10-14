@@ -1,0 +1,7 @@
+{
+  "mean_cognitive_max": 6,
+  "duplication_percent_max": 5.0,
+  "duplication_ratchet_tolerance": 0.3,
+  "mutation_score_min": 0.7,
+  "mutation_ratchet_tolerance": 0.05
+}
