@@ -47,7 +47,7 @@ function buildSteps(process: ProcessDetail, hasBlueprint: boolean): StepperStep[
 }
 
 export default function ProcessDetailPage() {
-  const { user } = useAuth()
+  const { can } = useAuth()
   const { processId } = useParams<{ processId: string }>()
   const [process, setProcess] = useState<ProcessDetail | null>(null)
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
@@ -174,7 +174,7 @@ export default function ProcessDetailPage() {
         <ProcessScopeEditor
           processId={processId}
           scope={process.scope}
-          canEdit={user?.role === 'editor'}
+          canEdit={can('process.edit')}
           onSaved={(scope) => setProcess({ ...process, scope })}
         />
       )}
@@ -230,8 +230,8 @@ export default function ProcessDetailPage() {
             type="button"
             className="button-primary"
             onClick={handleGenerateBpmn}
-            disabled={generatingBpmn || !allDocumentsProcessed || user?.role !== 'editor'}
-            title={user?.role !== 'editor' ? 'Editor access required' : !allDocumentsProcessed ? 'Document processing must complete first' : undefined}
+            disabled={generatingBpmn || !allDocumentsProcessed || !can('process.edit')}
+            title={!can('process.edit') ? 'Process Analyst role required' : !allDocumentsProcessed ? 'Document processing must complete first' : undefined}
           >
             {generatingBpmn ? 'Generating...' : 'Generate draft BPMN'}
           </button>
@@ -251,7 +251,7 @@ export default function ProcessDetailPage() {
         Uploaded documents are sent to the configured LLM provider (currently OpenRouter -&gt; Qwen3.7 Flash) for
         extraction. Avoid uploading highly sensitive documents with the current default provider.
       </p>
-      <button type="button" className={process.document_count === 0 ? 'button-primary' : 'button-secondary'} onClick={() => fileInputRef.current?.click()} disabled={uploading || user?.role !== 'editor'} aria-describedby="upload-help">
+      <button type="button" className={process.document_count === 0 ? 'button-primary' : 'button-secondary'} onClick={() => fileInputRef.current?.click()} disabled={uploading || !can('process.edit')} aria-describedby="upload-help">
         {uploading ? 'Uploading...' : 'Upload documents'}
       </button>
         <input
@@ -260,11 +260,11 @@ export default function ProcessDetailPage() {
           multiple
           accept=".pdf,.docx,.vsdx,.png,.jpg,.jpeg"
           onChange={handleUpload}
-          disabled={uploading || user?.role !== 'editor'}
+          disabled={uploading || !can('process.edit')}
           hidden
           aria-label="Choose documents"
         />
-      <p id="upload-help" className="meta">PDF, Word, Visio, PNG or JPEG. You can select multiple files.{user?.role !== 'editor' ? ' Editor access is required to upload.' : ''}</p>
+      <p id="upload-help" className="meta">PDF, Word, Visio, PNG or JPEG. You can select multiple files.{!can('process.edit') ? ' The Process Analyst role is required to upload.' : ''}</p>
 
       {documents.length === 0 && <p className="empty-state">No documents uploaded yet. Add source documentation to begin extracting this process.</p>}
       {deleteError && <p className="error" role="alert">{deleteError}</p>}
@@ -276,7 +276,7 @@ export default function ProcessDetailPage() {
               <span>{doc.filename}</span>
               <span className={`status status-${doc.status}`}>{doc.status}</span>
               <span className="meta">{(doc.size_bytes / 1024).toFixed(1)} KB</span>
-              {doc.status === 'failed' && user?.role === 'editor' && (
+              {doc.status === 'failed' && can('process.edit') && (
                 <button
                   type="button"
                   className="button-secondary document-delete-button"
@@ -306,7 +306,7 @@ export default function ProcessDetailPage() {
         ))}
       </ul>
 
-      {process.document_count > 0 && <SystemResolutionPanel processId={processId} canEdit={user?.role === 'editor'} />}
+      {process.document_count > 0 && <SystemResolutionPanel processId={processId} canEdit={can('agent.build')} />}
 
       {process.process_schema && <ProcessSchemaView schema={process.process_schema} />}
     </div>

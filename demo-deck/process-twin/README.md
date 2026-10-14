@@ -16,8 +16,11 @@ python demo-deck/process-twin/generate_data.py      # deterministic sample data 
 .\start.ps1 -Demo -ResetDemo -SeedProcessTwin       # stack + seed (about 60-90 min, about $0.50 of model calls)
 ```
 
-Then sign in as **Demo Presenter** (Editor), open **Invoice to Pay**, and
-choose **Process twin**. To fix something and run again without
+Then sign in as **Arjun Mehta (Automation Architect)** with the Automation
+Architect, Process Analyst and Approver roles, open **Invoice to Pay**, and
+choose **Process twin**. Ana Costa (Process Analyst, Group Finance) mapped
+the process and Olivia Brandt (Process Owner) approved its baseline, so the
+version history shows an independent approval. To fix something and run again without
 reseeding:
 
 ```sh

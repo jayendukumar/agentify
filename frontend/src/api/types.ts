@@ -131,6 +131,11 @@ export interface VersionSummary {
   created_at: string
   created_by: string | null
   created_by_name: string | null
+  // Epic 37, US37.4: only an approved version is the baseline.
+  status: 'pending_approval' | 'approved' | 'rejected' | 'superseded'
+  decided_at?: string | null
+  decided_by?: string | null
+  decided_by_name?: string | null
 }
 
 export interface VersionDetail extends VersionSummary {
@@ -963,13 +968,116 @@ export interface AgentPublishStatus {
   publications: AgentPublication[]
 }
 
-export type Role = 'viewer' | 'editor'
+// Epic 37, US37.1: roles that match the work. What a user may do is the
+// permissions their roles grant (backend app/auth/permissions.py).
+export type Role = 'analyst' | 'architect' | 'process_owner' | 'approver' | 'auditor' | 'admin'
+
+export type Permission =
+  | 'process.edit'
+  | 'process.finalize'
+  | 'process.approve'
+  | 'process.delete'
+  | 'blueprint.edit'
+  | 'agent.build'
+  | 'agent.test'
+  | 'agent.release_candidate'
+  | 'agent.approve'
+  | 'agent.release_criteria'
+  | 'agent.publish'
+  | 'context.edit'
+  | 'context.confirm'
+  | 'catalog.edit'
+  | 'org.admin'
+  | 'users.manage'
+  | 'audit.read'
+
+export interface RoleGrant {
+  role: Role
+  scope_type: 'organization' | 'business_unit'
+  scope_id: string
+  scope_name?: string | null
+  source?: string | null
+}
 
 export interface User {
   id: string
   name: string
-  role: Role
+  active: boolean
+  roles: RoleGrant[]
+  // Held at some scope -- the server still checks the scope per request.
+  permissions: Permission[]
   created_at: string
+}
+
+export interface RoleOption {
+  value: Role
+  label: string
+  permissions: Permission[]
+}
+
+export interface AuthConfig {
+  auth_mode: string
+  environment: string
+  roles: RoleOption[]
+}
+
+// Epic 37, US37.3-US37.5
+export interface ChangeEntry {
+  actor_id: string | null
+  actor_name: string | null
+  action: string
+  label: string
+  tier: 'high' | 'standard'
+  at: string | null
+}
+
+export interface ApprovalRecord {
+  approver_id: string | null
+  approver_name: string | null
+  decision: 'approved' | 'rejected'
+  comment: string | null
+  at: string | null
+}
+
+export interface ApprovalStatus {
+  object_type: 'process_version' | 'agent'
+  object_id: string
+  status: string
+  required_approvals: number
+  approvals: ApprovalRecord[]
+  changes: ChangeEntry[]
+  can_approve: boolean
+  reason: string | null
+}
+
+// Epic 37, US37.6
+export interface AuditEvent {
+  id: string
+  at: string
+  actor_type: string
+  actor_id: string | null
+  actor_name: string | null
+  action: string
+  object_type: string | null
+  object_id: string | null
+  process_id: string | null
+  outcome: 'success' | 'refused'
+  ip: string | null
+  detail: Record<string, unknown>
+}
+
+export interface AuditFilters {
+  actor_id?: string
+  action?: string
+  process_id?: string
+  outcome?: 'success' | 'refused'
+  since?: string
+  until?: string
+}
+
+export interface GovernanceSettings {
+  required_agent_approvals: number
+  required_agent_approvals_by_unit: Record<string, number>
 }
 
 export interface ApiErrorBody {
@@ -1339,7 +1447,7 @@ export interface Membership {
 export interface MemberAccess {
   user_id: string
   name: string
-  role: string
+  roles: string[]
   memberships: Membership[]
 }
 

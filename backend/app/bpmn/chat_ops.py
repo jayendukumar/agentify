@@ -187,7 +187,9 @@ class DiagramApplyRegressionError(DiagramDiffError):
     introducing a new one)."""
 
 
-def apply_diff_and_persist(db: Session, process_id: str, diff: DiagramDiff) -> ProcessSchema:
+def apply_diff_and_persist(
+    db: Session, process_id: str, diff: DiagramDiff, *, changed_by: str | None, action: str
+) -> ProcessSchema:
     """Apply diff -> rebuild BPMN XML -> regression-check -> persist
     schema + draft BPMN, as one unit. Shared by app/api/chat.py's
     chat-apply and app/api/gap_analysis.py's finding-resolve."""
@@ -217,7 +219,7 @@ def apply_diff_and_persist(db: Session, process_id: str, diff: DiagramDiff) -> P
         raise DiagramApplyRegressionError("Applying this change would break the diagram: " + "; ".join(readable_issues))
 
     repository.set_process_schema(db, process_id, updated_schema)
-    repository.set_draft_bpmn(db, process_id, xml, low_confidence_element_ids)
+    repository.set_draft_bpmn(db, process_id, xml, low_confidence_element_ids, changed_by=changed_by, action=action)
     return updated_schema
 
 

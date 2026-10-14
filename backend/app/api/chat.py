@@ -10,7 +10,7 @@ from app.llm.routing import llm_route_for
 from app.gap_analysis.service import run_gap_analysis
 from app.schemas.chat import ChatApplyRequest, ChatMessageRequest, ChatMessageResult, DiagramDiff
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import CurrentUserDep, DbDep, LLMDep, ProcessEditDep
 
 logger = logging.getLogger("app.api.chat")
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/processes/{process_id}/chat", tags=["chat"])
 
 @router.post("/messages", response_model=ChatMessageResult)
 async def send_chat_message(
-    process_id: str, body: ChatMessageRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, body: ChatMessageRequest, db: DbDep, llm: LLMDep, user: ProcessEditDep
 ) -> ChatMessageResult:
     del user
     repository.get_process(db, process_id)  # 404s if missing
@@ -68,9 +68,8 @@ def list_chat_messages(process_id: str, db: DbDep, user: CurrentUserDep) -> list
 
 @router.post("/messages/{message_id}/apply", response_model=ChatMessageResult)
 async def apply_chat_message(
-    process_id: str, message_id: str, body: ChatApplyRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, message_id: str, body: ChatApplyRequest, db: DbDep, llm: LLMDep, user: ProcessEditDep
 ) -> ChatMessageResult:
-    del user
     message = repository.get_chat_message(db, process_id, message_id)
 
     if not message.needs_confirmation:
@@ -90,7 +89,9 @@ async def apply_chat_message(
     # result -> log to audit trail. Nothing is persisted unless the
     # regenerated diagram validates clean (apply_diff_and_persist).
     try:
-        apply_diff_and_persist(db, process_id, DiagramDiff.model_validate(diff))
+        apply_diff_and_persist(
+            db, process_id, DiagramDiff.model_validate(diff), changed_by=user.id, action="chat_edit_applied"
+        )
     except DiagramApplyRegressionError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except DiagramDiffError as exc:

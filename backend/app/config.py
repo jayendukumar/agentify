@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolved relative to this file (not the process CWD) so `.env` loads
@@ -103,6 +104,34 @@ class Settings(BaseSettings):
     # (see planning/backlog.md), so this defaults to a single local one.
     registries: list[RegistryConfig] = Field(default_factory=lambda: [RegistryConfig(name="local", type="local")])
 
+    # Epic 37, US37.14: where this deployment runs and how people sign in.
+    # `local` is the name-and-role picker -- anyone can be anyone -- so it
+    # is refused outright in production (see _check_auth_safety). The
+    # backend Dockerfile sets ENVIRONMENT=production, so an image deployed
+    # without auth configuration fails closed.
+    environment: Literal["development", "test", "demo", "production"] = "development"
+    auth_mode: Literal["local", "oidc", "saml"] = "local"
+    # US37.8: only takes effect once SSO lands; refused as false in production.
+    auth_require_mfa: bool = True
+
+    @model_validator(mode="after")
+    def _check_auth_safety(self) -> "Settings":
+        if self.environment == "production" and self.auth_mode == "local":
+            raise ValueError(
+                "AUTH_MODE=local is not allowed with ENVIRONMENT=production: local sign-in lets anyone sign in "
+                "as anyone with any role. Configure single sign-on (AUTH_MODE=oidc or saml), or set ENVIRONMENT "
+                "to development, test or demo if this is not a production deployment."
+            )
+        if self.auth_mode in ("oidc", "saml"):
+            # Epic 37 build order: SSO (US37.7-37.9) isn't built yet. Refusing
+            # here beats starting up with a sign-in page that can't work.
+            raise ValueError(
+                f"AUTH_MODE={self.auth_mode} is not available in this build yet -- use AUTH_MODE=local outside production"
+            )
+        if self.environment == "production" and not self.auth_require_mfa:
+            raise ValueError("AUTH_REQUIRE_MFA=false is not allowed with ENVIRONMENT=production")
+        return self
+
     @property
     def usage_log_path(self) -> Path:
         path = Path(self.llm_usage_log_path)
@@ -122,3 +151,15 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def settings_or_exit(component: str) -> Settings:
+    """Epic 37, US37.14: fail loudly, before binding a port or polling a
+    queue, when the settings are unsafe. Prints only the reasons: pydantic's
+    own message echoes the input, which includes secrets such as the
+    database URL."""
+    try:
+        return get_settings()
+    except ValidationError as exc:
+        reasons = "; ".join(str(e["msg"]).removeprefix("Value error, ") for e in exc.errors())
+        raise SystemExit(f"Refusing to start the {component}: {reasons}") from None

@@ -5,7 +5,7 @@ import type { ProcessSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 
 export default function ProcessListPage() {
-  const { user } = useAuth()
+  const { user, can } = useAuth()
   const [processes, setProcesses] = useState<ProcessSummary[]>([])
   const [newName, setNewName] = useState('')
   const [loading, setLoading] = useState(true)
@@ -101,7 +101,7 @@ export default function ProcessListPage() {
 
       <section className="home-section">
         <h2>New process</h2>
-        {user?.role !== 'editor' && <p className="meta">You have Viewer access. An Editor can create processes and upload documents.</p>}
+        {!can('process.edit') && <p className="meta">You have read-only access. A Process Analyst can create processes and upload documents.</p>}
         <form className="create-form" onSubmit={handleCreate}>
           <label>
             Process name
@@ -110,15 +110,15 @@ export default function ProcessListPage() {
             placeholder="New process name"
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
-            disabled={creating || user?.role !== 'editor'}
+            disabled={creating || !can('process.edit')}
             required
             aria-describedby={createError ? 'create-error' : undefined}
           />
           </label>
           <button
             type="submit"
-            disabled={creating || !newName.trim() || user?.role !== 'editor'}
-            title={user?.role !== 'editor' ? 'Editor access required' : undefined}
+            disabled={creating || !newName.trim() || !can('process.edit')}
+            title={!can('process.edit') ? 'Process Analyst role required' : undefined}
           >
             {creating ? 'Creating...' : 'Create process'}
           </button>
@@ -132,7 +132,7 @@ export default function ProcessListPage() {
 
         {loading && <p className="loading-state" role="status">Loading processes...</p>}
         {error && <div><p className="error" role="alert">{error}</p><button type="button" onClick={refresh}>Try again</button></div>}
-        {!loading && !error && processes.length === 0 && <p className="empty-state">{user?.role === 'editor' ? 'No processes yet. Create your first process above, then upload its source documents.' : 'No processes yet. An Editor can add the first process.'}</p>}
+        {!loading && !error && processes.length === 0 && <p className="empty-state">{can('process.edit') ? 'No processes yet. Create your first process above, then upload its source documents.' : 'No processes yet. A Process Analyst can add the first process.'}</p>}
         {deleteError && <p className="error" role="alert">{deleteError}</p>}
 
         <div className="process-grid">
@@ -153,7 +153,7 @@ export default function ProcessListPage() {
                 </span>
                 <span className="process-card-action">Open process <span aria-hidden="true">→</span></span>
               </Link>
-              {user?.role === 'editor' && (
+              {can('process.delete') && (
                 <button
                   type="button"
                   className="button-secondary process-card-delete"

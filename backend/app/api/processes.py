@@ -1,13 +1,15 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.auth import audit
+from app.auth.permissions import Permission, may_act_in_unit
 from app.context import repository as context_repository
 from app.db import repository
 from app.db.models import ProcessModel
 from app.schemas.context import ProcessScope
 from app.schemas.processes import ProcessCreateRequest, ProcessDetail, ProcessSummary
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import CurrentUserDep, DbDep, ProcessDeleteDep, ProcessEditDep
 
 router = APIRouter(prefix="/api/processes", tags=["processes"])
 
@@ -31,8 +33,15 @@ def _to_summary(process: ProcessModel, db: Session) -> ProcessSummary:
 
 
 @router.post("", response_model=ProcessSummary, status_code=status.HTTP_201_CREATED)
-def create_process(body: ProcessCreateRequest, db: DbDep, user: EditorDep) -> ProcessSummary:
-    del user
+def create_process(body: ProcessCreateRequest, db: DbDep, request: Request, user: ProcessEditDep) -> ProcessSummary:
+    # Epic 37, US37.2: a role scoped to a business unit creates processes in
+    # that unit only.
+    unit = body.scope.business_unit_id if body.scope is not None else None
+    if not may_act_in_unit(user, Permission.PROCESS_EDIT, unit):
+        reason = "Your role is scoped to a business unit -- create the process in that unit"
+        audit.record_refusal(actor=user, action="create_process", reason=reason, request=request,
+                             detail={"business_unit_id": unit})
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=reason)
     process = repository.create_process(db, name=body.name)
     if body.scope is not None:
         context_repository.set_process_scope(db, process.id, body.scope)
@@ -54,6 +63,6 @@ def get_process(process_id: str, db: DbDep, user: CurrentUserDep) -> ProcessDeta
 
 
 @router.delete("/{process_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_process(process_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_process(process_id: str, db: DbDep, user: ProcessDeleteDep) -> None:
     del user
     repository.delete_process(db, process_id)

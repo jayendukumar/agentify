@@ -478,6 +478,46 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.login-roles {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.login-form .login-role-option {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.login-role-option .meta {
+  display: block;
+  margin: 0;
+}
+
+/* Epic 37, US37.14: local sign-in is a development/demo convenience. */
+.local-auth-notice {
+  margin: 0 0 1rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: var(--axyntro-warning-bg);
+  color: var(--ink);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.local-auth-banner {
+  padding: 0.2rem 1rem;
+  background: var(--axyntro-warning-bg);
+  color: var(--ink);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
 .login-form input,
 .login-form select {
   padding: 0.5rem 0.75rem;

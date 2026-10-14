@@ -13,14 +13,14 @@ from app.schemas.orchestration import OrchestrationRun, OrchestrationScenario, O
 from app.schemas.run import ResumeDecision
 from app.twin.errors import TwinServiceError
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/orchestration", tags=["orchestration"])
 
 
 @router.post("/scenarios", response_model=OrchestrationScenario, status_code=status.HTTP_201_CREATED)
 def create_scenario(
-    process_id: str, body: OrchestrationScenarioCreate, db: DbDep, user: EditorDep
+    process_id: str, body: OrchestrationScenarioCreate, db: DbDep, user: AgentTestDep
 ) -> OrchestrationScenario:
     return repository.create_orchestration_scenario(db, process_id, body, created_by=user.id)
 
@@ -32,14 +32,14 @@ def list_scenarios(process_id: str, db: DbDep, user: CurrentUserDep) -> list[Orc
 
 
 @router.delete("/scenarios/{scenario_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_scenario(process_id: str, scenario_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_scenario(process_id: str, scenario_id: str, db: DbDep, user: AgentTestDep) -> None:
     del user
     repository.delete_orchestration_scenario(db, process_id, scenario_id)
 
 
 @router.post("/scenarios/{scenario_id}/run", response_model=OrchestrationRun, status_code=status.HTTP_202_ACCEPTED)
 def start_run(
-    process_id: str, scenario_id: str, db: DbDep, llm: LLMDep, user: EditorDep, background_tasks: BackgroundTasks
+    process_id: str, scenario_id: str, db: DbDep, llm: LLMDep, user: AgentTestDep, background_tasks: BackgroundTasks
 ) -> OrchestrationRun:
     run = repository.start_orchestration_run(db, process_id, scenario_id, run_by=user.id)
     db.commit()
@@ -54,14 +54,14 @@ def get_run(process_id: str, run_id: str, db: DbDep, user: CurrentUserDep) -> Or
 
 
 @router.post("/runs/{run_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
-def cancel_run(process_id: str, run_id: str, db: DbDep, user: EditorDep) -> None:
+def cancel_run(process_id: str, run_id: str, db: DbDep, user: AgentTestDep) -> None:
     del user
     repository.cancel_run(db, process_id, run_id, kind="orchestration")
 
 
 @router.post("/runs/{run_id}/resume", response_model=OrchestrationRun, status_code=status.HTTP_202_ACCEPTED)
 def resume_run(
-    process_id: str, run_id: str, body: ResumeDecision, db: DbDep, llm: LLMDep, user: EditorDep,
+    process_id: str, run_id: str, body: ResumeDecision, db: DbDep, llm: LLMDep, user: AgentTestDep,
     background_tasks: BackgroundTasks,
 ) -> OrchestrationRun:
     del user

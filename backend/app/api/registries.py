@@ -5,7 +5,7 @@ from app.db.models import UserModel
 from app.registry.base import RegistryAuthError, RegistryConnectorError, RegistryEntry, RegistryUnreachableError
 from app.schemas.registry import RegistryEntryOut, RegistryPushRequest, RegistrySearchResult, RegistryStatus
 
-from .deps import CurrentUserDep, DbDep, EditorDep, RegistriesDep
+from .deps import AgentPublishDep, CurrentUserDep, DbDep, RegistriesDep
 
 # Top-level, not nested under /api/processes/{process_id} -- a registry is
 # explicitly cross-process (US13.5: search across everything registered,
@@ -72,7 +72,7 @@ def search_registries(
 
 @router.post("/{registry_name}/push", response_model=RegistryEntryOut)
 def push_to_registry(
-    registry_name: str, body: RegistryPushRequest, registries: RegistriesDep, db: DbDep, user: EditorDep
+    registry_name: str, body: RegistryPushRequest, registries: RegistriesDep, db: DbDep, user: AgentPublishDep
 ) -> RegistryEntryOut:
     connector = registries.get(registry_name)
     if connector is None:

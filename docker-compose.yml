@@ -33,6 +33,9 @@ services:
       # so demo batches finish in minutes rather than an hour.
       DATABASE_URL: postgresql+psycopg://agentic:agentic@db:5432/${APP_DB_NAME:-agentic_solution_generator}
       JOB_CONCURRENCY: ${JOB_CONCURRENCY:-2}
+      # Epic 37, US37.14: the image defaults to production, which refuses
+      # local sign-in. start.ps1 sets demo for -Demo runs.
+      ENVIRONMENT: ${APP_ENVIRONMENT:-development}
     ports:
       - "8000:8000"
     depends_on:

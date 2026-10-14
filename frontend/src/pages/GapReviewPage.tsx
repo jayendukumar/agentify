@@ -65,8 +65,8 @@ function GapFindingCard({
 }
 
 export default function GapReviewPage() {
-  const { user } = useAuth()
-  const isEditor = user?.role === 'editor'
+  const { can } = useAuth()
+  const isEditor = can('process.edit')
   const { processId } = useParams<{ processId: string }>()
   const [findings, setFindings] = useState<GapFinding[]>([])
   const [loading, setLoading] = useState(true)

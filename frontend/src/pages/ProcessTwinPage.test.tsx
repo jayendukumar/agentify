@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { EfficiencyReport, OperatingModelView, ProcessTwinBatch } from '../api/types'
 import ProcessTwinPage from './ProcessTwinPage'
 
-vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: { name: 'ed', role: 'editor' } }) }))
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: { name: 'ed', roles: [], permissions: [] }, can: () => true }) }))
 
 const rate = (passed: number, total: number) => ({ passed, total, rate: passed / total, low: 0.5, high: 0.95 })
 const interval = (mean: number) => ({ mean, low: mean * 0.9, high: mean * 1.1 })

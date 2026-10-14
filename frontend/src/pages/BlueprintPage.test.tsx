@@ -210,6 +210,7 @@ const overlay: BlueprintOverlay = {
 }
 
 const versionDetail: VersionDetail = {
+  status: 'approved',
   id: 'ver-1',
   process_id: 'proc-1',
   label: null,

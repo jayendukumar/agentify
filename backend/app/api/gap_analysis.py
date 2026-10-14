@@ -8,7 +8,7 @@ from app.gap_analysis.service import GapAnalysisServiceError, run_gap_analysis
 from app.schemas.chat import DiagramDiff
 from app.schemas.gap_analysis import GapFinding, GapFindingResolveRequest
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import CurrentUserDep, DbDep, LLMDep, ProcessEditDep
 
 logger = logging.getLogger("app.api.gap_analysis")
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/processes/{process_id}/gap-findings", tags=["gap
 
 
 @router.post("/analyze", response_model=list[GapFinding])
-async def analyze(process_id: str, db: DbDep, llm: LLMDep, user: EditorDep) -> list[GapFinding]:
+async def analyze(process_id: str, db: DbDep, llm: LLMDep, user: ProcessEditDep) -> list[GapFinding]:
     del user
     repository.get_process(db, process_id)  # 404s if missing
     try:
@@ -36,7 +36,7 @@ def list_findings(
 
 @router.post("/{finding_id}/resolve", response_model=GapFinding)
 async def resolve_finding(
-    process_id: str, finding_id: str, body: GapFindingResolveRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, finding_id: str, body: GapFindingResolveRequest, db: DbDep, llm: LLMDep, user: ProcessEditDep
 ) -> GapFinding:
     finding = repository.get_gap_finding(db, process_id, finding_id)
     if finding.status != "open":
@@ -49,7 +49,9 @@ async def resolve_finding(
 
     if diff is not None:
         try:
-            apply_diff_and_persist(db, process_id, DiagramDiff.model_validate(diff))
+            apply_diff_and_persist(
+                db, process_id, DiagramDiff.model_validate(diff), changed_by=user.id, action="gap_resolution_applied"
+            )
         except DiagramApplyRegressionError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except DiagramDiffError as exc:
@@ -72,7 +74,7 @@ async def resolve_finding(
 
 
 @router.post("/{finding_id}/dismiss", response_model=GapFinding)
-def dismiss_finding(process_id: str, finding_id: str, db: DbDep, user: EditorDep) -> GapFinding:
+def dismiss_finding(process_id: str, finding_id: str, db: DbDep, user: ProcessEditDep) -> GapFinding:
     finding = repository.get_gap_finding(db, process_id, finding_id)
     if finding.status != "open":
         raise HTTPException(status.HTTP_409_CONFLICT, detail="This gap finding has already been decided")

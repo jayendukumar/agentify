@@ -1,4 +1,5 @@
 import type { AgentDefinition } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import type { AgentGroup } from '../lib/blueprintLabels'
 import { GOVERNANCE_DESCRIPTIONS, STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
 import AgentArtifactActions from './AgentArtifactActions'
@@ -78,6 +79,7 @@ export default function AgentDetailPanel({
   canGenerateAgent: boolean
   processId: string
 }) {
+  const { can } = useAuth()
   if (!group) {
     return (
       <aside className="element-detail-panel">
@@ -167,8 +169,8 @@ export default function AgentDetailPanel({
 
         {artifact && (
           <>
-            <LifecyclePanel processId={processId} artifact={artifact} canManage={canGenerateAgent} />
-            <PublishPanel processId={processId} artifactId={artifact.id} canPublish={canGenerateAgent} />
+            <LifecyclePanel processId={processId} artifact={artifact} />
+            <PublishPanel processId={processId} artifactId={artifact.id} canPublish={can('agent.publish')} />
           </>
         )}
       </div>

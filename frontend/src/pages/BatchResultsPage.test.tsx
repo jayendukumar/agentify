@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { BatchResults, BatchView } from '../api/types'
 import BatchResultsPage from './BatchResultsPage'
 
-vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: { name: 'ed', role: 'editor' } }) }))
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ user: { name: 'ed', roles: [], permissions: [] }, can: () => true }) }))
 
 const batch: BatchView = {
   id: 'b1', scenario_id: 's1', agent_artifact_id: 'a1', agent_version: 2, dataset_id: 'd1', dataset_version: 3,

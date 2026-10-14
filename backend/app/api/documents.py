@@ -7,7 +7,7 @@ from app.ids import new_id
 from app.ingestion import pipeline, storage
 from app.schemas.documents import DocumentDetail, DocumentSummary
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import CurrentUserDep, DbDep, LLMDep, ProcessEditDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/documents", tags=["documents"])
 
@@ -37,7 +37,7 @@ async def upload_documents(
     process_id: str,
     db: DbDep,
     llm: LLMDep,
-    user: EditorDep,
+    user: ProcessEditDep,
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
 ) -> list[DocumentSummary]:
@@ -97,7 +97,7 @@ def get_document(process_id: str, document_id: str, db: DbDep, user: CurrentUser
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(process_id: str, document_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_document(process_id: str, document_id: str, db: DbDep, user: ProcessEditDep) -> None:
     del user
     document = repository.get_document(db, process_id, document_id)
     if document.status != "failed":

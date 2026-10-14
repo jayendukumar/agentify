@@ -219,7 +219,7 @@ def test_finalize_error_uses_element_labels_for_integrity_issues(client):
             ],
         )
         repository.merge_process_schema(session, process["id"], schema)
-        repository.set_draft_bpmn(session, process["id"], corrupted, [])
+        repository.set_draft_bpmn(session, process["id"], corrupted, [], changed_by=None, action="draft_edited")
         repository.mark_gap_analysis_completed(session, process["id"])
         session.commit()
     finally:

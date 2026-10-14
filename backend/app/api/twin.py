@@ -5,14 +5,14 @@ from app.schemas.run import ResumeDecision
 from app.schemas.twin import TwinBaseline, TwinBaselineInput, TwinRun, TwinScenario, TwinScenarioCreate, TwinSummary
 from app.twin.errors import TwinServiceError
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}", tags=["twin"])
 
 
 @router.post("/agent-artifacts/{artifact_id}/scenarios", response_model=TwinScenario)
 def create_scenario(
-    process_id: str, artifact_id: str, body: TwinScenarioCreate, db: DbDep, user: EditorDep
+    process_id: str, artifact_id: str, body: TwinScenarioCreate, db: DbDep, user: AgentTestDep
 ) -> TwinScenario:
     return repository.create_twin_scenario(db, process_id, artifact_id, body, created_by=user.id)
 
@@ -24,7 +24,7 @@ def list_scenarios(process_id: str, artifact_id: str, db: DbDep, user: CurrentUs
 
 
 @router.delete("/scenarios/{scenario_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_scenario(process_id: str, scenario_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_scenario(process_id: str, scenario_id: str, db: DbDep, user: AgentTestDep) -> None:
     del user
     repository.delete_twin_scenario(db, process_id, scenario_id)
 
@@ -35,7 +35,7 @@ def start_run(
     scenario_id: str,
     db: DbDep,
     llm: LLMDep,
-    user: EditorDep,
+    user: AgentTestDep,
     background_tasks: BackgroundTasks,
     row_key: str | None = None,
 ) -> TwinRun:
@@ -66,14 +66,14 @@ def get_run(process_id: str, run_id: str, db: DbDep, user: CurrentUserDep) -> Tw
 
 
 @router.post("/twin-runs/{run_id}/cancel", status_code=status.HTTP_202_ACCEPTED)
-def cancel_run(process_id: str, run_id: str, db: DbDep, user: EditorDep) -> None:
+def cancel_run(process_id: str, run_id: str, db: DbDep, user: AgentTestDep) -> None:
     del user
     repository.cancel_run(db, process_id, run_id, kind="twin")
 
 
 @router.post("/twin-runs/{run_id}/resume", response_model=TwinRun, status_code=status.HTTP_202_ACCEPTED)
 def resume_run(
-    process_id: str, run_id: str, body: ResumeDecision, db: DbDep, llm: LLMDep, user: EditorDep,
+    process_id: str, run_id: str, body: ResumeDecision, db: DbDep, llm: LLMDep, user: AgentTestDep,
     background_tasks: BackgroundTasks,
 ) -> TwinRun:
     del user
@@ -100,11 +100,11 @@ def get_twin_summary(process_id: str, artifact_id: str, db: DbDep, user: Current
 
 @router.put("/agent-artifacts/{artifact_id}/baseline", response_model=TwinBaseline)
 def set_baseline(
-    process_id: str, artifact_id: str, body: TwinBaselineInput, db: DbDep, user: EditorDep
+    process_id: str, artifact_id: str, body: TwinBaselineInput, db: DbDep, user: AgentTestDep
 ) -> TwinBaseline:
     return repository.set_twin_baseline(db, process_id, artifact_id, body, recorded_by=user.id)
 
 
 @router.delete("/agent-artifacts/{artifact_id}/baseline", status_code=status.HTTP_204_NO_CONTENT)
-def delete_baseline(process_id: str, artifact_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_baseline(process_id: str, artifact_id: str, db: DbDep, user: AgentTestDep) -> None:
     repository.delete_twin_baseline(db, process_id, artifact_id)

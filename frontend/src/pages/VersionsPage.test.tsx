@@ -18,6 +18,9 @@ vi.mock('../api/client', () => ({
     }
   },
   listVersions: (...args: unknown[]) => listVersions(...args),
+  getVersionApproval: vi.fn(),
+  approveVersion: vi.fn(),
+  rejectVersion: vi.fn(),
   restoreVersion: (...args: unknown[]) => restoreVersion(...args),
   diffVersions: (...args: unknown[]) => diffVersions(...args),
 }))
@@ -29,6 +32,7 @@ const v1: VersionSummary = {
   created_at: '2026-01-01T00:00:00Z',
   created_by: null,
   created_by_name: null,
+  status: 'approved',
 }
 const v2: VersionSummary = {
   id: 'ver-2',
@@ -37,6 +41,7 @@ const v2: VersionSummary = {
   created_at: '2026-01-02T00:00:00Z',
   created_by: null,
   created_by_name: null,
+  status: 'approved',
 }
 
 function renderPage() {

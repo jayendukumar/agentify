@@ -11,10 +11,12 @@ running (US31.1).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.auth import audit as auth_audit
+from app.auth.permissions import Permission, may_act_in_unit
 from app.config import get_settings
 from app.context import access as context_access
 from app.context import audit, consumers, ingestion, packs, profile, repository, resolver
@@ -47,7 +49,7 @@ from app.schemas.context import (
     StarterPackSummary,
 )
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import ContextConfirmDep, ContextEditDep, CurrentUserDep, DbDep, LLMDep, OrgAdminDep, ProcessEditDep
 
 router = APIRouter(prefix="/api/organization", tags=["organization"])
 
@@ -89,13 +91,13 @@ def get_organization(db: DbDep, user: CurrentUserDep) -> Organization:
 
 
 @router.put("", response_model=Organization)
-def update_organization(body: OrganizationUpdate, db: DbDep, user: EditorDep) -> Organization:
+def update_organization(body: OrganizationUpdate, db: DbDep, user: OrgAdminDep) -> Organization:
     context_access.require_unrestricted(context_access.access_for(db, user))
     return repository.update_organization(db, body)
 
 
 @router.put("/llm-policy", response_model=Organization)
-def set_llm_policy(body: LlmPolicy, db: DbDep, user: EditorDep) -> Organization:
+def set_llm_policy(body: LlmPolicy, db: DbDep, user: OrgAdminDep) -> Organization:
     """Epic 31, US31.8: the organization-wide model policy, used where a
     business unit has none of its own."""
     context_access.require_unrestricted(context_access.access_for(db, user))
@@ -104,7 +106,7 @@ def set_llm_policy(body: LlmPolicy, db: DbDep, user: EditorDep) -> Organization:
 
 
 @router.post("/profile", response_model=ProfileResult)
-def apply_profile(body: OrganizationProfileAnswers, db: DbDep, user: EditorDep) -> ProfileResult:
+def apply_profile(body: OrganizationProfileAnswers, db: DbDep, user: ContextEditDep) -> ProfileResult:
     context_access.require_unrestricted(context_access.access_for(db, user))
     return profile.apply_profile(db, body, created_by=user.id)
 
@@ -120,7 +122,7 @@ def list_starter_packs(db: DbDep, user: CurrentUserDep) -> list[StarterPackSumma
 
 @router.post("/starter-packs/{pack_id}/apply", response_model=StarterPackApplyResult)
 def apply_starter_pack(
-    pack_id: str, db: DbDep, llm: LLMDep, user: EditorDep, background_tasks: BackgroundTasks
+    pack_id: str, db: DbDep, llm: LLMDep, user: ContextEditDep, background_tasks: BackgroundTasks
 ) -> StarterPackApplyResult:
     context_access.require_unrestricted(context_access.access_for(db, user))
     result = packs.apply_pack(db, pack_id, created_by=user.id)
@@ -159,7 +161,7 @@ def list_entities(
 
 
 @router.post("/entities", response_model=ContextEntity, status_code=status.HTTP_201_CREATED)
-def create_entity(body: ContextEntityCreate, db: DbDep, user: EditorDep) -> ContextEntity:
+def create_entity(body: ContextEntityCreate, db: DbDep, user: ContextEditDep) -> ContextEntity:
     owner = context_access.owner_for_new(context_access.access_for(db, user), body.owner_business_unit_id)
     body = body.model_copy(update={"owner_business_unit_id": owner})
     return repository.to_entity(repository.create_entity(db, body, created_by=user.id))
@@ -175,7 +177,7 @@ def get_entity(entity_id: str, db: DbDep, user: CurrentUserDep) -> ContextEntity
 
 @router.put("/entities/{entity_id}", response_model=ContextEntity)
 def update_entity(
-    entity_id: str, body: ContextEntityUpdate, db: DbDep, llm: LLMDep, user: EditorDep, background_tasks: BackgroundTasks
+    entity_id: str, body: ContextEntityUpdate, db: DbDep, llm: LLMDep, user: ContextEditDep, background_tasks: BackgroundTasks
 ) -> ContextEntity:
     existing = repository.get_entity_model(db, entity_id)
     context_access.require_steward(context_access.access_for(db, user), existing)
@@ -188,7 +190,7 @@ def update_entity(
 
 @router.delete("/entities/{entity_id}", response_model=ContextEntity)
 def retire_entity(
-    entity_id: str, db: DbDep, llm: LLMDep, user: EditorDep, background_tasks: BackgroundTasks
+    entity_id: str, db: DbDep, llm: LLMDep, user: ContextEditDep, background_tasks: BackgroundTasks
 ) -> ContextEntity:
     """Retire rather than delete: pinned context packs (Epic 28) may still
     reference this entity's history."""
@@ -208,7 +210,7 @@ def entity_impact(entity_id: str, db: DbDep, user: CurrentUserDep) -> ContextImp
 
 @router.post("/entities/{entity_id}/rerun-affected", response_model=ContextImpact)
 def rerun_affected(
-    entity_id: str, db: DbDep, llm: LLMDep, user: EditorDep, background_tasks: BackgroundTasks
+    entity_id: str, db: DbDep, llm: LLMDep, user: ContextEditDep, background_tasks: BackgroundTasks
 ) -> ContextImpact:
     context_access.require_visible(context_access.access_for(db, user), repository.get_entity_model(db, entity_id))
     impact = consumers.compute_impact(db, entity_id)
@@ -226,7 +228,7 @@ def list_entity_versions(entity_id: str, db: DbDep, user: CurrentUserDep) -> lis
 
 @router.post("/entities/{entity_id}/confirm", response_model=ContextEntity)
 def confirm_entity(
-    entity_id: str, body: ConfirmRequest, db: DbDep, llm: LLMDep, user: EditorDep, background_tasks: BackgroundTasks
+    entity_id: str, body: ConfirmRequest, db: DbDep, llm: LLMDep, user: ContextConfirmDep, background_tasks: BackgroundTasks
 ) -> ContextEntity:
     proposal = repository.get_entity_model(db, entity_id)
     access = context_access.access_for(db, user)
@@ -243,13 +245,13 @@ def confirm_entity(
 
 
 @router.post("/entities/{entity_id}/dismiss", response_model=ContextEntity)
-def dismiss_entity(entity_id: str, db: DbDep, user: EditorDep) -> ContextEntity:
+def dismiss_entity(entity_id: str, db: DbDep, user: ContextEditDep) -> ContextEntity:
     context_access.require_steward(context_access.access_for(db, user), repository.get_entity_model(db, entity_id))
     return repository.to_entity(repository.dismiss_entity(db, entity_id))
 
 
 @router.post("/entities/bulk-confirm", response_model=BulkConfirmResult)
-def bulk_confirm(body: BulkConfirmRequest, db: DbDep, user: EditorDep) -> BulkConfirmResult:
+def bulk_confirm(body: BulkConfirmRequest, db: DbDep, user: ContextConfirmDep) -> BulkConfirmResult:
     access = context_access.access_for(db, user)
     ids = body.ids
     if not access.unrestricted:
@@ -265,7 +267,7 @@ def bulk_confirm(body: BulkConfirmRequest, db: DbDep, user: EditorDep) -> BulkCo
 async def upload_policy_document(
     db: DbDep,
     llm: LLMDep,
-    user: EditorDep,
+    user: ContextEditDep,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str = Form(default=""),
@@ -429,7 +431,8 @@ class Membership(BaseModel):
 class MemberAccess(BaseModel):
     user_id: str
     name: str
-    role: str
+    # Epic 37: role names the user holds at any scope.
+    roles: list[str] = []
     memberships: list[Membership] = []
 
 
@@ -442,7 +445,7 @@ def list_members(db: DbDep, user: CurrentUserDep) -> list[MemberAccess]:
         MemberAccess(
             user_id=u.id,
             name=u.name,
-            role=u.role,
+            roles=sorted({r.role for r in u.roles}),
             memberships=[Membership(business_unit_id=r.business_unit_id, steward=r.steward) for r in rows if r.user_id == u.id],
         )
         for u in db.scalars(select(UserModel).order_by(UserModel.name))
@@ -450,7 +453,7 @@ def list_members(db: DbDep, user: CurrentUserDep) -> list[MemberAccess]:
 
 
 @router.put("/members/{user_id}", response_model=MemberAccess)
-def set_memberships(user_id: str, body: list[Membership], db: DbDep, user: EditorDep) -> MemberAccess:
+def set_memberships(user_id: str, body: list[Membership], db: DbDep, user: OrgAdminDep) -> MemberAccess:
     """Only group-level (unrestricted) editors manage memberships. An empty
     list makes the user unrestricted again."""
     context_access.require_unrestricted(context_access.access_for(db, user))
@@ -467,7 +470,9 @@ def set_memberships(user_id: str, body: list[Membership], db: DbDep, user: Edito
     for membership in body:
         db.add(UserBusinessUnitModel(user_id=user_id, business_unit_id=membership.business_unit_id, steward=membership.steward))
     db.flush()
-    return MemberAccess(user_id=target.id, name=target.name, role=target.role, memberships=body)
+    return MemberAccess(
+        user_id=target.id, name=target.name, roles=sorted({r.role for r in target.roles}), memberships=body
+    )
 
 
 class ContextChange(BaseModel):
@@ -550,10 +555,19 @@ def get_process_scope(process_id: str, db: DbDep, user: CurrentUserDep) -> Proce
 
 
 @process_router.put("", response_model=ProcessScope)
-def set_process_scope(process_id: str, body: ProcessScope, db: DbDep, user: EditorDep) -> ProcessScope:
+def set_process_scope(
+    process_id: str, body: ProcessScope, db: DbDep, request: Request, user: ProcessEditDep
+) -> ProcessScope:
     access = context_access.access_for(db, user)
     if not access.unrestricted and body.business_unit_id is not None and body.business_unit_id not in access.units:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You can only scope a process to a unit you belong to")
+    # Epic 37, US37.2: moving a process changes who may approve it, so the
+    # destination must be within the mover's own role scope too.
+    if not may_act_in_unit(user, Permission.PROCESS_EDIT, body.business_unit_id):
+        reason = "You can only move a process into a unit your role covers"
+        auth_audit.record_refusal(actor=user, action="set_process_scope", reason=reason, object_type="process",
+                                  object_id=process_id, process_id=process_id, request=request)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=reason)
     return repository.set_process_scope(db, process_id, body)
 
 

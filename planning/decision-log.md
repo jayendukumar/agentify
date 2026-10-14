@@ -3100,3 +3100,78 @@ seeds fix the simulated reviewers, faults and timings, not the model's
 sampling. This is expected of LLM agents, but invisible from one run. It is
 why the deck shows the repeat, and why a process-level release decision
 should use repeated trials per case (Epic 34's `trials`), not one batch.
+
+## 2026-10-14 -- Epic 37, identity, roles and segregation of duties (build step 1)
+
+### Route guards ask for a permission, scoped by the process's business unit
+
+`EditorDep` was replaced by one `require(permission)` guard per route
+(`app/api/deps.py`), with six roles mapped to permissions in
+`app/auth/permissions.py`. The alternative, checking role names in routes,
+would scatter the role matrix across ~100 routes. The guard reads
+`process_id` from the path and walks the scope chain (organization ->
+business unit). Per-process ownership, deferred by the user, is one more
+link in that chain plus one more `scope_type`; no guard changes. A test
+walks the app's routes and fails on any unguarded write.
+
+### Segregation of duties works on change sets, not on roles
+
+Holding the architect and approver roles together is allowed. What's
+refused is approving a change you made. Contributions get a global `seq`.
+A process version contains the process's contributions after the previous
+approved baseline. An agent's pending change set is everything after its
+last approval (`approved_through_seq`). Only high-risk contributions
+disqualify: any draft write, and any agent generate/regenerate/governance
+edit. The user's call was no minor-edit exemption, and strictness only for
+these two kinds of change. Test assets and release-candidate marking are
+recorded at the standard tier and never block. The high-risk set is data
+(`app/auth/sod.py`'s `HIGH_RISK_ACTIONS`). Recording an action at the high
+tier also voids the old approval.
+
+Draft writes are recorded inside `repository.set_draft_bpmn`, which now
+requires `changed_by` and `action`, rather than at each route. Every route that
+changes the diagram (generate, manual edit, chat apply, gap resolve,
+version restore) funnels through it, so none can be missed.
+
+### Defect: regenerating or editing an approved agent kept it APPROVED
+
+Found while designing US37.4, by reading `generate_agent_artifact` and
+`update_agent_governance`: neither cleared `approved_at`. A definition
+approved at v1 stayed APPROVED after a regenerate to v2, and the evidence
+export credited the v1 approver. Now any high-risk agent contribution
+clears the approval and the release-candidate mark (its test evidence was
+for the old definition too).
+
+### Finalize submits; only an approved baseline is used downstream
+
+`get_latest_version` now returns the latest *approved* version, so
+blueprint evaluation and decision rules ignore a pending baseline without
+any change at their call sites. Existing versions were grandfathered as
+approved by the migration (server default), rather than blocking every
+process until someone re-approved it. Approval applies to the first
+baseline too: it is the largest change of all.
+
+### Publishing now requires an approved agent
+
+US37.4 says a publication needs an approval by someone other than the
+publisher. Before Epic 37, publish didn't check approval at all (Epic 15
+predates Epic 23's lifecycle). It now returns 409 until the agent is
+APPROVED, and 403 when the publisher is its only approver. Still open: the
+raw `POST /api/registries/{name}/push` takes an arbitrary definition and
+bypasses this. It's guarded by `agent.publish` but not by approval.
+
+### Defect: the startup refusal echoed the settings input
+
+Found by starting uvicorn and the worker with `ENVIRONMENT=production`.
+Both refused correctly, but pydantic's ValidationError text includes
+`input_value={...}` with every setting, so a database URL with a password
+or a key prefix would be printed. `config.settings_or_exit` prints only the
+validators' messages and exits 1. Invisible in tests, which assert on
+`ValidationError` rather than on what an operator sees.
+
+### Refusals are written in their own transaction
+
+A refused request rolls back, which would take its audit event with it.
+`audit.record_refusal` commits in a separate short session. Successful
+writes are audited in the request's own transaction, so an event exists
+exactly when the action committed.

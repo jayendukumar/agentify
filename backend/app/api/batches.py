@@ -17,7 +17,7 @@ from app.jobs.worker import run_pending
 from app.store import NotFoundError
 from app.twin.errors import TwinServiceError
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep
 
 router = APIRouter(prefix="/api/processes/{process_id}", tags=["batches"])
 
@@ -38,7 +38,7 @@ class PlanView(BaseModel):
 
 
 @router.post("/scenarios/{scenario_id}/batches/estimate", response_model=PlanView)
-def estimate_batch(process_id: str, scenario_id: str, body: service.BatchRequest, db: DbDep, user: CurrentUserDep) -> PlanView:
+def estimate_batch(process_id: str, scenario_id: str, body: service.BatchRequest, db: DbDep, user: AgentTestDep) -> PlanView:
     """US34.3: what a batch would cost and take, before starting it."""
     del user
     try:
@@ -52,7 +52,7 @@ def estimate_batch(process_id: str, scenario_id: str, body: service.BatchRequest
     "/scenarios/{scenario_id}/batches", response_model=service.BatchView, status_code=status.HTTP_202_ACCEPTED
 )
 def start_batch(
-    process_id: str, scenario_id: str, body: service.BatchRequest, db: DbDep, user: EditorDep, background_tasks: BackgroundTasks
+    process_id: str, scenario_id: str, body: service.BatchRequest, db: DbDep, user: AgentTestDep, background_tasks: BackgroundTasks
 ) -> service.BatchView:
     try:
         batch = service.start_batch(db, process_id, scenario_id, body, created_by=user.id)
@@ -85,7 +85,7 @@ class BatchAction(BaseModel):
 
 @router.post("/batches/{batch_id}/control", response_model=service.BatchView)
 def control_batch(
-    process_id: str, batch_id: str, body: BatchAction, db: DbDep, user: EditorDep, background_tasks: BackgroundTasks
+    process_id: str, batch_id: str, body: BatchAction, db: DbDep, user: AgentTestDep, background_tasks: BackgroundTasks
 ) -> service.BatchView:
     """US34.7."""
     del user
@@ -106,7 +106,7 @@ class ReplayView(BaseModel):
 
 @router.post("/batches/{batch_id}/runs/{run_id}/replay", response_model=ReplayView, status_code=status.HTTP_202_ACCEPTED)
 def replay_run(
-    process_id: str, batch_id: str, run_id: str, db: DbDep, user: EditorDep, background_tasks: BackgroundTasks
+    process_id: str, batch_id: str, run_id: str, db: DbDep, user: AgentTestDep, background_tasks: BackgroundTasks
 ) -> ReplayView:
     """US34.6: the same row, trial, and seed -- on its own."""
     from app.connectors.jobs import get_job_llm
@@ -145,7 +145,7 @@ def list_schedules(process_id: str, db: DbDep, user: CurrentUserDep) -> list[Sch
 
 
 @router.post("/batch-schedules", response_model=ScheduleView, status_code=status.HTTP_201_CREATED)
-def create_schedule(process_id: str, body: service.ScheduleCreate, db: DbDep, user: EditorDep) -> ScheduleView:
+def create_schedule(process_id: str, body: service.ScheduleCreate, db: DbDep, user: AgentTestDep) -> ScheduleView:
     del user
     scenario = db.get(TwinScenarioModel, body.scenario_id)
     if scenario is None or not scenario.dataset_id:
@@ -166,7 +166,7 @@ def create_schedule(process_id: str, body: service.ScheduleCreate, db: DbDep, us
 
 
 @router.delete("/batch-schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_schedule(process_id: str, schedule_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_schedule(process_id: str, schedule_id: str, db: DbDep, user: AgentTestDep) -> None:
     del user
     schedule = db.get(BatchScheduleModel, schedule_id)
     if schedule is None or schedule.process_id != process_id:

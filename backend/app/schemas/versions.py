@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -15,6 +16,11 @@ class VersionSummary(BaseModel):
     # trusted from anywhere else) -- created_by alone is a users.id, not
     # something to show a Process Analyst in the version history list.
     created_by_name: str | None = None
+    # Epic 37, US37.4: only an approved version is a baseline anything uses.
+    status: Literal["pending_approval", "approved", "rejected", "superseded"] = "approved"
+    decided_at: datetime | None = None
+    decided_by: str | None = None
+    decided_by_name: str | None = None
 
 
 class VersionDetail(VersionSummary):

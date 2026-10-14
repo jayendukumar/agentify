@@ -21,7 +21,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import get_settings, settings_or_exit
 from app.db.models import JobModel
 from app.db.session import get_session_factory
 
@@ -156,4 +156,8 @@ class Worker:
 
 
 if __name__ == "__main__":
+    # Epic 37, US37.14: settings validation refuses unsafe auth config
+    # (e.g. local sign-in in production). Check before polling the queue so
+    # a standalone worker exits non-zero instead of running half-configured.
+    settings_or_exit("job worker")
     asyncio.run(Worker().run())

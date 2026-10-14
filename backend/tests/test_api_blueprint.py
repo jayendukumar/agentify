@@ -1,9 +1,12 @@
 import json
 
+from fastapi.testclient import TestClient
+
 from app.bpmn.builder import build_bpmn_xml
 from app.db import repository
 from app.db.session import get_session_factory
 from app.llm.types import ChatCompletionResult, Usage
+from app.main import app
 from app.schemas.blueprint import AgentSpec, BlueprintNodeResult
 from app.schemas.common import ProcessElement, ProcessFlow, ProcessSchema, SourceRef
 
@@ -32,7 +35,7 @@ def _valid_xml(process_id: str) -> str:
     return xml
 
 
-def _finalize(client, process_id, xml=None):
+def _finalize(client, process_id, xml=None, *, approve=True):
     client.put(f"/api/processes/{process_id}/bpmn", json={"xml": xml or _valid_xml(process_id)})
     # Epic 11: Finalize now requires gap analysis to have run at least
     # once (app/api/versions.py) -- these tests aren't exercising gap
@@ -44,7 +47,30 @@ def _finalize(client, process_id, xml=None):
         session.commit()
     finally:
         session.close()
-    return client.post(f"/api/processes/{process_id}/finalize").json()
+    version = client.post(f"/api/processes/{process_id}/finalize").json()
+    if approve and "id" in version:
+        # Epic 37, US37.4: a finalized version only becomes the baseline once
+        # someone who didn't edit it approves it.
+        version = approve_as_other_user(process_id, version["id"])
+    return version
+
+
+def approve_agent_as_other_user(process_id: str, artifact_id: str) -> dict:
+    """Epic 37, US37.4: an agent's release is approved by someone who
+    didn't build it."""
+    approver = TestClient(app)
+    approver.post("/api/auth/login", json={"name": "test-release-approver", "roles": ["approver"]})
+    response = approver.post(f"/api/processes/{process_id}/blueprint/agent-artifacts/{artifact_id}/approve")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def approve_as_other_user(process_id: str, version_id: str) -> dict:
+    approver = TestClient(app)
+    approver.post("/api/auth/login", json={"name": "test-baseline-approver", "roles": ["process_owner"]})
+    response = approver.post(f"/api/processes/{process_id}/versions/{version_id}/approve", json={})
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def _llm_json(payload: dict) -> ChatCompletionResult:

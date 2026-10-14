@@ -250,7 +250,7 @@ def test_mcp_connector_reads_via_tool_and_refuses_write_tools(monkeypatch):
 def unit_client(fake_llm):
     app.dependency_overrides[get_llm_client] = lambda: fake_llm
     with TestClient(app) as other:
-        other.post("/api/auth/login", json={"name": "banking-steward", "role": "editor"})
+        other.post("/api/auth/login", json={"name": "banking-steward", "roles": ["analyst", "architect", "process_owner"]})
         yield other
     app.dependency_overrides.pop(get_llm_client, None)
 

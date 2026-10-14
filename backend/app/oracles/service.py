@@ -75,7 +75,9 @@ class _ProposedRules(BaseModel):
 def _gateways(session: Session, process_id: str):
     version = repository.get_latest_version(session, process_id)
     if version is None:
-        raise OracleError("Finalize the process first -- rules are drafted from the finalized diagram's decision points")
+        raise OracleError(
+            "Approve a baseline first -- rules are drafted from the approved diagram's decision points"
+        )
     nodes = extract_flow_nodes(version.xml)
     return [n for n in nodes if n.bpmn_type in _GATEWAY_TYPES and len(n.successors) > 1]
 

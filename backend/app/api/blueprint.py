@@ -9,14 +9,14 @@ from app.db import repository
 from app.llm.routing import llm_route_for
 from app.schemas.blueprint import BlueprintGenerateRequest, BlueprintOverlay, BlueprintOverrideRequest
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import BlueprintEditDep, CurrentUserDep, DbDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/blueprint", tags=["blueprint"])
 
 
 @router.post("/generate", response_model=BlueprintOverlay)
 async def generate_blueprint(
-    process_id: str, body: BlueprintGenerateRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, body: BlueprintGenerateRequest, db: DbDep, llm: LLMDep, user: BlueprintEditDep
 ) -> BlueprintOverlay:
     del user
     repository.get_process(db, process_id)  # 404s if missing
@@ -27,7 +27,14 @@ async def generate_blueprint(
     )
     if version is None:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="Process has no finalized version yet -- finalize a baseline first"
+            status.HTTP_400_BAD_REQUEST,
+            detail="Process has no approved baseline yet -- finalize one and have a process owner approve it",
+        )
+    if version.status != "approved":
+        # Epic 37, US37.4: only an approved baseline feeds the blueprint.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"That version is {version.status.replace('_', ' ')} -- only an approved baseline can be evaluated",
         )
 
     flow_nodes = extract_flow_nodes(version.xml)
@@ -65,7 +72,7 @@ def get_blueprint(process_id: str, db: DbDep, user: CurrentUserDep) -> Blueprint
 
 @router.patch("/nodes/{node_id}", response_model=BlueprintOverlay)
 def override_blueprint_node(
-    process_id: str, node_id: str, body: BlueprintOverrideRequest, db: DbDep, user: EditorDep
+    process_id: str, node_id: str, body: BlueprintOverrideRequest, db: DbDep, user: BlueprintEditDep
 ) -> BlueprintOverlay:
     repository.get_process(db, process_id)  # 404s if missing
     # update_blueprint_node raises NotFoundError (-> 404 via the global

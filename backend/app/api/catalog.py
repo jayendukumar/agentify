@@ -23,7 +23,7 @@ from app.schemas.context import (
     ThirdPartyRegisterRow,
 )
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import AgentBuildDep, CatalogEditDep, CurrentUserDep, DbDep
 
 router = APIRouter(prefix="/api/organization/applications", tags=["catalog"])
 
@@ -32,7 +32,7 @@ _MAX_SIZE_BYTES = 10 * 1024 * 1024
 
 @router.post("/import", response_model=ApplicationImportResult)
 async def import_applications(
-    db: DbDep, user: EditorDep, file: UploadFile = File(...), dry_run: bool = Query(default=True)
+    db: DbDep, user: CatalogEditDep, file: UploadFile = File(...), dry_run: bool = Query(default=True)
 ) -> ApplicationImportResult:
     """US29.2: preview first (`dry_run=true`, the default), then import."""
     content = await file.read()
@@ -45,7 +45,7 @@ async def import_applications(
 
 
 @router.put("/{application_id}/api-spec", response_model=ApiSpecResult)
-async def attach_api_spec(application_id: str, db: DbDep, user: EditorDep, file: UploadFile = File(...)) -> ApiSpecResult:
+async def attach_api_spec(application_id: str, db: DbDep, user: CatalogEditDep, file: UploadFile = File(...)) -> ApiSpecResult:
     """US29.4: attach an OpenAPI document (JSON or YAML)."""
     content = await file.read()
     if len(content) > _MAX_SIZE_BYTES:
@@ -58,7 +58,7 @@ async def attach_api_spec(application_id: str, db: DbDep, user: EditorDep, file:
 
 @router.put("/{application_id}/endpoints", response_model=ContextEntity)
 def set_endpoints(
-    application_id: str, body: list[ApplicationEndpoint], db: DbDep, user: EditorDep
+    application_id: str, body: list[ApplicationEndpoint], db: DbDep, user: CatalogEditDep
 ) -> ContextEntity:
     """US29.5: register endpoints. A production-tagged endpoint may be
     recorded for reference but is never called. Any other endpoint must
@@ -101,7 +101,7 @@ def list_system_resolutions(process_id: str, db: DbDep, user: CurrentUserDep) ->
 
 @process_router.put("/{system_name}", response_model=list[SystemResolution])
 def link_system(
-    process_id: str, system_name: str, body: SystemLinkRequest, db: DbDep, user: EditorDep
+    process_id: str, system_name: str, body: SystemLinkRequest, db: DbDep, user: AgentBuildDep
 ) -> list[SystemResolution]:
     try:
         service.set_link(db, process_id, system_name, body.application_id, linked_by=user.id)

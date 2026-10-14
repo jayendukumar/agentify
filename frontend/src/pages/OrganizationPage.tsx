@@ -26,8 +26,9 @@ const TABS: { id: Tab; label: string }[] = [
 
 /** Epic 27: the organization context the rest of the product draws on. */
 export default function OrganizationPage() {
-  const { user } = useAuth()
-  const canEdit = user?.role === 'editor'
+  const { can } = useAuth()
+  const canEdit = can('context.edit')
+  const canAdmin = can('org.admin')
   const [tab, setTab] = useState<Tab>('profile')
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [packs, setPacks] = useState<StarterPackSummary[]>([])
@@ -102,14 +103,14 @@ export default function OrganizationPage() {
           </>
         )}
         {tab === 'policies' && <PolicyReviewPanel businessUnits={businessUnits} canEdit={canEdit} onChanged={refresh} />}
-        {tab === 'applications' && <ApplicationCatalogPanel canEdit={canEdit} onChanged={refresh} />}
+        {tab === 'applications' && <ApplicationCatalogPanel canEdit={can('catalog.edit')} onChanged={refresh} />}
         {tab === 'context' && (
           <ContextEntityBrowser businessUnits={businessUnits} roles={roles} canEdit={canEdit} refreshKey={refreshKey} onChanged={refresh} />
         )}
         {tab === 'applies' && <ApplicableContextView businessUnits={businessUnits} />}
-        {tab === 'connectors' && <ConnectorsPanel businessUnits={businessUnits} canEdit={canEdit} />}
+        {tab === 'connectors' && <ConnectorsPanel businessUnits={businessUnits} canEdit={canAdmin} />}
         {tab === 'governance' && (
-          <GovernancePanel organization={organization} businessUnits={businessUnits} canEdit={canEdit} onChanged={refresh} />
+          <GovernancePanel organization={organization} businessUnits={businessUnits} canEdit={canAdmin} onChanged={refresh} />
         )}
       </div>
     </div>

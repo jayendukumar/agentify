@@ -22,6 +22,11 @@ RUN pip install --no-cache-dir .
 
 EXPOSE 8000
 
+# Epic 37, US37.14: an image deployed without configuring sign-in fails
+# closed -- settings validation refuses AUTH_MODE=local in production.
+# docker-compose.yml (local/demo use) overrides this explicitly.
+ENV ENVIRONMENT=production
+
 # Runs pending migrations before starting -- the db service's own data
 # lives in a named volume that outlives container recreation, so this
 # must be idempotent (Alembic's upgrade already is).

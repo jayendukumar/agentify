@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../auth/AuthContext'
 import { CitationList } from './org/ContextCitations'
 import type { AgentArtifact, BlueprintNodeResult, BlueprintVerdict } from '../api/types'
 import { STEP_TYPE_LABELS, VERDICT_LABELS } from '../lib/blueprintLabels'
@@ -30,6 +31,7 @@ export default function BlueprintDetailPanel({
   canGenerateAgent: boolean
   processId: string
 }) {
+  const { can } = useAuth()
   const [overrideOpen, setOverrideOpen] = useState(false)
   const [verdict, setVerdict] = useState<BlueprintVerdict>('automatable')
   const [justification, setJustification] = useState('')
@@ -142,7 +144,7 @@ export default function BlueprintDetailPanel({
             {/* Epic 15: publish action, lifecycle status, and (via
                 PublishPanel's own TwinConfidenceBadge) twin evidence --
                 informational only (US14.6/US15.3), never a gate. */}
-            {artifact && <PublishPanel processId={processId} artifactId={artifact.id} canPublish={canGenerateAgent} />}
+            {artifact && <PublishPanel processId={processId} artifactId={artifact.id} canPublish={can('agent.publish')} />}
           </div>
         )}
 

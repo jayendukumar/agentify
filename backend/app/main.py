@@ -21,6 +21,7 @@ from app.api import (
     environments,
     evaluation,
     gap_analysis,
+    governance,
     orchestration,
     organization,
     process_twin,
@@ -32,7 +33,7 @@ from app.api import (
     twin_builder,
     versions,
 )
-from app.config import get_settings
+from app.config import get_settings, settings_or_exit
 from app.context.repository import ContextValidationError
 from app.llm.exceptions import (
     LLMAuthenticationError,
@@ -71,6 +72,10 @@ def _configure_logging() -> None:
     )
 
 
+
+# Epic 37, US37.14: e.g. AUTH_MODE=local with ENVIRONMENT=production stops
+# uvicorn here, with the reason, before anything binds a port.
+settings_or_exit("API")
 _configure_logging()
 
 @asynccontextmanager
@@ -116,6 +121,7 @@ app.add_middleware(
 app.middleware("http")(request_id_middleware)
 
 app.include_router(auth.router)
+app.include_router(governance.router)
 app.include_router(processes.router)
 app.include_router(documents.router)
 app.include_router(bpmn.router)
@@ -187,4 +193,6 @@ def handle_llm_error(request: Request, exc: LLMError) -> JSONResponse:
 
 @app.get("/healthz", tags=["health"])
 def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+    # Epic 37, US37.14: lets an operator see at a glance how sign-in is set up.
+    settings = get_settings()
+    return {"status": "ok", "environment": settings.environment, "auth_mode": settings.auth_mode}

@@ -5,15 +5,17 @@ from app.registry.base import RegistryConnector, RegistryUnreachableError
 from app.registry.manager import get_registries
 
 from .test_api_agents import _automatable_node, _seed_blueprint
-from .test_api_blueprint import _finalize
+from .test_api_blueprint import _finalize, approve_agent_as_other_user
 from .test_api_registries import FakeConnector
 
 
-def _make_artifact(client) -> tuple[dict, dict]:
+def _make_artifact(client, *, approve: bool = True) -> tuple[dict, dict]:
     process = client.post("/api/processes", json={"name": "P"}).json()
     version = _finalize(client, process["id"])
     _seed_blueprint(process["id"], version["id"], [_automatable_node("a")])
     artifact = client.post(f"/api/processes/{process['id']}/blueprint/nodes/a/agent-artifact").json()
+    if approve:
+        approve_agent_as_other_user(process["id"], artifact["id"])
     return process, artifact
 
 
@@ -75,6 +77,8 @@ def test_republish_after_regenerate_creates_a_new_version_not_an_overwrite(clien
         f"/api/processes/{process['id']}/agent-artifacts/{artifact['id']}/publish-status"
     ).json()
     assert status_after_regen["needs_republish"] is True
+    # Epic 37, US37.4: the regenerated definition needs its own approval.
+    approve_agent_as_other_user(process["id"], artifact["id"])
 
     second = client.post(
         f"/api/processes/{process['id']}/agent-artifacts/{artifact['id']}/publish", json={"registry_name": "local"}

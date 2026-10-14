@@ -187,6 +187,21 @@ nothing measured the to-be process against today's.
 |---|---|---|
 | 36 | [Process Digital Twin at Volume: Efficiency & Readiness](epics/36-process-twin-efficiency.md) | Sample-data-backed systems; case file hand-off; rule- and agent-routed gateways; as-is operating model; whole-process batches; efficiency report (STP, accuracy, cycle/touch time, cost, FTE) with confidence ranges; Process twin page. Still open: capacity/queueing simulation (US36.9), parallel gateways |
 
+## Phase 8 epic (groomed 2026-10-14 from the enterprise-readiness ask)
+
+Sign-in is a name and a self-chosen role with no password, the only
+roles are viewer and editor, and whoever builds an agent can approve its
+release. This epic puts the product behind the customer's IdP and
+separates the duties.
+
+| # | Epic | Summary |
+|---|---|---|
+| 37 | [Enterprise Identity, Roles & Segregation of Duties](epics/37-enterprise-identity-and-access.md) | Analyst/architect/process owner/approver/auditor/admin roles as permissions; route-guard completeness test; roles scoped by business unit (per-process scope kept open); contribution history; any amendment to a process or agent definition needs an independent approval, baselines included; optional two-person approval; audit log; OIDC + SAML SSO with MFA verified from claims; inbound SCIM with group-to-role mapping; 15-min sessions, rotating refresh tokens, admin revocation |
+
+Status: build step 1 (roles, SoD, audit, production guard, demo cast)
+implemented 2026-10-14. Next: session hardening, then OIDC + MFA, SCIM,
+and SAML last.
+
 ## Backlog (superseded by the Phase 2 epics above)
 
 See [backlog.md](backlog.md) -- kept as the historical record of the

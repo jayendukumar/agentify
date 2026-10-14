@@ -29,7 +29,7 @@ from app.schemas.twin_builder import (
 from app.twin import test_builder
 from app.twin.errors import TwinServiceError
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/agent-artifacts/{artifact_id}/test-builder", tags=["twin"])
 
@@ -100,7 +100,7 @@ def get_context(process_id: str, artifact_id: str, db: DbDep, user: CurrentUserD
 
 @router.post("/suggest", response_model=SituationList)
 async def suggest(
-    process_id: str, artifact_id: str, body: SuggestSituationsRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, artifact_id: str, body: SuggestSituationsRequest, db: DbDep, llm: LLMDep, user: AgentTestDep
 ) -> SituationList:
     del user
     context = _context(db, process_id, artifact_id)
@@ -116,7 +116,7 @@ async def suggest(
 
 @router.post("/describe", response_model=Situation)
 async def describe(
-    process_id: str, artifact_id: str, body: DescribeSituationRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, artifact_id: str, body: DescribeSituationRequest, db: DbDep, llm: LLMDep, user: AgentTestDep
 ) -> Situation:
     del user
     context = _context(db, process_id, artifact_id)
@@ -129,7 +129,7 @@ async def describe(
 
 @router.post("/data", response_model=GeneratedRecords)
 async def generate_data(
-    process_id: str, artifact_id: str, body: GenerateDataRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, artifact_id: str, body: GenerateDataRequest, db: DbDep, llm: LLMDep, user: AgentTestDep
 ) -> GeneratedRecords:
     del user
     context = _context(db, process_id, artifact_id)
@@ -148,7 +148,7 @@ async def generate_data(
 
 @router.post("/personas", response_model=GeneratedPersonas)
 async def generate_personas(
-    process_id: str, artifact_id: str, body: GeneratePersonasRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, artifact_id: str, body: GeneratePersonasRequest, db: DbDep, llm: LLMDep, user: AgentTestDep
 ) -> GeneratedPersonas:
     del user
     context = _context(db, process_id, artifact_id)

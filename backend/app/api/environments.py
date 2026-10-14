@@ -8,13 +8,13 @@ from fastapi import APIRouter, status
 from app.db import repository
 from app.schemas.environment import TwinEnvironment, TwinEnvironmentCreate, TwinEnvironmentUpdate
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/twin-environments", tags=["environments"])
 
 
 @router.post("", response_model=TwinEnvironment, status_code=status.HTTP_201_CREATED)
-def create_environment(process_id: str, body: TwinEnvironmentCreate, db: DbDep, user: EditorDep) -> TwinEnvironment:
+def create_environment(process_id: str, body: TwinEnvironmentCreate, db: DbDep, user: AgentTestDep) -> TwinEnvironment:
     return repository.create_twin_environment(db, process_id, body, created_by=user.id)
 
 
@@ -26,13 +26,13 @@ def list_environments(process_id: str, db: DbDep, user: CurrentUserDep) -> list[
 
 @router.put("/{environment_id}", response_model=TwinEnvironment)
 def update_environment(
-    process_id: str, environment_id: str, body: TwinEnvironmentUpdate, db: DbDep, user: EditorDep
+    process_id: str, environment_id: str, body: TwinEnvironmentUpdate, db: DbDep, user: AgentTestDep
 ) -> TwinEnvironment:
     del user
     return repository.update_twin_environment(db, process_id, environment_id, body)
 
 
 @router.delete("/{environment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_environment(process_id: str, environment_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_environment(process_id: str, environment_id: str, db: DbDep, user: AgentTestDep) -> None:
     del user
     repository.delete_twin_environment(db, process_id, environment_id)

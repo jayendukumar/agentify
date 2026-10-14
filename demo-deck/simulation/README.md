@@ -23,12 +23,34 @@ environment with one command:
 You can also do every step by hand in the app. Each step lists where to do it
 in the app and the API call the script used.
 
-- **User:** sign in as `Demo Presenter` with the **Editor** role (all steps
-  need Editor).
+- **Users:** the steps are done by a cast of people in distinct roles (see
+  "Who does what" below). Sign in with the same name and tick the same
+  roles. Local sign-in like this is for demos only; it is refused in
+  production.
 - **AI model:** OpenRouter, `qwen/qwen3.7-flash`. Total spend for the full run
   was about $0.20.
 - **Results:** the numbers under "Result" come from the test run on
   2026-10-12. AI steps vary a little from run to run.
+
+### Who does what
+
+Segregation of duties (Epic 37) means nobody approves a change they made.
+The seed uses this cast:
+
+| Person | Roles | Does |
+|---|---|---|
+| Olivia Brandt (Process Owner) | Process Owner | Organization profile, policies, confirming context; **approves the process baseline** |
+| Ana Costa (Process Analyst) | Process Analyst, Retail Banking only | Creates the process, edits the diagram, resolves gaps, finalizes |
+| Arjun Mehta (Automation Architect) | Automation Architect, Process Analyst, Approver | Catalog, blueprint, agent, datasets, batches, compliance tests |
+| Avery Lindqvist (Approver) | Approver, Retail Banking only | Sets release criteria; **approves the agent release** |
+| Sam Okafor (Admin) | Admin | Memberships, connectors, users. Can't build or approve |
+| Morgan Reyes (Auditor) | Auditor | Reads everything, including the audit log |
+
+**Scripted moment:** sign in as Arjun and open the credit-limit agent. He
+holds the Approver role, but the approval panel shows *"You generated the
+agent definition ... someone else must approve this agent version"* instead
+of an Approve button. Sign in as Avery to approve it. Then open **Audit
+log** as Morgan: the refusal and the approval are both there.
 
 ---
 
@@ -315,9 +337,9 @@ in step 16.
 ### Step 19: A second business unit's steward, and connectors
 - **Where:** Organization → *Changes & access* → *Who stewards what*; Organization → *Connectors* → *Add connector*
 - **Artifact:** [`18-federation.json`](artifacts/18-federation.json)
-- **Second user:** sign in once as *Wealth Management Analyst* (Editor).
-  Then, as Demo Presenter, make them a member and steward of Wealth
-  Management only.
+- **Second user:** sign in once as *Wealth Management Analyst* (Process
+  Analyst, scoped to Wealth Management). Then, as Sam (Admin), make them a
+  member and steward of Wealth Management only.
 - **Connectors:** add two, both left disabled so nothing syncs.
   - a SharePoint policy folder export, daily
   - the ServiceNow CMDB application feed, every 6 hours. Its API token is

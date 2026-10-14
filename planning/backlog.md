@@ -71,3 +71,22 @@ Likely scope:
 *This is the most speculative backlog item and will need its own discovery
 pass (what "digital twin" means concretely for this product) before writing
 epics/stories.*
+
+## B4 — Service Accounts
+
+**Deferred 2026-10-14 from [Epic 37](epics/37-enterprise-identity-and-access.md)**
+(not superseded, unlike B1-B3). There are no system accounts yet. Pick
+this up when the first non-human caller appears, e.g. a CI pipeline
+running regression suites or a deployment tool reading release status.
+
+Likely scope:
+- Non-human principals created by an admin, owned by a named person, and
+  never provisioned through SCIM.
+- OAuth 2.0 client-credentials tokens from the customer's IdP, validated
+  like OIDC ID tokens (issuer, audience, signature), or product-issued
+  API keys stored hashed, shown once, with expiry and rotation.
+- Explicit, scoped permissions only, with no human role inherited.
+  Service accounts can never approve (Epic 37 SoD) or administer.
+- Every action recorded in `audit_events` with actor type `service`.
+- Revocation and listing alongside user sessions in Admin > Users.
+

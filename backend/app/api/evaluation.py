@@ -12,14 +12,14 @@ from app.schemas.evaluation import RegressionSuite, RegressionSuiteCreate, Regre
 from app.schemas.reproducibility import RunSnapshotView
 from app.twin.errors import TwinServiceError
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}", tags=["evaluation"])
 
 
 @router.post("/regression-suites", response_model=RegressionSuite, status_code=status.HTTP_201_CREATED)
 def create_regression_suite(
-    process_id: str, body: RegressionSuiteCreate, db: DbDep, user: EditorDep
+    process_id: str, body: RegressionSuiteCreate, db: DbDep, user: AgentTestDep
 ) -> RegressionSuite:
     return repository.create_regression_suite(db, process_id, body, created_by=user.id)
 
@@ -31,7 +31,7 @@ def list_regression_suites(process_id: str, db: DbDep, user: CurrentUserDep) -> 
 
 
 @router.delete("/regression-suites/{suite_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_regression_suite(process_id: str, suite_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_regression_suite(process_id: str, suite_id: str, db: DbDep, user: AgentTestDep) -> None:
     del user
     repository.delete_regression_suite(db, process_id, suite_id)
 
@@ -40,7 +40,7 @@ def delete_regression_suite(process_id: str, suite_id: str, db: DbDep, user: Edi
     "/regression-suites/{suite_id}/run", response_model=RegressionSuiteRun, status_code=status.HTTP_202_ACCEPTED
 )
 def start_regression_suite_run(
-    process_id: str, suite_id: str, db: DbDep, llm: LLMDep, user: EditorDep, background_tasks: BackgroundTasks
+    process_id: str, suite_id: str, db: DbDep, llm: LLMDep, user: AgentTestDep, background_tasks: BackgroundTasks
 ) -> RegressionSuiteRun:
     """US19.3: same two-step create-then-enqueue handoff as
     app/api/twin.py's/app/api/orchestration.py's `start_run` -- one

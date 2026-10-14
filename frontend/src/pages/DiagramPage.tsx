@@ -9,8 +9,9 @@ import ElementDetailPanel from '../components/ElementDetailPanel'
 import { downloadBlob, downloadText, svgToPngBlob } from '../lib/exportPng'
 
 export default function DiagramPage() {
-  const { user } = useAuth()
-  const isEditor = user?.role === 'editor'
+  const { can } = useAuth()
+  const isEditor = can('process.edit')
+  const canFinalize = can('process.finalize')
   const { processId } = useParams<{ processId: string }>()
   const navigate = useNavigate()
   const canvasRef = useRef<BpmnCanvasHandle>(null)
@@ -237,7 +238,7 @@ export default function DiagramPage() {
           type="button"
           onClick={handleRefreshLayout}
           disabled={refreshingLayout || dirty || !isEditor}
-          title={!isEditor ? 'Editor access required' : 'Re-run auto-layout from the current process data -- discards manual node positions'}
+          title={!isEditor ? 'Process Analyst role required' : 'Re-run auto-layout from the current process data -- discards manual node positions'}
         >
           {refreshingLayout ? 'Refreshing...' : 'Refresh Layout'}
         </button>
@@ -246,8 +247,8 @@ export default function DiagramPage() {
           type="button"
           onClick={handleFinalize}
           className={!dirty ? 'button-primary' : 'button-secondary'}
-          disabled={finalizing || dirty || !isEditor}
-          title={!isEditor ? 'Editor access required' : 'Lock the current draft in as a reviewed as-is baseline'}
+          disabled={finalizing || dirty || !canFinalize}
+          title={!canFinalize ? 'Process Analyst or Process Owner role required' : 'Submit the current draft as a baseline -- a process owner who did not edit it approves it'}
         >
           {finalizing ? 'Finalizing...' : 'Finalize'}
         </button>

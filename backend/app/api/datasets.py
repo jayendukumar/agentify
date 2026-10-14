@@ -24,7 +24,7 @@ from app.schemas.datasets import (
     PromoteRunRequest,
 )
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/datasets", tags=["datasets"])
 
@@ -36,7 +36,7 @@ def _bad_request(exc: Exception) -> HTTPException:
 
 
 @router.post("", response_model=DatasetSummary, status_code=status.HTTP_201_CREATED)
-def create_dataset(process_id: str, body: DatasetCreate, db: DbDep, user: EditorDep) -> DatasetSummary:
+def create_dataset(process_id: str, body: DatasetCreate, db: DbDep, user: AgentTestDep) -> DatasetSummary:
     return service.summarize(db, service.create_dataset(db, process_id, body, created_by=user.id))
 
 
@@ -77,7 +77,7 @@ def list_rows(
 
 
 @router.post("/{dataset_id}/rows", response_model=DatasetSummary)
-def add_rows(process_id: str, dataset_id: str, body: list[DatasetRowInput], db: DbDep, user: EditorDep) -> DatasetSummary:
+def add_rows(process_id: str, dataset_id: str, body: list[DatasetRowInput], db: DbDep, user: AgentTestDep) -> DatasetSummary:
     dataset = service.get_dataset_model(db, process_id, dataset_id)
     try:
         service.add_rows(db, dataset, body, created_by=user.id)
@@ -88,7 +88,7 @@ def add_rows(process_id: str, dataset_id: str, body: list[DatasetRowInput], db: 
 
 @router.patch("/{dataset_id}/rows/{row_key}", response_model=DatasetRow)
 def update_row(
-    process_id: str, dataset_id: str, row_key: str, body: DatasetRowUpdate, db: DbDep, user: EditorDep
+    process_id: str, dataset_id: str, row_key: str, body: DatasetRowUpdate, db: DbDep, user: AgentTestDep
 ) -> DatasetRow:
     """US32.4: correct or confirm a label (recorded with who did it)."""
     dataset = service.get_dataset_model(db, process_id, dataset_id)
@@ -97,7 +97,7 @@ def update_row(
 
 @router.put("/{dataset_id}/rows/{row_key}/ambiguity", response_model=DatasetRow)
 def set_ambiguity(
-    process_id: str, dataset_id: str, row_key: str, body: AmbiguityUpdate, db: DbDep, user: EditorDep
+    process_id: str, dataset_id: str, row_key: str, body: AmbiguityUpdate, db: DbDep, user: AgentTestDep
 ) -> DatasetRow:
     """US32.5."""
     del user
@@ -106,7 +106,7 @@ def set_ambiguity(
 
 
 @router.delete("/{dataset_id}/rows/{row_key}", response_model=DatasetSummary)
-def remove_row(process_id: str, dataset_id: str, row_key: str, db: DbDep, user: EditorDep) -> DatasetSummary:
+def remove_row(process_id: str, dataset_id: str, row_key: str, db: DbDep, user: AgentTestDep) -> DatasetSummary:
     del user
     dataset = service.get_dataset_model(db, process_id, dataset_id)
     service.remove_row(db, dataset, row_key)
@@ -124,7 +124,7 @@ def diff(
 
 
 @router.post("/{dataset_id}/holdout", response_model=DatasetSummary)
-def split_holdout(process_id: str, dataset_id: str, body: HoldoutRequest, db: DbDep, user: EditorDep) -> DatasetSummary:
+def split_holdout(process_id: str, dataset_id: str, body: HoldoutRequest, db: DbDep, user: AgentTestDep) -> DatasetSummary:
     """US32.8."""
     del user
     dataset = service.get_dataset_model(db, process_id, dataset_id)
@@ -133,7 +133,7 @@ def split_holdout(process_id: str, dataset_id: str, body: HoldoutRequest, db: Db
 
 
 @router.post("/{dataset_id}/import/preview", response_model=ImportPreview)
-async def preview_import(process_id: str, dataset_id: str, db: DbDep, user: EditorDep, file: UploadFile = File(...)) -> ImportPreview:
+async def preview_import(process_id: str, dataset_id: str, db: DbDep, user: AgentTestDep, file: UploadFile = File(...)) -> ImportPreview:
     """US32.3, step 1: read the file and suggest a column mapping. Nothing
     is stored."""
     del user
@@ -152,7 +152,7 @@ async def import_rows(
     process_id: str,
     dataset_id: str,
     db: DbDep,
-    user: EditorDep,
+    user: AgentTestDep,
     file: UploadFile = File(...),
     mapping: str = Form(...),
 ) -> ImportResult:
@@ -170,7 +170,7 @@ async def import_rows(
 
 
 @router.post("/{dataset_id}/rows/from-run", response_model=DatasetRow)
-def promote_run(process_id: str, dataset_id: str, body: PromoteRunRequest, db: DbDep, user: EditorDep) -> DatasetRow:
+def promote_run(process_id: str, dataset_id: str, body: PromoteRunRequest, db: DbDep, user: AgentTestDep) -> DatasetRow:
     """US32.7: a failed or surprising run becomes a golden case."""
     dataset = service.get_dataset_model(db, process_id, dataset_id)
     try:

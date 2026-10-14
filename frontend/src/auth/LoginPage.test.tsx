@@ -21,7 +21,10 @@ describe('Login introduction', () => {
     expect(screen.getByRole('img', { name: 'Axyntro' })).toHaveAttribute('src', '/brand/axyntro-horizontal-violet-spark.png')
     fireEvent.click(screen.getByRole('button', { name: 'Skip introduction' }))
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus()
-    fireEvent.change(screen.getByRole('combobox', { name: 'Role' }), { target: { value: 'editor' } })
+    // Epic 37: roles are picked as checkboxes, each with what it allows.
+    fireEvent.click(screen.getByRole('checkbox', { name: /process analyst/i }))
+    expect(screen.getByRole('checkbox', { name: /process analyst/i })).toBeChecked()
     expect(screen.getByText(/upload documents, edit diagrams/i)).toBeInTheDocument()
+    expect(screen.getByText(/not for production/i)).toBeInTheDocument()
   })
 })

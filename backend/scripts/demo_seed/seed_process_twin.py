@@ -48,13 +48,38 @@ def load(name: str) -> Any:
     return json.loads((ARTIFACTS / name).read_text(encoding="utf-8"))
 
 
+# Epic 37, US37.15: the same cast as seed_demo.py. Ana (scoped to Group
+# Finance) maps the process, Olivia approves its baseline, Arjun builds and
+# tests the agents.
+PERSONAS: dict[str, tuple[str, list[str], str | None]] = {
+    "owner": ("Olivia Brandt (Process Owner)", ["process_owner"], None),
+    "architect": ("Arjun Mehta (Automation Architect)", ["architect", "analyst", "approver"], None),
+    "analyst": ("Ana Costa (Process Analyst)", ["analyst"], "finance"),
+}
+
+
 class ProcessTwinSeeder:
     def __init__(self, api: Api, args: argparse.Namespace):
+        self.base_url = api.base_url
         self.api = api
         self.args = args
         self.timeout_s = args.timeout_minutes * 60
         self.ids: dict[str, str] = {}
         self.agents: dict[str, dict[str, Any]] = {}  # node id -> artifact
+        self.personas: dict[str, Api] = {}
+
+    def as_(self, key: str) -> Api:
+        """Signs in (once) as the persona and makes it the acting user."""
+        if key not in self.personas:
+            name, roles, unit = PERSONAS[key]
+            persona = Api(self.base_url)
+            body: dict[str, Any] = {"name": name, "roles": roles}
+            if unit is not None:
+                body["business_unit_id"] = self.ids[unit]
+            persona.post("/api/auth/login", body)
+            self.personas[key] = persona
+        self.api = self.personas[key]
+        return self.api
 
     def pid(self, path: str = "") -> str:
         return f"/api/processes/{self.ids['process']}{path}"
@@ -72,13 +97,13 @@ class ProcessTwinSeeder:
             self.api.get("/healthz", timeout=10)
         except Exception as exc:  # noqa: BLE001 -- any failure means the stack isn't up
             raise SystemExit(f"The API at {self.api.base_url} isn't reachable ({exc}). Start the stack first.")
-        self.api.post("/api/auth/login", {"name": "Demo Presenter", "role": "editor"})
+        self.as_("owner")
         if any(p["name"] == PROCESS_NAME for p in self.api.get("/api/processes")):
             raise SystemExit(f"An '{PROCESS_NAME}' process already exists -- seed an empty demo database "
                              "(.\\start.ps1 -Demo -ResetDemo) or delete it first")
         if not (ARTIFACTS / "04-cases.json").exists():
             raise SystemExit(f"No sample data in {ARTIFACTS} -- run demo-deck/process-twin/generate_data.py first")
-        say(f"logged in to {self.api.base_url} as 'Demo Presenter' (editor)")
+        say(f"signed in to {self.base_url} as the demo cast: " + ", ".join(p[0] for p in PERSONAS.values()))
 
     # -- 1 --
 
@@ -122,6 +147,7 @@ class ProcessTwinSeeder:
 
     def process(self) -> None:
         act("2 -- The as-is process")
+        self.as_("analyst")
         process = self.api.post("/api/processes", {
             "name": PROCESS_NAME,
             "scope": {"business_unit_id": self.ids["finance"], "jurisdictions": ["EU"],
@@ -132,8 +158,11 @@ class ProcessTwinSeeder:
         self.api.post(self.pid("/gap-findings/analyze"))
         for finding in self.api.get(self.pid("/gap-findings"), params={"status": "open"}):
             self.api.post(self.pid(f"/gap-findings/{finding['id']}/dismiss"))
-        self.api.post(self.pid("/finalize"))
-        say(f"process {process['id']}: 12 steps, 4 decision points, 3 endings; finalized")
+        version = self.api.post(self.pid("/finalize"))
+        # Epic 37, US37.4: approved by someone who didn't edit it.
+        self.as_("owner").post(self.pid(f"/versions/{version['id']}/approve"), {"comment": "Matches today's AP process"})
+        say(f"process {process['id']}: 12 steps, 4 decision points, 3 endings; Ana finalized, Olivia approved")
+        self.as_("architect")
 
     # -- 3 --
 
@@ -384,7 +413,7 @@ class ProcessTwinSeeder:
         """--resume: pick up an already-seeded process at the rehearsal (after
         fixing something in the code), reading back what steps 1-7 made."""
         act("Resume")
-        self.api.post("/api/auth/login", {"name": "Demo Presenter", "role": "editor"})
+        self.as_("architect")
         process = next((p for p in self.api.get("/api/processes") if p["name"] == PROCESS_NAME), None)
         if process is None:
             raise SystemExit(f"No '{PROCESS_NAME}' process to resume -- run without --resume first")

@@ -353,8 +353,8 @@ function ReportView({ report, labels }: { report: EfficiencyReport; labels: Reco
  * cases and compare it with how the process runs today. */
 export default function ProcessTwinPage() {
   const { processId } = useParams<{ processId: string }>()
-  const { user } = useAuth()
-  const canEdit = user?.role === 'editor'
+  const { can } = useAuth()
+  const canEdit = can('agent.test')
   const [scenarios, setScenarios] = useState<OrchestrationScenario[]>([])
   const [datasets, setDatasets] = useState<DatasetSummary[]>([])
   const [batches, setBatches] = useState<ProcessTwinBatch[]>([])

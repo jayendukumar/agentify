@@ -45,9 +45,11 @@ $demoDb = 'agentic_solution_generator_demo'
 if ($Demo) {
     $env:APP_DB_NAME = $demoDb
     $env:JOB_CONCURRENCY = '8'
+    $env:APP_ENVIRONMENT = 'demo'
 }
 else {
     Remove-Item Env:APP_DB_NAME, Env:JOB_CONCURRENCY -ErrorAction SilentlyContinue
+    $env:APP_ENVIRONMENT = 'development'
 }
 
 Write-Host 'Starting Agentic Solution Generator...' -ForegroundColor Cyan

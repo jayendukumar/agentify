@@ -32,8 +32,9 @@ function markerClass(verdict: BlueprintVerdict): string {
 type Tab = 'blueprint' | 'agents' | 'twin' | 'twin-orchestrated' | 'twin-runs' | 'orchestration-rehearsal'
 
 export default function BlueprintPage() {
-  const { user } = useAuth()
-  const isEditor = user?.role === 'editor'
+  const { can } = useAuth()
+  const isEditor = can('blueprint.edit')
+  const canBuildAgents = can('agent.build')
   const { processId } = useParams<{ processId: string }>()
 
   const [process, setProcess] = useState<ProcessDetail | null>(null)
@@ -211,7 +212,7 @@ export default function BlueprintPage() {
               onClick={handleGenerate}
               className="button-primary"
               disabled={generating || !isEditor}
-              title={!isEditor ? 'Editor access required' : undefined}
+              title={!isEditor ? 'Automation Architect role required' : undefined}
             >
               {generating ? 'Generating...' : 'Generate Blueprint'}
             </button>
@@ -249,7 +250,7 @@ export default function BlueprintPage() {
           type="button"
           onClick={handleGenerate}
           disabled={generating || !versionXml || !isEditor}
-          title={!isEditor ? 'Editor access required' : undefined}
+          title={!isEditor ? 'Automation Architect role required' : undefined}
         >
           {generating ? 'Regenerating...' : 'Regenerate'}
         </button>
@@ -409,7 +410,7 @@ export default function BlueprintPage() {
           processId={processId}
           onGenerateAgent={() => handleGenerateAgent(selectedNodeId ?? '')}
           generatingAgent={generatingAgentNodeId !== null && generatingAgentNodeId === selectedNodeId}
-          canGenerateAgent={isEditor}
+          canGenerateAgent={canBuildAgents}
         />
       </div>
       </div>
@@ -423,7 +424,7 @@ export default function BlueprintPage() {
           onSelect={setSelectedNodeId}
           onGenerateAgent={handleGenerateAgent}
           generatingNodeId={generatingAgentNodeId}
-          canGenerateAgent={isEditor}
+          canGenerateAgent={canBuildAgents}
           processId={processId}
         />
       )}

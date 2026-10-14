@@ -142,8 +142,8 @@ function RowCard({
 /** Epic 32: labelled datasets -- the golden cases agents are graded on. */
 export default function DatasetsPage() {
   const { processId } = useParams<{ processId: string }>()
-  const { user } = useAuth()
-  const canEdit = user?.role === 'editor'
+  const { can } = useAuth()
+  const canEdit = can('agent.test')
   const [datasets, setDatasets] = useState<DatasetSummary[]>([])
   const [artifacts, setArtifacts] = useState<AgentArtifact[]>([])
   const [selected, setSelected] = useState<string | null>(null)

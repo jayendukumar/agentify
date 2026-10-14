@@ -3,7 +3,7 @@ status (US23.1), the SIMULATION_READY precondition on starting a run
 (US23.3), and the mark-release-candidate/approve actions (US23.4)."""
 
 from .test_api_agents import _automatable_node, _seed_blueprint
-from .test_api_blueprint import _finalize
+from .test_api_blueprint import _finalize, approve_agent_as_other_user
 from .test_api_twin import _scenario_payload
 
 
@@ -89,7 +89,12 @@ def test_mark_release_candidate_and_approve(client):
     assert marked["lifecycle_status"] == "RELEASE_CANDIDATE"
     assert marked["marked_release_candidate_at"] is not None
 
-    approved = client.post(_agent_url(process["id"], f"/agent-artifacts/{artifact['id']}/approve")).json()
+    # Epic 37, US37.4: the builder can't approve their own agent.
+    refused = client.post(_agent_url(process["id"], f"/agent-artifacts/{artifact['id']}/approve"))
+    assert refused.status_code == 403
+    assert "generated the agent definition" in refused.json()["detail"]
+
+    approved = approve_agent_as_other_user(process["id"], artifact["id"])
     assert approved["lifecycle_status"] == "APPROVED"
     assert approved["approved_at"] is not None
     assert approved["approved_by"] is not None

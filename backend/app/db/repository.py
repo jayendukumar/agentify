@@ -29,6 +29,7 @@ from app.datasets.runtime import apply_dataset_row
 from app.datasets.service import row_at
 from app.context.consumers import apply_agent_context
 from app.context.resolver import is_pack_stale
+from app.auth import sod
 from app.ids import new_id, utcnow
 from app.ingestion.embeddings import embed_texts
 from app.ingestion.extractors import ExtractedBlock
@@ -114,6 +115,7 @@ from .models import (
     TwinScenarioModel,
     TwinToolSchemaModel,
     UserModel,
+    UserRoleModel,
     VersionModel,
 )
 
@@ -363,8 +365,18 @@ def get_draft_bpmn(session: Session, process_id: str) -> BPMNDraftModel | None:
 
 
 def set_draft_bpmn(
-    session: Session, process_id: str, xml: str, low_confidence_element_ids: list[str]
+    session: Session,
+    process_id: str,
+    xml: str,
+    low_confidence_element_ids: list[str],
+    *,
+    changed_by: str | None,
+    action: str,
 ) -> BPMNDraftModel:
+    """Every draft write is a high-risk process contribution (Epic 37,
+    US37.3/US37.4): it is recorded against `changed_by` and supersedes any
+    baseline still awaiting approval. `action` names how it changed (see
+    app/auth/sod.py's HIGH_RISK_ACTIONS)."""
     get_process(session, process_id)  # 404s if missing
     draft = session.get(BPMNDraftModel, process_id)
     if draft is None:
@@ -375,6 +387,9 @@ def set_draft_bpmn(
         draft.low_confidence_element_ids = low_confidence_element_ids
         draft.generated_at = utcnow()
     session.flush()
+    sod.record_contribution(
+        session, object_type="process", object_id=process_id, process_id=process_id, actor_id=changed_by, action=action
+    )
     return draft
 
 
@@ -473,14 +488,29 @@ def _to_pydantic_version(session: Session, version: VersionModel) -> VersionDeta
         xml=version.xml,
         created_by=version.created_by,
         created_by_name=_resolve_user_name(session, version.created_by),
+        status=version.status,
+        decided_at=version.decided_at,
+        decided_by=version.decided_by,
+        decided_by_name=_resolve_user_name(session, version.decided_by),
     )
 
 
 def add_version(
     session: Session, process_id: str, xml: str, label: str | None = None, created_by: str | None = None
 ) -> VersionDetail:
+    """Epic 37, US37.4: a new version awaits an independent process
+    owner's approval; it replaces any earlier version still waiting."""
     get_process(session, process_id)  # 404s if missing
-    version = VersionModel(id=new_id("ver"), process_id=process_id, label=label, xml=xml, created_by=created_by)
+    sod.supersede_pending(session, process_id)
+    version = VersionModel(
+        id=new_id("ver"),
+        process_id=process_id,
+        label=label,
+        xml=xml,
+        created_by=created_by,
+        status="pending_approval",
+        contribution_seq=sod.finalize_seq(session, process_id),
+    )
     session.add(version)
     session.flush()
     return _to_pydantic_version(session, version)
@@ -502,8 +532,18 @@ def get_version(session: Session, process_id: str, version_id: str) -> VersionDe
 
 
 def get_latest_version(session: Session, process_id: str) -> VersionDetail | None:
-    versions = list_versions(session, process_id)
-    return versions[-1] if versions else None
+    """The current baseline: the latest *approved* version (Epic 37,
+    US37.4). Blueprint evaluation, agent generation and decision rules all
+    read it, so a baseline awaiting approval changes nothing downstream."""
+    approved = [v for v in list_versions(session, process_id) if v.status == "approved"]
+    return approved[-1] if approved else None
+
+
+def get_version_model(session: Session, process_id: str, version_id: str) -> VersionModel:
+    version = session.get(VersionModel, version_id)
+    if version is None or version.process_id != process_id:
+        raise NotFoundError("version", version_id)
+    return version
 
 
 # -- blueprint overlay (Epic 7, US7.6/US7.7) ----------------------------------
@@ -716,6 +756,7 @@ def generate_agent_artifact(
             AgentArtifactModel.process_id == process_id, AgentArtifactModel.group_key == group_key
         )
     )
+    regenerating = artifact is not None
     if artifact is None:
         artifact = AgentArtifactModel(
             id=new_id("agent"),
@@ -745,8 +786,14 @@ def generate_agent_artifact(
         # Epic 19, US19.5: every regenerate of an existing row is a new
         # version to key runs/suites/comparisons against.
         artifact.version += 1
+    action = "regenerated" if regenerating else "generated"
 
     session.flush()
+    # Epic 37, US37.4: high-risk -- clears any approval of the old definition.
+    sod.record_contribution(
+        session, object_type="agent", object_id=artifact.id, process_id=process_id, actor_id=generated_by,
+        action=action, detail={"version": artifact.version},
+    )
     return _to_pydantic_agent_artifact(session, artifact, is_stale=False)
 
 
@@ -799,7 +846,7 @@ def _with_system_defaults(current: AgentDefinition, update: AgentGovernanceUpdat
 
 
 def update_agent_governance(
-    session: Session, process_id: str, artifact_id: str, update: AgentGovernanceUpdate
+    session: Session, process_id: str, artifact_id: str, update: AgentGovernanceUpdate, *, changed_by: str | None
 ) -> AgentArtifact:
     """Epic 20, US20.1: lets an Automation Architect widen/narrow an
     already-generated artifact's governance fields (permissions,
@@ -826,6 +873,11 @@ def update_agent_governance(
     definition = AgentDefinition.model_validate({**artifact.definition, **updated_fields})
     artifact.definition = definition.model_dump()
     session.flush()
+    # Epic 37, US37.4: an edited definition needs a fresh approval, however small.
+    sod.record_contribution(
+        session, object_type="agent", object_id=artifact.id, process_id=process_id, actor_id=changed_by,
+        action="governance_edited", detail={"fields": sorted(update.model_dump(exclude_unset=True))},
+    )
 
     overlay_model = session.get(BlueprintOverlayModel, process_id)
     return _to_pydantic_agent_artifact(
@@ -844,12 +896,13 @@ def mark_agent_release_candidate(session: Session, process_id: str, artifact_id:
 
 
 def approve_agent_artifact(
-    session: Session, process_id: str, artifact_id: str, *, approved_by: str | None = None
+    session: Session, process_id: str, artifact_id: str, *, approver: UserModel, comment: str | None = None
 ) -> AgentArtifact:
+    """Epic 37, US37.4/US37.5: one approval of the current change set; the
+    agent reaches APPROVED once enough independent approvers agree. Raises
+    sod.SegregationOfDutiesError / sod.ApprovalStateError."""
     artifact = get_agent_artifact(session, process_id, artifact_id)
-    artifact.approved_at = utcnow()
-    artifact.approved_by = approved_by
-    session.flush()
+    sod.approve_agent(session, artifact, approver, comment=comment)
     overlay_model = session.get(BlueprintOverlayModel, process_id)
     return _to_pydantic_agent_artifact(session, artifact, is_stale=_is_agent_artifact_stale(overlay_model, artifact))
 
@@ -2396,17 +2449,48 @@ def mark_gap_analysis_completed(session: Session, process_id: str) -> None:
 # -- auth (Epic 9/10, US9.9/US10.4) --------------------------------------------
 
 
-def get_or_create_user(session: Session, *, name: str, role: str) -> UserModel:
-    """Create or reuse a local-team user, applying the selected login role."""
-    existing = session.scalar(select(UserModel).where(UserModel.name == name))
-    if existing is not None:
-        existing.role = role
+def get_or_create_user(session: Session, *, name: str, roles: list[tuple[str, str, str]]) -> UserModel:
+    """Local sign-in (Epic 37, US37.14: never in production): create or reuse
+    a user and replace their locally-picked role grants with `roles`
+    ((role, scope_type, scope_id) triples). Admin-granted roles are kept."""
+    user = session.scalar(select(UserModel).where(UserModel.name == name))
+    if user is None:
+        user = UserModel(id=new_id("user"), name=name)
+        session.add(user)
         session.flush()
-        return existing
-    user = UserModel(id=new_id("user"), name=name, role=role)
-    session.add(user)
-    session.flush()
+    _replace_roles(session, user, roles, source="local")
     return user
+
+
+def _replace_roles(
+    session: Session, user: UserModel, roles: list[tuple[str, str, str]], *, source: str, granted_by: str | None = None
+) -> None:
+    for row in [r for r in user.roles if r.source == source]:
+        user.roles.remove(row)
+    session.flush()
+    held = {(r.role, r.scope_type, r.scope_id) for r in user.roles}
+    for role, scope_type, scope_id in dict.fromkeys(roles):
+        if (role, scope_type, scope_id) not in held:
+            user.roles.append(
+                UserRoleModel(role=role, scope_type=scope_type, scope_id=scope_id, source=source, granted_by=granted_by)
+            )
+    session.flush()
+
+
+def set_admin_roles(
+    session: Session, user: UserModel, roles: list[tuple[str, str, str]], *, granted_by: str
+) -> UserModel:
+    """Epic 37, US37.1: an admin replaces every grant a user holds. Grants
+    an IdP group mapping will own (US37.11) are out of scope here."""
+    for row in list(user.roles):
+        user.roles.remove(row)
+    session.flush()
+    _replace_roles(session, user, roles, source="admin", granted_by=granted_by)
+    return user
+
+
+def list_users(session: Session) -> list[UserModel]:
+    return list(session.scalars(select(UserModel).order_by(UserModel.name)))
 
 
 def create_session(session: Session, user_id: str, *, ttl_days: int = 30) -> SessionModel:

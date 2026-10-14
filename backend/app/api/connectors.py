@@ -19,7 +19,7 @@ from app.db.models import ConnectorModel, ConnectorRunModel, JobModel
 from app.ids import new_id
 from app.jobs import queue
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import CurrentUserDep, DbDep, OrgAdminDep
 
 router = APIRouter(prefix="/api/organization/connectors", tags=["connectors"])
 
@@ -102,7 +102,7 @@ def list_connectors(db: DbDep, user: CurrentUserDep) -> list[Connector]:
 
 
 @router.post("", response_model=Connector, status_code=status.HTTP_201_CREATED)
-def create_connector(body: ConnectorConfig, db: DbDep, user: EditorDep) -> Connector:
+def create_connector(body: ConnectorConfig, db: DbDep, user: OrgAdminDep) -> Connector:
     _validate(body)
     owner = context_access.owner_for_new(context_access.access_for(db, user), body.owner_business_unit_id)
     if db.scalar(select(ConnectorModel).where(ConnectorModel.name == body.name)) is not None:
@@ -123,7 +123,7 @@ def create_connector(body: ConnectorConfig, db: DbDep, user: EditorDep) -> Conne
 
 
 @router.put("/{connector_id}", response_model=Connector)
-def update_connector(connector_id: str, body: ConnectorConfig, db: DbDep, user: EditorDep) -> Connector:
+def update_connector(connector_id: str, body: ConnectorConfig, db: DbDep, user: OrgAdminDep) -> Connector:
     _validate(body)
     connector = _get(db, connector_id)
     access = context_access.access_for(db, user)
@@ -139,7 +139,7 @@ def update_connector(connector_id: str, body: ConnectorConfig, db: DbDep, user: 
 
 
 @router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_connector(connector_id: str, db: DbDep, user: EditorDep) -> None:
+def delete_connector(connector_id: str, db: DbDep, user: OrgAdminDep) -> None:
     """Deleting a connector keeps what it synced (as ordinary context with
     its connector source) -- removing context is a separate decision."""
     connector = _get(db, connector_id)
@@ -151,7 +151,7 @@ def delete_connector(connector_id: str, db: DbDep, user: EditorDep) -> None:
 
 
 @router.post("/{connector_id}/sync", response_model=SyncStarted)
-async def sync_now(connector_id: str, db: DbDep, user: EditorDep) -> SyncStarted:
+async def sync_now(connector_id: str, db: DbDep, user: OrgAdminDep) -> SyncStarted:
     """Queued when the job worker runs; otherwise synced in this request."""
     connector = _get(db, connector_id)
     record(db, actor_type="connector", actor=connector.name, action="sync_requested", detail=f"by {user.id}")

@@ -83,8 +83,8 @@ function kitName(agentName: string): string {
 }
 
 export default function TwinTestBuilder({ processId, groups }: { processId: string; groups: AgentGroup[] }) {
-  const { user } = useAuth()
-  const canEdit = user?.role === 'editor'
+  const { can } = useAuth()
+  const canEdit = can('agent.test')
   const artifacts = useMemo(
     () => groups.map((g) => g.artifact).filter((a): a is AgentArtifact => a !== null),
     [groups],

@@ -87,6 +87,12 @@ import type {
   RegressionSuiteRun,
   ReviewerPersona,
   Role,
+  RoleGrant,
+  ApprovalStatus,
+  AuditEvent,
+  AuditFilters,
+  AuthConfig,
+  GovernanceSettings,
   RunComparison,
   RunSnapshotView,
   Situation,
@@ -170,8 +176,74 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function login(name: string, role: Role = 'viewer'): Promise<User> {
-  return request('/api/auth/login', { method: 'POST', body: JSON.stringify({ name, role }) })
+export function login(name: string, roles: Role[] = [], businessUnitId?: string | null): Promise<User> {
+  return request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ name, roles, business_unit_id: businessUnitId || null }),
+  })
+}
+
+export function getAuthConfig(): Promise<AuthConfig> {
+  return request('/api/auth/config')
+}
+
+// -- Epic 37: approvals, users, audit, approval policy --------------------------
+
+export function getVersionApproval(processId: string, versionId: string): Promise<ApprovalStatus> {
+  return request(`/api/processes/${processId}/versions/${versionId}/approval`)
+}
+
+export function approveVersion(processId: string, versionId: string, comment?: string): Promise<VersionSummary> {
+  return request(`/api/processes/${processId}/versions/${versionId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ comment: comment || null }),
+  })
+}
+
+export function rejectVersion(processId: string, versionId: string, comment?: string): Promise<VersionSummary> {
+  return request(`/api/processes/${processId}/versions/${versionId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ comment: comment || null }),
+  })
+}
+
+export function getAgentApproval(processId: string, artifactId: string): Promise<ApprovalStatus> {
+  return request(`/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/approval`)
+}
+
+export function listUsers(): Promise<User[]> {
+  return request('/api/users')
+}
+
+export function setUserRoles(userId: string, roles: RoleGrant[]): Promise<User> {
+  return request(`/api/users/${userId}/roles`, { method: 'PUT', body: JSON.stringify({ roles }) })
+}
+
+export function setUserActive(userId: string, active: boolean): Promise<User> {
+  return request(`/api/users/${userId}/${active ? 'activate' : 'deactivate'}`, { method: 'POST' })
+}
+
+function auditQuery(filters: AuditFilters): string {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value)
+  const query = params.toString()
+  return query ? `?${query}` : ''
+}
+
+export function listAuditEvents(filters: AuditFilters = {}): Promise<AuditEvent[]> {
+  return request(`/api/audit-events${auditQuery(filters)}`)
+}
+
+export function auditExportUrl(filters: AuditFilters = {}): string {
+  return `${API_BASE_URL}/api/audit-events/export${auditQuery(filters)}`
+}
+
+export function getGovernanceSettings(): Promise<GovernanceSettings> {
+  return request('/api/organization/governance')
+}
+
+export function setGovernanceSettings(settings: GovernanceSettings): Promise<GovernanceSettings> {
+  return request('/api/organization/governance', { method: 'PUT', body: JSON.stringify(settings) })
 }
 
 export function logout(): Promise<void> {
@@ -271,8 +343,11 @@ export function markAgentReleaseCandidate(processId: string, artifactId: string)
   })
 }
 
-export function approveAgentArtifact(processId: string, artifactId: string): Promise<AgentArtifact> {
-  return request(`/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/approve`, { method: 'POST' })
+export function approveAgentArtifact(processId: string, artifactId: string, comment?: string): Promise<AgentArtifact> {
+  return request(`/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ comment: comment || null }),
+  })
 }
 
 // Not JSON (returns text/markdown), so this bypasses the request() helper.

@@ -1,8 +1,11 @@
+from collections.abc import Callable, Iterator
 from typing import Annotated
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.auth import audit, sod
+from app.auth.permissions import Permission, has_permission, missing_permission_message
 from app.db import repository
 from app.db.models import UserModel
 from app.db.session import get_db
@@ -31,7 +34,7 @@ def get_current_user(
     if asg_session is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Not logged in")
     user = repository.get_user_for_session(db, asg_session)
-    if user is None:
+    if user is None or not user.active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Session expired or invalid -- log in again")
     return user
 
@@ -39,10 +42,72 @@ def get_current_user(
 CurrentUserDep = Annotated[UserModel, Depends(get_current_user)]
 
 
-def require_editor(user: CurrentUserDep) -> UserModel:
-    if user.role != "editor":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="This action requires editor access")
-    return user
+# Epic 37, US37.2: every write route declares the permission it needs. The
+# guard checks it against the route's process (its business unit scope),
+# and after the route succeeds records the audit event (US37.6) and, for
+# edits to a process or an agent, a standard-tier contribution (US37.3)
+# unless the route already recorded a more specific one. Scoped "function"
+# so this runs before DbDep commits and before the response is sent.
+_CONTRIBUTING: frozenset[Permission] = frozenset(
+    {
+        Permission.PROCESS_EDIT,
+        Permission.AGENT_BUILD,
+        Permission.AGENT_TEST,
+        Permission.AGENT_RELEASE_CANDIDATE,
+        Permission.RELEASE_CRITERIA_SET,
+    }
+)
 
 
-EditorDep = Annotated[UserModel, Depends(require_editor)]
+def require(permission: Permission) -> Callable[..., Iterator[UserModel]]:
+    def guard(request: Request, db: DbDep, user: CurrentUserDep) -> Iterator[UserModel]:
+        params = dict(request.path_params)
+        process_id = params.get("process_id")
+        object_type, object_id = audit.target_of(params)
+        action = getattr(request.scope.get("endpoint"), "__name__", request.url.path)
+        if not has_permission(db, user, permission, process_id=process_id):
+            reason = missing_permission_message(permission)
+            audit.record_refusal(
+                actor=user, action=action, reason=reason, object_type=object_type, object_id=object_id,
+                process_id=process_id, request=request, detail={"permission": permission.value},
+            )
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail=reason)
+        yield user
+        audit.record(
+            db, actor=user, action=action, object_type=object_type, object_id=object_id, process_id=process_id,
+            request=request, detail={"permission": permission.value, "path": params},
+        )
+        # A dataset or environment edit isn't a change to the process itself.
+        contributes = object_type == "agent" or (object_type == "process" and permission is Permission.PROCESS_EDIT)
+        if permission in _CONTRIBUTING and contributes and object_id:
+            if not sod.already_recorded(db, object_type, object_id):
+                sod.record_contribution(
+                    db, object_type=object_type, object_id=object_id, process_id=process_id,
+                    actor_id=user.id, action=action,
+                )
+
+    guard.required_permission = permission  # read by the route-guard completeness test
+    return guard
+
+
+def _dep(permission: Permission):
+    return Annotated[UserModel, Depends(require(permission), scope="function")]
+
+
+ProcessEditDep = _dep(Permission.PROCESS_EDIT)
+ProcessFinalizeDep = _dep(Permission.PROCESS_FINALIZE)
+ProcessApproveDep = _dep(Permission.PROCESS_APPROVE)
+ProcessDeleteDep = _dep(Permission.PROCESS_DELETE)
+BlueprintEditDep = _dep(Permission.BLUEPRINT_EDIT)
+AgentBuildDep = _dep(Permission.AGENT_BUILD)
+AgentTestDep = _dep(Permission.AGENT_TEST)
+AgentReleaseCandidateDep = _dep(Permission.AGENT_RELEASE_CANDIDATE)
+AgentApproveDep = _dep(Permission.AGENT_APPROVE)
+ReleaseCriteriaDep = _dep(Permission.RELEASE_CRITERIA_SET)
+AgentPublishDep = _dep(Permission.AGENT_PUBLISH)
+ContextEditDep = _dep(Permission.CONTEXT_EDIT)
+ContextConfirmDep = _dep(Permission.CONTEXT_CONFIRM)
+CatalogEditDep = _dep(Permission.CATALOG_EDIT)
+OrgAdminDep = _dep(Permission.ORG_ADMIN)
+UsersManageDep = _dep(Permission.USERS_MANAGE)
+AuditReadDep = _dep(Permission.AUDIT_READ)

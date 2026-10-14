@@ -181,7 +181,7 @@ export default function GovernancePanel({
           <tbody>
             {members.map((member) => (
               <tr key={member.user_id}>
-                <td>{member.name} <span className="meta">({member.role}{member.memberships.length === 0 ? ', all units' : ''})</span></td>
+                <td>{member.name} <span className="meta">({member.roles.length ? member.roles.join(', ') : 'read only'}{member.memberships.length === 0 ? ', all units' : ''})</span></td>
                 {businessUnits.map((unit) => {
                   const m = member.memberships.find((x) => x.business_unit_id === unit.id)
                   return (

@@ -276,12 +276,41 @@ def wait_for(check, *, what: str, timeout_s: float, every_s: float = 5.0) -> Any
 # ---- seeding --------------------------------------------------------------
 
 
+# Epic 37, US37.15: the demo is performed by people in distinct roles, so
+# segregation of duties is visible: nobody approves what they changed.
+# Arjun is an architect *and* an approver -- he can approve others' agents,
+# not his own (the scripted "approve button shows why" moment).
+PERSONAS: dict[str, tuple[str, list[str], str | None]] = {
+    "admin": ("Sam Okafor (Admin)", ["admin"], None),
+    "owner": ("Olivia Brandt (Process Owner)", ["process_owner"], None),
+    "auditor": ("Morgan Reyes (Auditor)", ["auditor"], None),
+    "architect": ("Arjun Mehta (Automation Architect)", ["architect", "analyst", "approver"], None),
+    "analyst": ("Ana Costa (Process Analyst)", ["analyst"], "retail"),
+    "approver": ("Avery Lindqvist (Approver)", ["approver"], "retail"),
+}
+
+
 class Seeder:
     def __init__(self, api: Api, args: argparse.Namespace):
+        self.base_url = api.base_url
         self.api = api
         self.args = args
         self.timeout_s = args.timeout_minutes * 60
         self.ids: dict[str, str] = {}
+        self.personas: dict[str, Api] = {}
+
+    def as_(self, key: str) -> Api:
+        """Signs in (once) as the persona and makes it the acting user."""
+        if key not in self.personas:
+            name, roles, unit = PERSONAS[key]
+            persona = Api(self.base_url)
+            body: dict[str, Any] = {"name": name, "roles": roles}
+            if unit is not None:
+                body["business_unit_id"] = self.ids[unit]
+            persona.post("/api/auth/login", body)
+            self.personas[key] = persona
+        self.api = self.personas[key]
+        return self.api
 
     # -- helpers --
 
@@ -305,8 +334,10 @@ class Seeder:
             self.api.get("/healthz", timeout=10)
         except (urllib.error.URLError, ApiError, OSError) as exc:
             raise SystemExit(f"The API at {self.api.base_url} isn't reachable ({exc}). Start the stack first.")
-        self.api.post("/api/auth/login", {"name": "Demo Presenter", "role": "editor"})
-        say(f"logged in to {self.api.base_url} as 'Demo Presenter' (editor)")
+        self.as_("admin")
+        self.as_("auditor")
+        self.as_("owner")
+        say(f"signed in to {self.base_url}; the demo cast: " + ", ".join(p[0] for p in PERSONAS.values()))
         existing = [p for p in self.api.get("/api/processes") if p["name"] == PROCESS_NAME]
         if existing:
             raise SystemExit(
@@ -318,6 +349,7 @@ class Seeder:
 
     def organization(self) -> None:
         act("Act 1 -- Organization context (Epic 27)")
+        self.as_("owner")
         result = self.api.post(
             "/api/organization/profile",
             {
@@ -387,6 +419,7 @@ class Seeder:
 
     def catalog(self) -> None:
         act("Act 3 -- Application & data catalog (Epic 29)")
+        self.as_("architect")
         csv_file = {"file": _file("applications.csv", "text/csv")}
         preview = self.api.request("POST", "/api/organization/applications/import", files=csv_file, params={"dry_run": "true"})
         self.api.request("POST", "/api/organization/applications/import", files=csv_file, params={"dry_run": "false"})
@@ -437,6 +470,7 @@ class Seeder:
 
     def process(self) -> None:
         act("Process -- Customer Onboarding (curated diagram)")
+        self.as_("analyst")
         process = self.api.post("/api/processes", {
             "name": PROCESS_NAME,
             "scope": {"business_unit_id": self.ids["retail"], "jurisdictions": ["DE"],
@@ -448,13 +482,18 @@ class Seeder:
         self.api.post(self.pid("/gap-findings/analyze"))
         for finding in self.api.get(self.pid("/gap-findings"), params={"status": "open"}):
             self.api.post(self.pid(f"/gap-findings/{finding['id']}/dismiss"))
-        self.api.post(self.pid("/finalize"))
-        say(f"process {process['id']} scoped to Retail Banking / DE (EU rules apply via the hierarchy); finalized")
+        version = self.api.post(self.pid("/finalize"))
+        say(f"process {process['id']} scoped to Retail Banking / DE (EU rules apply via the hierarchy); "
+            "Ana finalized it")
+        # Epic 37, US37.4: the baseline counts once someone who didn't edit it approves.
+        self.as_("owner").post(self.pid(f"/versions/{version['id']}/approve"), {"comment": "Reviewed with operations"})
+        say("Olivia (process owner) approved the baseline")
 
     # -- Act 2: blueprint and agent (Epic 28) --
 
     def blueprint_and_agent(self) -> None:
         act("Act 2 -- Context-aware blueprint and agent (Epic 28)")
+        self.as_("architect")
         node = None
         for attempt in (1, 2):
             say(f"generating blueprint (LLM, attempt {attempt})...")
@@ -495,6 +534,7 @@ class Seeder:
 
     def dataset(self) -> None:
         act("Act 5 -- Labelled dataset and oracles (Epics 32-33)")
+        self.as_("architect")
         dataset = self.api.post(self.pid("/datasets"), {
             "name": "Credit limit decisions -- golden set",
             "description": "Expert edge cases, pseudonymized 2025 history, and rule-labelled generated cases.",
@@ -653,6 +693,7 @@ class Seeder:
 
     def new_agent_version(self) -> None:
         act("Agent v2")
+        self.as_("architect")
         artifact = self.api.post(self.pid(f"/blueprint/nodes/{AGENT_NODE_ID}/agent-artifact"))
         say(f"regenerated the credit-limit agent: now v{artifact['version']}")
 
@@ -691,7 +732,7 @@ class Seeder:
             return
         self.ids["batch_v2"] = self.batch("v2 correctness batch", trials=self.args.trials)["id"]
         agent = self.ids["agent"]
-        self.api.put(self.pid(f"/agent-artifacts/{agent}/release-criteria"), {
+        self.as_("approver").put(self.pid(f"/agent-artifacts/{agent}/release-criteria"), {
             "min_pass_rate_lower": 0.85, "min_segment_rate": 0.7, "critical_must_pass": True,
             "no_significant_regression": True, "tiers": ["regression", "full"],
         })
@@ -704,13 +745,26 @@ class Seeder:
         say(f"release gate: {'PASSES' if gate['passed'] else 'BLOCKS'}")
         for reason in gate["reasons"]:
             say(f"    {reason}")
+        self.approve_agent()
 
     # -- Epic 31 extras --
 
+    def approve_agent(self) -> None:
+        """Epic 37, US37.4: Arjun built the agent, so his approval is refused
+        even though he holds the approver role; Avery approves it."""
+        agent = self.ids["agent"]
+        status = self.as_("architect").get(self.pid(f"/blueprint/agent-artifacts/{agent}/approval"))
+        say(f"Arjun can't approve his own agent: {status['reason']}")
+        self.as_("approver").post(self.pid(f"/blueprint/agent-artifacts/{agent}/approve"),
+                                  {"comment": "Approved for pilot"})
+        say("Avery (approver) approved the agent release")
+
     def federation(self) -> None:
         act("Federation and connectors (Epic 31)")
-        analyst = Api(self.api.base_url)
-        user = analyst.post("/api/auth/login", {"name": "Wealth Management Analyst", "role": "editor"})
+        self.as_("admin")
+        analyst = Api(self.base_url)
+        user = analyst.post("/api/auth/login", {"name": "Wealth Management Analyst", "roles": ["analyst"],
+                                                "business_unit_id": self.ids["wealth"]})
         self.api.put(f"/api/organization/members/{user['id']}",
                      [{"business_unit_id": self.ids["wealth"], "steward": True}])
         say("'Wealth Management Analyst' sees and stewards only Wealth Management and group-wide context")
@@ -740,7 +794,8 @@ class Seeder:
         act("Done")
         say(f"seeded in {(time.monotonic() - started) / 60:.0f} min")
         say(f"process: {self.ids['process']}  agent: {self.ids['agent']}  dataset: {self.ids['dataset']}")
-        say("open the app, log in as 'Demo Presenter' (editor), and start at Organization")
+        say("open the app and sign in as one of the cast (same name, same roles) -- e.g. Olivia to start at "
+            "Organization, Arjun to see why he can't approve his own agent, Morgan to read the audit log")
         say("for a live 'policy changed' moment, upload assets/credit-limit-policy-update.txt as ONB-01: "
             "it raises the Head of Operations limit, so it arrives flagged as relaxing a rule")
 

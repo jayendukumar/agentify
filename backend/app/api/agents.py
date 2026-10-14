@@ -1,17 +1,20 @@
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from app.agents.generation import AgentGenerationError
+from app.auth import audit, sod
+from app.auth.views import agent_approval_status
 from app.context.compliance import ComplianceEvidence, compliance_evidence, evidence_markdown, unevidenced_controls
 from app.db import repository
 from app.schemas.agents import AgentArtifact, AgentGovernanceUpdate
+from app.schemas.governance import ApprovalDecision, ApprovalStatus
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import AgentApproveDep, AgentBuildDep, AgentReleaseCandidateDep, CurrentUserDep, DbDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/blueprint", tags=["agents"])
 
 
 @router.post("/nodes/{node_id}/agent-artifact", response_model=AgentArtifact)
-def generate_agent_artifact(process_id: str, node_id: str, db: DbDep, user: EditorDep) -> AgentArtifact:
+def generate_agent_artifact(process_id: str, node_id: str, db: DbDep, user: AgentBuildDep) -> AgentArtifact:
     repository.get_process(db, process_id)  # 404s if missing
     try:
         return repository.generate_agent_artifact(db, process_id, node_id, generated_by=user.id)
@@ -27,18 +30,17 @@ def list_agent_artifacts(process_id: str, db: DbDep, user: CurrentUserDep) -> li
 
 @router.patch("/agent-artifacts/{artifact_id}/governance", response_model=AgentArtifact)
 def update_agent_governance(
-    process_id: str, artifact_id: str, update: AgentGovernanceUpdate, db: DbDep, user: EditorDep
+    process_id: str, artifact_id: str, update: AgentGovernanceUpdate, db: DbDep, user: AgentBuildDep
 ) -> AgentArtifact:
     """Epic 20, US20.1: editor-only, same tier as generate/publish (Epic
     15's US15.6 precedent) -- widening an agent's declared permissions is
     at least as consequential as publishing it."""
-    del user
     repository.get_process(db, process_id)  # 404s if missing
-    return repository.update_agent_governance(db, process_id, artifact_id, update)
+    return repository.update_agent_governance(db, process_id, artifact_id, update, changed_by=user.id)
 
 
 @router.post("/agent-artifacts/{artifact_id}/mark-release-candidate", response_model=AgentArtifact)
-def mark_agent_release_candidate(process_id: str, artifact_id: str, db: DbDep, user: EditorDep) -> AgentArtifact:
+def mark_agent_release_candidate(process_id: str, artifact_id: str, db: DbDep, user: AgentReleaseCandidateDep) -> AgentArtifact:
     """Epic 23, US23.4: editor-only, same tier as governance/publish.
 
     Epic 30, US30.6: refused while any applicable, testable control lacks a
@@ -95,7 +97,35 @@ def export_compliance_evidence(
     )
 
 
+@router.get("/agent-artifacts/{artifact_id}/approval", response_model=ApprovalStatus)
+def get_agent_approval(process_id: str, artifact_id: str, db: DbDep, user: CurrentUserDep) -> ApprovalStatus:
+    """Epic 37, US37.3/US37.4: who changed this version, who approved it,
+    and whether the signed-in user may approve it (and if not, why)."""
+    return agent_approval_status(db, repository.get_agent_artifact(db, process_id, artifact_id), user)
+
+
 @router.post("/agent-artifacts/{artifact_id}/approve", response_model=AgentArtifact)
-def approve_agent_artifact(process_id: str, artifact_id: str, db: DbDep, user: EditorDep) -> AgentArtifact:
+def approve_agent_artifact(
+    process_id: str,
+    artifact_id: str,
+    db: DbDep,
+    request: Request,
+    user: AgentApproveDep,
+    body: ApprovalDecision | None = None,
+) -> AgentArtifact:
+    """Epic 37, US37.4/US37.5: refused for anyone who made a high-risk
+    change to this agent since its last approval; APPROVED once the
+    required number of independent approvers have approved."""
     repository.get_process(db, process_id)  # 404s if missing
-    return repository.approve_agent_artifact(db, process_id, artifact_id, approved_by=user.id)
+    try:
+        return repository.approve_agent_artifact(
+            db, process_id, artifact_id, approver=user, comment=body.comment if body else None
+        )
+    except sod.SegregationOfDutiesError as exc:
+        audit.record_refusal(
+            actor=user, action="approve_agent_artifact", reason=str(exc), object_type="agent", object_id=artifact_id,
+            process_id=process_id, request=request,
+        )
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except sod.ApprovalStateError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc

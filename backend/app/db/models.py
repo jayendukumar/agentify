@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, ForeignKey, Index, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, ForeignKey, Identity, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -271,6 +271,15 @@ class VersionModel(Base):
     # Epic 9/10, US9.9: who finalized this version -- nullable since older
     # rows (and any future non-interactive finalize path) may have none.
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Epic 37, US37.4: finalize submits a baseline; only an independent
+    # process owner's approval makes it the one everything downstream uses.
+    # pending_approval | approved | rejected | superseded. Rows that predate
+    # Epic 37 are grandfathered as approved (server default).
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending_approval", server_default="approved")
+    # The last process contribution this version contains (app/auth/sod.py).
+    contribution_seq: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     process: Mapped[ProcessModel] = relationship(back_populates="versions")
 
@@ -338,22 +347,107 @@ class GapFindingModel(Base):
 
 
 class UserModel(Base):
-    """Epic 9/10, US9.9/US10.4: a lightweight named-user model -- no
-    password, "log in" means selecting a name and role. Each login updates
-    the user's role, which also applies to their existing sessions. This
-    role selector is for trusted local-team use (see app/api/auth.py).
-    Deliberately not a dead end: a real SSO login would
-    only replace this table's population + app/api/auth.py's login
-    endpoint, not the SessionModel/CurrentUserDep/EditorDep plumbing every
-    other route already depends on.
+    """Epic 9/10, US9.9/US10.4: a named user. In AUTH_MODE=local (Epic 37,
+    US37.14: never in production) "log in" means typing a name and picking
+    roles; SSO (US37.7+) will only change how rows get here. What a user may
+    do is their UserRoleModel grants, not a column on this table (US37.1).
     """
 
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    role: Mapped[str] = mapped_column(String, nullable=False)
+    # Epic 37: `service` is reserved for backlog B4 (service accounts) so the
+    # audit trail and contributions never need a schema change for them.
+    actor_type: Mapped[str] = mapped_column(String, nullable=False, default="user", server_default="user")
+    # US37.10/US37.13: a deactivated user keeps their history but can't sign in.
+    active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    roles: Mapped[list["UserRoleModel"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+
+
+class UserRoleModel(Base):
+    """Epic 37, US37.1: one role grant at one scope. `scope_type` is
+    `organization` (scope_id "") or `business_unit` (a context entity id).
+    A `process` scope is deliberately left open: permission checks walk a
+    process's scope chain (app/auth/permissions.py), so adding it means
+    accepting one more value here, not changing any route guard."""
+
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String, primary_key=True)
+    scope_type: Mapped[str] = mapped_column(String, primary_key=True, default="organization")
+    scope_id: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    # local (picked at local sign-in) | admin (granted on the Users page);
+    # US37.11 adds `group` for IdP group mappings.
+    source: Mapped[str] = mapped_column(String, nullable=False, default="local")
+    granted_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    granted_by: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class ContributionModel(Base):
+    """Epic 37, US37.3: who changed a process or an agent, how, and at what
+    risk tier. `seq` orders contributions globally; a change set awaiting
+    approval is "this object's contributions after the last approved one"
+    (app/auth/sod.py), which is what decides who may approve it."""
+
+    __tablename__ = "contributions"
+
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    object_type: Mapped[str] = mapped_column(String, nullable=False)  # process | agent
+    object_id: Mapped[str] = mapped_column(String, nullable=False)
+    process_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    actor_type: Mapped[str] = mapped_column(String, nullable=False, default="user")
+    actor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    tier: Mapped[str] = mapped_column(String, nullable=False)  # high | standard
+    at: Mapped[datetime] = mapped_column(server_default=func.now())
+    detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    __table_args__ = (Index("ix_contributions_object", "object_type", "object_id", "seq"),)
+
+
+class ApprovalModel(Base):
+    """Epic 37, US37.4/US37.5: one approver's decision on one change set.
+    `through_seq` is the object's last high-risk contribution when the
+    decision was made, so a later high-risk change makes it count for
+    nothing without deleting it (the audit keeps it)."""
+
+    __tablename__ = "approvals"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    object_type: Mapped[str] = mapped_column(String, nullable=False)  # process_version | agent
+    object_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    process_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    through_seq: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    approver_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decision: Mapped[str] = mapped_column(String, nullable=False)  # approved | rejected
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class AuditEventModel(Base):
+    """Epic 37, US37.6: append-only record of sign-ins, privileged writes,
+    approvals and refusals. No API updates or deletes it. `actor_name` is
+    copied in so the trail still reads correctly if a user is renamed."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    actor_type: Mapped[str] = mapped_column(String, nullable=False)  # user | service | system
+    actor_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    actor_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    action: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    object_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    object_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    process_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    outcome: Mapped[str] = mapped_column(String, nullable=False, default="success")  # success | refused
+    ip: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class SessionModel(Base):
@@ -417,6 +511,9 @@ class AgentArtifactModel(Base):
     marked_release_candidate_at: Mapped[datetime | None] = mapped_column(nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(nullable=True)
     approved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Epic 37, US37.4: the last high-risk contribution the current approval
+    # covers -- the next change set starts after it.
+    approved_through_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Epic 28, US28.2/US28.6: the Context Pack this definition was built
     # from (the blueprint overlay's pack at generation time).
     context_pack_id: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -835,6 +932,9 @@ class OrganizationModel(Base):
     industry: Mapped[str | None] = mapped_column(String, nullable=True)
     size: Mapped[str | None] = mapped_column(String, nullable=True)
     profile: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Epic 37, US37.5: {"required_agent_approvals": int,
+    # "required_agent_approvals_by_unit": {business_unit_id: int}}.
+    governance: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

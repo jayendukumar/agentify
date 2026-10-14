@@ -8,7 +8,7 @@ from app.batches import results
 from app.batches.service import get_batch
 from app.db import repository
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import CurrentUserDep, DbDep, ReleaseCriteriaDep
 
 router = APIRouter(prefix="/api/processes/{process_id}", tags=["results"])
 
@@ -50,7 +50,7 @@ def get_criteria(process_id: str, artifact_id: str, db: DbDep, user: CurrentUser
 
 
 @router.put("/agent-artifacts/{artifact_id}/release-criteria", response_model=results.ReleaseCriteria)
-def set_criteria(process_id: str, artifact_id: str, body: results.ReleaseCriteria, db: DbDep, user: EditorDep) -> results.ReleaseCriteria:
+def set_criteria(process_id: str, artifact_id: str, body: results.ReleaseCriteria, db: DbDep, user: ReleaseCriteriaDep) -> results.ReleaseCriteria:
     """US35.7: what "good enough to release" means for this agent."""
     del user
     artifact = repository.get_agent_artifact(db, process_id, artifact_id)
@@ -60,7 +60,7 @@ def set_criteria(process_id: str, artifact_id: str, body: results.ReleaseCriteri
 
 
 @router.delete("/agent-artifacts/{artifact_id}/release-criteria", status_code=status.HTTP_204_NO_CONTENT)
-def clear_criteria(process_id: str, artifact_id: str, db: DbDep, user: EditorDep) -> None:
+def clear_criteria(process_id: str, artifact_id: str, db: DbDep, user: ReleaseCriteriaDep) -> None:
     del user
     repository.get_agent_artifact(db, process_id, artifact_id).release_criteria = None
     db.flush()

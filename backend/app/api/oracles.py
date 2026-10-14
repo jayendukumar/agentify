@@ -17,7 +17,7 @@ from app.llm.routing import llm_route_for
 from app.oracles import service
 from app.oracles.rules import RuleView
 
-from .deps import CurrentUserDep, DbDep, EditorDep, LLMDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, LLMDep
 
 router = APIRouter(prefix="/api/processes/{process_id}", tags=["oracles"])
 
@@ -36,7 +36,7 @@ def list_rules(process_id: str, db: DbDep, user: CurrentUserDep) -> list[RuleVie
 
 
 @router.post("/decision-rules/propose", response_model=list[RuleView])
-async def propose_rules(process_id: str, db: DbDep, llm: LLMDep, user: EditorDep) -> list[RuleView]:
+async def propose_rules(process_id: str, db: DbDep, llm: LLMDep, user: AgentTestDep) -> list[RuleView]:
     """US33.1: draft rules for decision points that have none yet."""
     del user
     try:
@@ -48,7 +48,7 @@ async def propose_rules(process_id: str, db: DbDep, llm: LLMDep, user: EditorDep
 
 
 @router.patch("/decision-rules/{rule_id}", response_model=RuleView)
-def update_rule(process_id: str, rule_id: str, body: service.RuleUpdate, db: DbDep, user: EditorDep) -> RuleView:
+def update_rule(process_id: str, rule_id: str, body: service.RuleUpdate, db: DbDep, user: AgentTestDep) -> RuleView:
     try:
         return service.to_view(service.update_rule(db, process_id, rule_id, body, user_id=user.id))
     except service.OracleError as exc:
@@ -59,7 +59,7 @@ def update_rule(process_id: str, rule_id: str, body: service.RuleUpdate, db: DbD
 
 
 @router.post("/datasets/{dataset_id}/oracle/label", response_model=service.OracleLabelResult)
-def oracle_label(process_id: str, dataset_id: str, db: DbDep, user: EditorDep) -> service.OracleLabelResult:
+def oracle_label(process_id: str, dataset_id: str, db: DbDep, user: AgentTestDep) -> service.OracleLabelResult:
     """US33.2."""
     dataset = datasets.get_dataset_model(db, process_id, dataset_id)
     try:
@@ -80,7 +80,7 @@ class GapReport(BaseModel):
 
 
 @router.post("/datasets/{dataset_id}/oracle/conflicts/report-gap")
-def report_gap(process_id: str, dataset_id: str, body: GapReport, db: DbDep, user: EditorDep) -> dict[str, str]:
+def report_gap(process_id: str, dataset_id: str, body: GapReport, db: DbDep, user: AgentTestDep) -> dict[str, str]:
     """US33.3: "the rules don't match practice" becomes a process gap."""
     del user
     try:
@@ -97,7 +97,7 @@ class GenerateStarted(BaseModel):
 
 @router.post("/datasets/{dataset_id}/generate", response_model=GenerateStarted)
 async def generate(
-    process_id: str, dataset_id: str, body: service.GenerateRequest, db: DbDep, llm: LLMDep, user: EditorDep
+    process_id: str, dataset_id: str, body: service.GenerateRequest, db: DbDep, llm: LLMDep, user: AgentTestDep
 ) -> GenerateStarted:
     """US33.4: label-first generation. Queued when the job worker runs
     (large sets take many LLM calls), otherwise done in this request."""
@@ -142,7 +142,7 @@ def list_relations(process_id: str, dataset_id: str, db: DbDep, user: CurrentUse
 
 
 @router.post("/datasets/{dataset_id}/relations", response_model=RelationView, status_code=status.HTTP_201_CREATED)
-def create_relation(process_id: str, dataset_id: str, body: service.RelationCreate, db: DbDep, user: EditorDep) -> RelationView:
+def create_relation(process_id: str, dataset_id: str, body: service.RelationCreate, db: DbDep, user: AgentTestDep) -> RelationView:
     """US33.5."""
     del user
     try:
@@ -152,7 +152,7 @@ def create_relation(process_id: str, dataset_id: str, body: service.RelationCrea
 
 
 @router.post("/datasets/{dataset_id}/relations/{relation_id}/variants")
-def generate_variants(process_id: str, dataset_id: str, relation_id: str, db: DbDep, user: EditorDep) -> dict[str, int]:
+def generate_variants(process_id: str, dataset_id: str, relation_id: str, db: DbDep, user: AgentTestDep) -> dict[str, int]:
     dataset = datasets.get_dataset_model(db, process_id, dataset_id)
     relation = db.get(MetamorphicRelationModel, relation_id)
     if relation is None or relation.dataset_id != dataset.id:
@@ -191,7 +191,7 @@ def list_rubrics(process_id: str, db: DbDep, user: CurrentUserDep) -> list[Rubri
 
 
 @router.post("/judge-rubrics", response_model=RubricView, status_code=status.HTTP_201_CREATED)
-def create_rubric(process_id: str, body: service.RubricCreate, db: DbDep, user: EditorDep) -> RubricView:
+def create_rubric(process_id: str, body: service.RubricCreate, db: DbDep, user: AgentTestDep) -> RubricView:
     del user
     rubric = JudgeRubricModel(id=new_id("rubric"), process_id=process_id, **body.model_dump())
     db.add(rubric)
@@ -200,7 +200,7 @@ def create_rubric(process_id: str, body: service.RubricCreate, db: DbDep, user: 
 
 
 @router.put("/judge-rubrics/{rubric_id}", response_model=RubricView)
-def update_rubric(process_id: str, rubric_id: str, body: service.RubricCreate, db: DbDep, user: EditorDep) -> RubricView:
+def update_rubric(process_id: str, rubric_id: str, body: service.RubricCreate, db: DbDep, user: AgentTestDep) -> RubricView:
     """Changing the rubric or judge model voids the calibration."""
     del user
     rubric = _get_rubric(db, process_id, rubric_id)
@@ -213,7 +213,7 @@ def update_rubric(process_id: str, rubric_id: str, body: service.RubricCreate, d
 
 
 @router.post("/judge-rubrics/{rubric_id}/calibrate/{dataset_id}", response_model=RubricView)
-async def calibrate(process_id: str, rubric_id: str, dataset_id: str, db: DbDep, llm: LLMDep, user: EditorDep) -> RubricView:
+async def calibrate(process_id: str, rubric_id: str, dataset_id: str, db: DbDep, llm: LLMDep, user: AgentTestDep) -> RubricView:
     """US33.6."""
     del user
     rubric = _get_rubric(db, process_id, rubric_id)
@@ -226,7 +226,7 @@ async def calibrate(process_id: str, rubric_id: str, dataset_id: str, db: DbDep,
 
 
 @router.post("/judge-rubrics/{rubric_id}/judge-run/{run_id}", response_model=service.JudgeVerdict)
-async def judge_run(process_id: str, rubric_id: str, run_id: str, db: DbDep, llm: LLMDep, user: EditorDep) -> service.JudgeVerdict:
+async def judge_run(process_id: str, rubric_id: str, run_id: str, db: DbDep, llm: LLMDep, user: AgentTestDep) -> service.JudgeVerdict:
     del user
     rubric = _get_rubric(db, process_id, rubric_id)
     run = db.get(SimulationRunModel, run_id)

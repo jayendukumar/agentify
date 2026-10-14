@@ -20,7 +20,7 @@ from app.schemas.process_twin import (
     ProcessTwinRequest,
 )
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep
 
 router = APIRouter(prefix="/api/processes/{process_id}/process-twin", tags=["process-twin"])
 
@@ -46,14 +46,14 @@ def get_operating_model(process_id: str, db: DbDep, user: CurrentUserDep) -> Ope
 
 
 @router.put("/operating-model", response_model=OperatingModelView)
-def save_operating_model(process_id: str, body: OperatingModel, db: DbDep, user: EditorDep) -> OperatingModelView:
+def save_operating_model(process_id: str, body: OperatingModel, db: DbDep, user: AgentTestDep) -> OperatingModelView:
     view = service.save_operating_model(db, process_id, body, user_id=user.id)
     db.commit()
     return view
 
 
 @router.post("/estimate", response_model=ProcessTwinEstimate)
-def estimate(process_id: str, body: ProcessTwinRequest, db: DbDep, user: CurrentUserDep) -> ProcessTwinEstimate:
+def estimate(process_id: str, body: ProcessTwinRequest, db: DbDep, user: AgentTestDep) -> ProcessTwinEstimate:
     del user
     try:
         return service.estimate(db, process_id, body)
@@ -63,7 +63,7 @@ def estimate(process_id: str, body: ProcessTwinRequest, db: DbDep, user: Current
 
 @router.post("/batches", response_model=ProcessTwinBatchView, status_code=status.HTTP_202_ACCEPTED)
 def start(
-    process_id: str, body: ProcessTwinRequest, db: DbDep, user: EditorDep, background_tasks: BackgroundTasks
+    process_id: str, body: ProcessTwinRequest, db: DbDep, user: AgentTestDep, background_tasks: BackgroundTasks
 ) -> ProcessTwinBatchView:
     """US36.5: one case per dataset row, through every agent."""
     try:
@@ -94,7 +94,7 @@ class BatchAction(BaseModel):
 
 @router.post("/batches/{batch_id}/control", response_model=ProcessTwinBatchView)
 def control(
-    process_id: str, batch_id: str, body: BatchAction, db: DbDep, user: EditorDep, background_tasks: BackgroundTasks
+    process_id: str, batch_id: str, body: BatchAction, db: DbDep, user: AgentTestDep, background_tasks: BackgroundTasks
 ) -> ProcessTwinBatchView:
     del user
     batch = service.get_batch(db, process_id, batch_id)

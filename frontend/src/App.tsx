@@ -1,9 +1,12 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { getAuthConfig } from './api/client'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import LoginPage from './auth/LoginPage'
+import { grantLabel } from './auth/roles'
 import BrandLogo from './components/BrandLogo'
 import ErrorBoundary from './components/ErrorBoundary'
+import AuditLogPage from './pages/AuditLogPage'
 import BatchResultsPage from './pages/BatchResultsPage'
 import DatasetsPage from './pages/DatasetsPage'
 import GapReviewPage from './pages/GapReviewPage'
@@ -12,6 +15,7 @@ import OrganizationPage from './pages/OrganizationPage'
 import ProcessListPage from './pages/ProcessListPage'
 import ProcessTwinPage from './pages/ProcessTwinPage'
 import RegistriesPage from './pages/RegistriesPage'
+import UsersPage from './pages/UsersPage'
 import VersionsPage from './pages/VersionsPage'
 
 const DiagramPage = lazy(() => import('./pages/DiagramPage'))
@@ -30,7 +34,7 @@ function NotFoundPage() {
 }
 
 function AppHeader() {
-  const { user, logout } = useAuth()
+  const { user, logout, can } = useAuth()
   const { pathname } = useLocation()
   const [loggingOut, setLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState(false)
@@ -55,10 +59,24 @@ function AppHeader() {
             <NavLink to="/registries" className="app-header-nav-link">
               Registries
             </NavLink>
+            {can('audit.read') && (
+              <NavLink to="/audit" className="app-header-nav-link">
+                Audit log
+              </NavLink>
+            )}
+            {can('users.manage') && (
+              <NavLink to="/users" className="app-header-nav-link">
+                Users
+              </NavLink>
+            )}
           </nav>
           <span className="app-header-user">
             <span className="app-header-user-name">
-              {user.name} <span className="badge role-badge">{user.role}</span>
+              {user.name}{' '}
+              {user.roles.length === 0 && <span className="badge role-badge">Read only</span>}
+              {user.roles.map((grant) => (
+                <span key={`${grant.role}:${grant.scope_id}`} className="badge role-badge">{grantLabel(grant)}</span>
+              ))}
             </span>
             <button type="button" className="button-secondary" disabled={loggingOut} onClick={handleLogout}>
               {loggingOut ? 'Logging out...' : 'Log out'}
@@ -69,6 +87,16 @@ function AppHeader() {
       )}
     </header>
   )
+}
+
+// Epic 37, US37.14: local sign-in lets anyone be anyone, so every page says so.
+function LocalAuthBanner() {
+  const [mode, setMode] = useState<string | null>(null)
+  useEffect(() => {
+    getAuthConfig().then((config) => setMode(config.auth_mode)).catch(() => setMode(null))
+  }, [])
+  if (mode !== 'local') return null
+  return <p className="local-auth-banner" role="note">Local sign-in -- not for production</p>
 }
 
 function AppRoutes() {
@@ -82,6 +110,8 @@ function AppRoutes() {
       <Route path="/" element={<ProcessListPage />} />
       <Route path="/registries" element={<RegistriesPage />} />
       <Route path="/organization" element={<OrganizationPage />} />
+      <Route path="/audit" element={<AuditLogPage />} />
+      <Route path="/users" element={<UsersPage />} />
       <Route path="/processes/:processId" element={<ProcessDetailPage />} />
       <Route path="/processes/:processId/diagram" element={<DiagramPage />} />
       <Route path="/processes/:processId/versions" element={<VersionsPage />} />
@@ -101,6 +131,7 @@ export default function App() {
       <div className="app-shell">
         <a href="#main-content" className="skip-link">Skip to main content</a>
         <AppHeader />
+        <LocalAuthBanner />
         <div className="app">
           <main id="main-content" tabIndex={-1}>
             <ErrorBoundary>

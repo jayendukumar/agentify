@@ -40,8 +40,8 @@ const DEFAULT_CRITERIA: ReleaseCriteria = {
  * another version, and whether it clears the release gate. */
 export default function BatchResultsPage() {
   const { processId, batchId } = useParams<{ processId: string; batchId: string }>()
-  const { user } = useAuth()
-  const canEdit = user?.role === 'editor'
+  const { can } = useAuth()
+  const canEdit = can('agent.release_criteria')
   const [batch, setBatch] = useState<BatchView | null>(null)
   const [results, setResults] = useState<BatchResults | null>(null)
   const [others, setOthers] = useState<BatchView[]>([])

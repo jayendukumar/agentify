@@ -18,12 +18,19 @@ vi.mock('../api/client', () => ({
   },
 }))
 
-const editor: User = { id: 'user-1', name: 'Alice', role: 'editor', created_at: '2026-01-01T00:00:00Z' }
+const editor: User = {
+  id: 'user-1',
+  name: 'Alice',
+  active: true,
+  roles: [{ role: 'analyst', scope_type: 'organization', scope_id: '' }],
+  permissions: ['process.edit'],
+  created_at: '2026-01-01T00:00:00Z',
+}
 
 function Probe() {
   const { user, loading } = useAuth()
   if (loading) return <p>loading</p>
-  return <p>{user ? `logged in as ${user.name} (${user.role})` : 'logged out'}</p>
+  return <p>{user ? `logged in as ${user.name} (${user.roles.map((g) => g.role).join(', ')})` : 'logged out'}</p>
 }
 
 describe('AuthContext', () => {
@@ -50,7 +57,7 @@ describe('AuthContext', () => {
       </AuthProvider>,
     )
 
-    expect(await screen.findByText('logged in as Alice (editor)')).toBeInTheDocument()
+    expect(await screen.findByText('logged in as Alice (analyst)')).toBeInTheDocument()
   })
 
   it('login() updates the current user', async () => {
@@ -60,7 +67,7 @@ describe('AuthContext', () => {
     function LoginButton() {
       const { login: doLogin } = useAuth()
       return (
-        <button type="button" onClick={() => void doLogin('Alice', 'editor')}>
+        <button type="button" onClick={() => void doLogin('Alice', ['analyst'])}>
           Log in
         </button>
       )
@@ -77,8 +84,8 @@ describe('AuthContext', () => {
     await screen.findByText('logged out')
     await user.click(screen.getByRole('button', { name: /log in/i }))
 
-    expect(await screen.findByText('logged in as Alice (editor)')).toBeInTheDocument()
-    expect(login).toHaveBeenCalledWith('Alice', 'editor')
+    expect(await screen.findByText('logged in as Alice (analyst)')).toBeInTheDocument()
+    expect(login).toHaveBeenCalledWith('Alice', ['analyst'], undefined)
   })
 
   it('logout() clears the current user', async () => {
@@ -102,7 +109,7 @@ describe('AuthContext', () => {
       </AuthProvider>,
     )
 
-    await screen.findByText('logged in as Alice (editor)')
+    await screen.findByText('logged in as Alice (analyst)')
     await user.click(screen.getByRole('button', { name: /log out/i }))
 
     await waitFor(() => expect(screen.getByText('logged out')).toBeInTheDocument())
@@ -116,7 +123,7 @@ describe('AuthContext', () => {
       </AuthProvider>,
     )
 
-    await screen.findByText('logged in as Alice (editor)')
+    await screen.findByText('logged in as Alice (analyst)')
 
     // Simulates client.ts's request() calling this after any 401 response,
     // e.g. a diagram/blueprint/chat call made after the session's expiry.

@@ -1,14 +1,17 @@
 import xml.etree.ElementTree as ET
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
+from app.auth import audit, sod
+from app.auth.views import version_approval_status
 from app.bpmn.builder import _tag
 from app.bpmn.chat_ops import humanize_validation_issues
 from app.bpmn.validation import validate_bpmn_integrity
 from app.db import repository
+from app.schemas.governance import ApprovalDecision, ApprovalStatus
 from app.schemas.versions import VersionDetail, VersionDiffResult, VersionSummary
 
-from .deps import CurrentUserDep, DbDep, EditorDep
+from .deps import CurrentUserDep, DbDep, ProcessApproveDep, ProcessEditDep, ProcessFinalizeDep
 
 router = APIRouter(prefix="/api/processes/{process_id}", tags=["versions"])
 
@@ -37,7 +40,7 @@ def _element_labels(xml_str: str) -> dict[str, str | None]:
 
 
 @router.post("/finalize", response_model=VersionSummary, status_code=status.HTTP_201_CREATED)
-def finalize_process(process_id: str, db: DbDep, user: EditorDep) -> VersionSummary:
+def finalize_process(process_id: str, db: DbDep, user: ProcessFinalizeDep) -> VersionSummary:
     process = repository.get_process(db, process_id)  # 404s if missing
     draft = repository.get_draft_bpmn(db, process_id)
     if draft is None:
@@ -134,13 +137,55 @@ def get_version(process_id: str, version_id: str, db: DbDep, user: CurrentUserDe
 
 
 @router.post("/versions/{version_id}/restore", response_model=VersionSummary)
-def restore_version(process_id: str, version_id: str, db: DbDep, user: EditorDep) -> VersionSummary:
-    del user
+def restore_version(process_id: str, version_id: str, db: DbDep, user: ProcessEditDep) -> VersionSummary:
     repository.get_process(db, process_id)  # 404s if missing
     version = repository.get_version(db, process_id, version_id)
     # A restored version was already validated at finalize time and has no
     # per-element confidence data of its own to carry forward. XML-only --
     # does not touch the process schema tables, see VersionModel's
     # docstring (app/db/models.py) for why that's a deliberate boundary.
-    repository.set_draft_bpmn(db, process_id, version.xml, [])
+    repository.set_draft_bpmn(db, process_id, version.xml, [], changed_by=user.id, action="version_restored")
     return VersionSummary(**version.model_dump(exclude={"xml"}))
+
+
+# -- Epic 37, US37.4: baseline approval -----------------------------------------
+
+
+@router.get("/versions/{version_id}/approval", response_model=ApprovalStatus)
+def get_version_approval(process_id: str, version_id: str, db: DbDep, user: CurrentUserDep) -> ApprovalStatus:
+    return version_approval_status(db, repository.get_version_model(db, process_id, version_id), user)
+
+
+def _decide(
+    process_id: str, version_id: str, decision: str, body: ApprovalDecision, db, request: Request, user
+) -> VersionSummary:
+    version = repository.get_version_model(db, process_id, version_id)
+    try:
+        sod.decide_version(db, version, user, decision=decision, comment=body.comment)
+    except sod.SegregationOfDutiesError as exc:
+        audit.record_refusal(
+            actor=user, action="approve_version" if decision == "approved" else "reject_version", reason=str(exc),
+            object_type="process_version",
+            object_id=version_id, process_id=process_id, request=request,
+        )
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except sod.ApprovalStateError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    detail = repository.get_version(db, process_id, version_id)
+    return VersionSummary(**detail.model_dump(exclude={"xml"}))
+
+
+@router.post("/versions/{version_id}/approve", response_model=VersionSummary)
+def approve_version(
+    process_id: str, version_id: str, body: ApprovalDecision, db: DbDep, request: Request, user: ProcessApproveDep
+) -> VersionSummary:
+    """Makes this version the baseline. Refused for anyone who made a
+    high-risk change to the process since the previous approved baseline."""
+    return _decide(process_id, version_id, "approved", body, db, request, user)
+
+
+@router.post("/versions/{version_id}/reject", response_model=VersionSummary)
+def reject_version(
+    process_id: str, version_id: str, body: ApprovalDecision, db: DbDep, request: Request, user: ProcessApproveDep
+) -> VersionSummary:
+    return _decide(process_id, version_id, "rejected", body, db, request, user)

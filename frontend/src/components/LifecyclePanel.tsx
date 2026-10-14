@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { ApiError, approveAgentArtifact, markAgentReleaseCandidate } from '../api/client'
+import { ApiError, approveAgentArtifact, getAgentApproval, markAgentReleaseCandidate } from '../api/client'
 import type { AgentArtifact, ComplianceEvidence, LifecycleStatus } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
+import ApprovalPanel from './ApprovalPanel'
 import ComplianceEvidencePanel from './ComplianceEvidencePanel'
 
 const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
@@ -25,16 +27,11 @@ function badgeClass(status: LifecycleStatus): string {
 // and the two explicit human actions (mark release candidate / approve,
 // US23.4) that are the only states nothing can derive. This is the
 // "readiness" evidence US23.4 asks the publish flow to read, rather than
-// PublishPanel deriving its own separate notion of ready.
-export default function LifecyclePanel({
-  processId,
-  artifact,
-  canManage,
-}: {
-  processId: string
-  artifact: AgentArtifact
-  canManage: boolean
-}) {
+// PublishPanel deriving its own separate notion of ready. Epic 37: approval
+// goes through ApprovalPanel, which says why the signed-in user can't
+// approve (e.g. they built this version).
+export default function LifecyclePanel({ processId, artifact }: { processId: string; artifact: AgentArtifact }) {
+  const { can } = useAuth()
   const [current, setCurrent] = useState(artifact)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,16 +50,8 @@ export default function LifecyclePanel({
     }
   }
 
-  async function handleApprove() {
-    setError(null)
-    setBusy(true)
-    try {
-      setCurrent(await approveAgentArtifact(processId, artifact.id))
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to approve')
-    } finally {
-      setBusy(false)
-    }
+  async function handleApprove(comment: string) {
+    setCurrent(await approveAgentArtifact(processId, artifact.id, comment))
   }
 
   const unsatisfied = current.checklist.filter((item) => !item.satisfied)
@@ -82,7 +71,7 @@ export default function LifecyclePanel({
         </ul>
       )}
       <ComplianceEvidencePanel processId={processId} artifactId={artifact.id} onLoaded={setEvidence} />
-      {canManage && (
+      {can('agent.release_candidate') && (
         <div className="registry-entry-actions">
           <button
             type="button"
@@ -93,15 +82,14 @@ export default function LifecyclePanel({
           >
             Mark release candidate
           </button>
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={handleApprove}
-            disabled={busy || current.approved_at !== null}
-          >
-            Approve
-          </button>
         </div>
+      )}
+      {current.approved_at === null && (
+        <ApprovalPanel
+          load={() => getAgentApproval(processId, artifact.id)}
+          onApprove={handleApprove}
+          refreshKey={`${current.version}:${current.marked_release_candidate_at}`}
+        />
       )}
       {error && <p className="error" role="alert">{error}</p>}
     </div>
