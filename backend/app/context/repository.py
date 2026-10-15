@@ -56,7 +56,7 @@ class ContextValidationError(Exception):
 
 
 def get_organization_model(session: Session) -> OrganizationModel:
-    """US27.1: one organization per deployment, created lazily the first
+    """US27.1: one organization per tenant (Epic 38), created lazily the first
     time anything asks for it so every other feature can assume it
     exists."""
     organization = session.scalars(select(OrganizationModel).order_by(OrganizationModel.created_at)).first()

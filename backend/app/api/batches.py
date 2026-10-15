@@ -17,9 +17,9 @@ from app.jobs.worker import run_pending
 from app.store import NotFoundError
 from app.twin.errors import TwinServiceError
 
-from .deps import AgentTestDep, CurrentUserDep, DbDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, ProcessScope
 
-router = APIRouter(prefix="/api/processes/{process_id}", tags=["batches"])
+router = APIRouter(prefix="/api/processes/{process_id}", tags=["batches"], dependencies=[ProcessScope])
 
 
 def _bad(exc: Exception) -> HTTPException:

@@ -60,7 +60,7 @@ DOMAINS: dict[str, list[str]] = {
         "scim_tokens", "directory_groups", "directory_group_members", "group_role_mappings",
         "contributions", "approvals", "audit_events",
     ],
-    "Platform (Epic 31)": ["jobs"],
+    "Platform (Epics 31, 38)": ["jobs", "tenants", "tenant_domains"],
 }
 
 
@@ -75,6 +75,16 @@ def _type(col) -> str:
     name = type(col.type).__name__
     return {"String": "string", "Text": "text", "Integer": "int", "BigInteger": "bigint", "Boolean": "bool",
             "DateTime": "datetime", "Float": "float", "JSON": "json", "Vector": "vector"}.get(name, name.lower())
+
+
+def unisolated_tables() -> list[str]:
+    """Epic 38, US38.2: tables that are neither platform tables nor carry
+    the tenant column -- row-level security can't apply to them."""
+    _backend_on_path()
+    from app.db.models import PLATFORM_TABLES
+
+    md = _metadata()
+    return sorted(t for t in md.tables if t not in PLATFORM_TABLES and "tenant_id" not in md.tables[t].c)
 
 
 def unmapped_tables() -> list[str]:
@@ -99,6 +109,8 @@ def er_diagrams() -> str:
             table = md.tables[name]
             out.append(f"    {name} {{")
             for col in table.columns:
+                if col.name == "tenant_id" and name != "tenant_domains":
+                    continue  # on every tenant table (Epic 38); drawn once, in Platform
                 keys = []
                 if col.primary_key:
                     keys.append("PK")
@@ -111,6 +123,8 @@ def er_diagrams() -> str:
                 target = fk.column.table.name
                 if target == "users":
                     continue  # every audited row points at users; drawn once in Identity and access
+                if target == "tenants" and name != "tenant_domains":
+                    continue  # every tenant row points at tenants (Epic 38)
                 if target not in present:
                     stubs.add(target)
                 card = "o|" if fk.parent.nullable else "||"
@@ -140,6 +154,8 @@ def table_catalogue() -> str:
             out += [f"#### `{name}` ({cls})", "", first, ""] if first else [f"#### `{name}` ({cls})", ""]
             out += ["| Column | Type | Null | Notes |", "|---|---|---|---|"]
             for col in table.columns:
+                if col.name == "tenant_id" and name != "tenant_domains":
+                    continue  # on every tenant table; see "How the data is shaped"
                 notes = []
                 if col.primary_key:
                     notes.append("primary key")

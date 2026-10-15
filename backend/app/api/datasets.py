@@ -24,9 +24,9 @@ from app.schemas.datasets import (
     PromoteRunRequest,
 )
 
-from .deps import AgentTestDep, CurrentUserDep, DbDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, ProcessScope
 
-router = APIRouter(prefix="/api/processes/{process_id}/datasets", tags=["datasets"])
+router = APIRouter(prefix="/api/processes/{process_id}/datasets", tags=["datasets"], dependencies=[ProcessScope])
 
 _MAX_IMPORT_BYTES = 20 * 1024 * 1024
 

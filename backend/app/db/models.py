@@ -25,7 +25,18 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, ForeignKey, Identity, Index, JSON, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    ForeignKey,
+    Identity,
+    Index,
+    JSON,
+    PrimaryKeyConstraint,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -39,7 +50,51 @@ class Base(DeclarativeBase):
     pass
 
 
-class ProcessModel(Base):
+# Epic 38, US38.1: the only tables without a tenant. Operator-only: the API
+# reads them to resolve a request's host, and never writes them.
+PLATFORM_TABLES = frozenset({"tenants", "tenant_domains"})
+
+
+class TenantModel(Base):
+    """Epic 38, US38.1: one customer of this deployment. Every other table
+    is the tenant's own (TenantScoped)."""
+
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    slug: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    display_name: Mapped[str] = mapped_column(String, nullable=False)
+    # active | suspended | deleting
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active", server_default="active")
+    region: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class TenantDomainModel(Base):
+    """Epic 38, US38.1: a host name that reaches a tenant, matched without
+    the port (`meridian.localhost`, `acme.axyntro.app`, a custom domain)."""
+
+    __tablename__ = "tenant_domains"
+
+    host: Mapped[str] = mapped_column(String, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class TenantScoped:
+    """Epic 38, US38.2: a row belongs to one tenant, and Postgres row-level
+    security shows a transaction only its own tenant's rows (migration
+    f2a3b4c5d6e7). The column defaults to the transaction's tenant
+    (`app_current_tenant()`, set by app/db/session.py), so code never sets
+    it and queries never filter on it. With no tenant set, the default is
+    NULL and the insert fails: isolation fails closed."""
+
+    tenant_id: Mapped[str] = mapped_column(
+        String, ForeignKey("tenants.id"), nullable=False, index=True, server_default=text("app_current_tenant()")
+    )
+
+
+class ProcessModel(TenantScoped, Base):
     __tablename__ = "processes"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -90,7 +145,7 @@ class ProcessModel(Base):
     )
 
 
-class DocumentModel(Base):
+class DocumentModel(TenantScoped, Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -110,7 +165,7 @@ class DocumentModel(Base):
     )
 
 
-class ActorModel(Base):
+class ActorModel(TenantScoped, Base):
     __tablename__ = "actors"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -121,7 +176,7 @@ class ActorModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="actors")
 
 
-class ProcessElementModel(Base):
+class ProcessElementModel(TenantScoped, Base):
     __tablename__ = "process_elements"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -141,7 +196,7 @@ class ProcessElementModel(Base):
     )
 
 
-class SourceRefModel(Base):
+class SourceRefModel(TenantScoped, Base):
     __tablename__ = "source_refs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -153,7 +208,7 @@ class SourceRefModel(Base):
     element: Mapped[ProcessElementModel] = relationship(back_populates="source_refs")
 
 
-class ProcessFlowModel(Base):
+class ProcessFlowModel(TenantScoped, Base):
     __tablename__ = "process_flows"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -165,7 +220,7 @@ class ProcessFlowModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="flows")
 
 
-class DocumentEmbeddingModel(Base):
+class DocumentEmbeddingModel(TenantScoped, Base):
     """US2.3: one row per deterministic-extraction unit (a paragraph, a
     table, a Visio shape/connector text) -- NOT one row per document, and
     NOT the same grain as the LLM-structured elements above. See
@@ -194,7 +249,7 @@ class DocumentEmbeddingModel(Base):
     )
 
 
-class ProcessSchemaChangeModel(Base):
+class ProcessSchemaChangeModel(TenantScoped, Base):
     """US2.6: a lightweight append-only log of each merge into a process's
     schema -- not full event-sourcing/temporal versioning, just enough to
     answer "how did my understanding of this process change over time"."""
@@ -210,7 +265,7 @@ class ProcessSchemaChangeModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="schema_changes")
 
 
-class BPMNDraftModel(Base):
+class BPMNDraftModel(TenantScoped, Base):
     """US3.3: the current as-is BPMN diagram for a process -- one row per
     process (regenerating or manually editing replaces it in place; real
     history of prior drafts is Epic 6's finalized-versions story, not this).
@@ -226,7 +281,7 @@ class BPMNDraftModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="draft_bpmn")
 
 
-class ChatMessageModel(Base):
+class ChatMessageModel(TenantScoped, Base):
     """US5.5: one row per chat turn -- the audit trail of chat-driven
     diagram edits (what was asked, what was proposed, whether/when it was
     applied or declined). `proposed_diff` stores the DiagramDiff (see
@@ -252,7 +307,7 @@ class ChatMessageModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="chat_messages")
 
 
-class VersionModel(Base):
+class VersionModel(TenantScoped, Base):
     """US6.1: an immutable snapshot of a finalized BPMN diagram -- one row
     per finalize, kept forever (restore reads it, never mutates it). Only
     the XML is snapshotted, not a copy of the process schema tables --
@@ -284,7 +339,7 @@ class VersionModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="versions")
 
 
-class BlueprintOverlayModel(Base):
+class BlueprintOverlayModel(TenantScoped, Base):
     """US7.6: the agentic blueprint overlay -- one row per process,
     replaced in place on regenerate (mirrors BPMNDraftModel; US7.7's
     "re-run after baseline changes" is just calling generate again, no
@@ -310,7 +365,7 @@ class BlueprintOverlayModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="blueprint_overlay")
 
 
-class GapFindingModel(Base):
+class GapFindingModel(TenantScoped, Base):
     """Epic 11: one row per detected process gap (structural or
     cross-document), and the permanent audit trail of what the user did
     about it -- never mutated back to "open" once resolved/dismissed, same
@@ -346,7 +401,7 @@ class GapFindingModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="gap_findings")
 
 
-class UserModel(Base):
+class UserModel(TenantScoped, Base):
     """Epic 9/10, US9.9/US10.4: a named user. In AUTH_MODE=local (Epic 37,
     US37.14: never in production) "log in" means typing a name and picking
     roles; SSO (US37.7+) will only change how rows get here. What a user may
@@ -356,7 +411,7 @@ class UserModel(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
     # Epic 37: `service` is reserved for backlog B4 (service accounts) so the
     # audit trail and contributions never need a schema change for them.
     actor_type: Mapped[str] = mapped_column(String, nullable=False, default="user", server_default="user")
@@ -383,8 +438,10 @@ class UserModel(Base):
 
     roles: Mapped[list["UserRoleModel"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
 
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_users_tenant_name"),)
 
-class UserRoleModel(Base):
+
+class UserRoleModel(TenantScoped, Base):
     """Epic 37, US37.1: one role grant at one scope. `scope_type` is
     `organization` (scope_id "") or `business_unit` (a context entity id).
     A `process` scope is deliberately left open: permission checks walk a
@@ -404,7 +461,7 @@ class UserRoleModel(Base):
     granted_by: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
-class ContributionModel(Base):
+class ContributionModel(TenantScoped, Base):
     """Epic 37, US37.3: who changed a process or an agent, how, and at what
     risk tier. `seq` orders contributions globally; a change set awaiting
     approval is "this object's contributions after the last approved one"
@@ -426,7 +483,7 @@ class ContributionModel(Base):
     __table_args__ = (Index("ix_contributions_object", "object_type", "object_id", "seq"),)
 
 
-class ApprovalModel(Base):
+class ApprovalModel(TenantScoped, Base):
     """Epic 37, US37.4/US37.5: one approver's decision on one change set.
     `through_seq` is the object's last high-risk contribution when the
     decision was made, so a later high-risk change makes it count for
@@ -445,7 +502,7 @@ class ApprovalModel(Base):
     at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
-class AuditEventModel(Base):
+class AuditEventModel(TenantScoped, Base):
     """Epic 37, US37.6: append-only record of sign-ins, privileged writes,
     approvals and refusals. No API updates or deletes it. `actor_name` is
     copied in so the trail still reads correctly if a user is renamed."""
@@ -467,7 +524,7 @@ class AuditEventModel(Base):
     detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
-class SessionModel(Base):
+class SessionModel(TenantScoped, Base):
     """Epic 37, US37.12: one sign-in on one browser. `id` isn't a secret --
     it's what the Sessions lists show and revoke by. The browser holds
     tokens for it instead (SessionTokenModel), stored only as hashes.
@@ -507,7 +564,7 @@ class SessionModel(Base):
     user: Mapped[UserModel] = relationship()
 
 
-class SessionTokenModel(Base):
+class SessionTokenModel(TenantScoped, Base):
     """Epic 37, US37.12: a token the browser holds for a session -- a
     short-lived `access` token (the session cookie) or a `refresh` token
     (the refresh cookie). Only the SHA-256 hash is stored. A refreshed
@@ -524,16 +581,21 @@ class SessionTokenModel(Base):
     rotated_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
-class UserIdentityModel(Base):
+class UserIdentityModel(TenantScoped, Base):
     """Epic 37, US37.7: a user's account at an identity provider. A user is
     matched by (issuer, subject) -- the IdP's stable, never-reassigned id
     -- never by email or name, which change and get reused. `email` and
     `username` are kept for display and the audit trail only."""
 
     __tablename__ = "user_identities"
+    # Epic 38: the same IdP account may exist in two tenants, so the key
+    # includes the tenant. Within one transaction RLS shows one tenant, so
+    # the ORM keeps (issuer, subject) as the identity: db.get() unchanged.
+    __table_args__ = (PrimaryKeyConstraint("tenant_id", "issuer", "subject", name="user_identities_pkey"),)
+    __mapper_args__ = {"primary_key": ["issuer", "subject"]}
 
-    issuer: Mapped[str] = mapped_column(String, primary_key=True)
-    subject: Mapped[str] = mapped_column(String, primary_key=True)
+    issuer: Mapped[str] = mapped_column(String)
+    subject: Mapped[str] = mapped_column(String)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     email: Mapped[str | None] = mapped_column(String, nullable=True)
     username: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -541,7 +603,7 @@ class UserIdentityModel(Base):
     last_sign_in_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
-class ScimTokenModel(Base):
+class ScimTokenModel(TenantScoped, Base):
     """Epic 37, US37.10: a bearer token the IdP's provisioning uses. Shown
     once when generated, stored only as a SHA-256 hash. Several can be
     live at once so a rotation doesn't interrupt provisioning: generate a
@@ -558,7 +620,7 @@ class ScimTokenModel(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
-class DirectoryGroupModel(Base):
+class DirectoryGroupModel(TenantScoped, Base):
     """Epic 37, US37.10: a group the IdP pushed over SCIM. Its display name
     and external id are what group mappings match on."""
 
@@ -573,14 +635,14 @@ class DirectoryGroupModel(Base):
     members: Mapped[list["DirectoryGroupMemberModel"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
 
 
-class DirectoryGroupMemberModel(Base):
+class DirectoryGroupMemberModel(TenantScoped, Base):
     __tablename__ = "directory_group_members"
 
     group_id: Mapped[str] = mapped_column(ForeignKey("directory_groups.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
 
 
-class GroupRoleMappingModel(Base):
+class GroupRoleMappingModel(TenantScoped, Base):
     """Epic 37, US37.11: members of a group hold a role at a scope (the
     same scope_type/scope_id as UserRoleModel). The group is matched,
     ignoring case, against a SCIM group's display name or external id, or
@@ -598,10 +660,12 @@ class GroupRoleMappingModel(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    __table_args__ = (UniqueConstraint("group", "role", "scope_type", "scope_id"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "group", "role", "scope_type", "scope_id", name="uq_group_role_mappings_tenant"),
+    )
 
 
-class OidcLoginRequestModel(Base):
+class OidcLoginRequestModel(TenantScoped, Base):
     """Epic 37, US37.7: one sign-in in flight, between sending the browser
     to the IdP and its return to the callback. Keyed by the hash of
     `state`; holds the PKCE verifier and nonce the callback must check.
@@ -616,7 +680,7 @@ class OidcLoginRequestModel(Base):
     created_at: Mapped[datetime] = mapped_column(nullable=False)
 
 
-class AgentArtifactModel(Base):
+class AgentArtifactModel(TenantScoped, Base):
     """Epic 12: a generated, portable agent definition for one blueprint
     node or a consolidated group of nodes (US7.5's grouping). One row per
     distinct *group* per process, keyed by `group_key` (the group's
@@ -674,7 +738,7 @@ class AgentArtifactModel(Base):
     process: Mapped[ProcessModel] = relationship(back_populates="agent_artifacts")
 
 
-class RegistryEntryModel(Base):
+class RegistryEntryModel(TenantScoped, Base):
     """Epic 13: one row per agent definition pushed into the *local*
     reference registry connector (app/registry/local.py) -- other
     connector types (a real vendor registry, once one is chosen) would
@@ -703,7 +767,7 @@ class RegistryEntryModel(Base):
     pushed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class TwinToolSchemaModel(Base):
+class TwinToolSchemaModel(TenantScoped, Base):
     """Epic 14 (core slice): the synthesized, callable schema for every
     `tools_systems_needed` entry of one agent artifact -- one row per
     artifact, replaced wholesale on regenerate (same "replace, don't
@@ -725,7 +789,7 @@ class TwinToolSchemaModel(Base):
     generated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
-class TwinBaselineModel(Base):
+class TwinBaselineModel(TenantScoped, Base):
     """Epic 14, US14.5: an optional, explicitly-manual as-is baseline for
     one agent artifact -- one row per artifact, replaced wholesale on
     update (same convention as TwinToolSchemaModel). Both value columns
@@ -746,7 +810,7 @@ class TwinBaselineModel(Base):
     recorded_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class TwinEnvironmentModel(Base):
+class TwinEnvironmentModel(TenantScoped, Base):
     """Epic 21, US21.1/US21.4: a named, versioned, reusable bundle of
     systems/datasets/personas/events for a process, plus its own typed
     fault-injection catalog per system (US21.2, `faults`). One row per
@@ -771,7 +835,7 @@ class TwinEnvironmentModel(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
-class TwinScenarioModel(Base):
+class TwinScenarioModel(TenantScoped, Base):
     """Epic 14 (core slice), US14.1: one defined test scenario for an
     agent artifact -- start-event `inputs`, per-system simulation
     overrides (`system_stubs`), how to resolve the agent's human
@@ -814,7 +878,7 @@ class TwinScenarioModel(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class AgentPublicationModel(Base):
+class AgentPublicationModel(TenantScoped, Base):
     """Epic 15, US15.1/US15.4: one push of an agent artifact's definition to
     a registry -- kept forever, like VersionModel/TwinRunModel, so
     "republish as a new version" (US15.4) means *inserting* a new row, never
@@ -855,7 +919,7 @@ class AgentPublicationModel(Base):
     deployed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class TwinRunModel(Base):
+class TwinRunModel(TenantScoped, Base):
     """Epic 14 (core slice), US14.2/US14.3/US14.4: one execution of a
     scenario against the real LLM (every tool/system call stubbed per the
     scenario's config, never live) -- kept forever, like VersionModel,
@@ -884,7 +948,7 @@ class TwinRunModel(Base):
     run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class OrchestrationScenarioModel(Base):
+class OrchestrationScenarioModel(TenantScoped, Base):
     """Epic 16, US16.1: one defined process-level rehearsal scenario --
     start-event inputs, plus config keyed by node_id (gateway decisions,
     manual-node resolution, per-node system stubs/checkpoints, per-node
@@ -922,7 +986,7 @@ class OrchestrationScenarioModel(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class OrchestrationRunModel(Base):
+class OrchestrationRunModel(TenantScoped, Base):
     """Epic 16, US16.2-16.7: one execution of a rehearsal scenario across
     every node the walk reaches. Kept forever once finished, like
     TwinRunModel -- but, deliberately unlike TwinRunModel, this row *is*
@@ -955,7 +1019,7 @@ class OrchestrationRunModel(Base):
     run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class SimulationRunModel(Base):
+class SimulationRunModel(TenantScoped, Base):
     """Epic 17: the unified run store both twin (Epic 14) and orchestration
     (Epic 16) runs write to going forward, replacing TwinRunModel/
     OrchestrationRunModel's two separate, ad hoc shapes with one
@@ -1027,7 +1091,7 @@ class SimulationRunModel(Base):
     run_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class RegressionSuiteModel(Base):
+class RegressionSuiteModel(TenantScoped, Base):
     """Epic 19, US19.2: a named, reusable set of scenario ids (twin or
     orchestration) an Automation Architect wants to re-run together as one
     regression pass, instead of an ungrouped scenario list. `agent_artifact_id`
@@ -1049,7 +1113,7 @@ class RegressionSuiteModel(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class RegressionSuiteRunModel(Base):
+class RegressionSuiteRunModel(TenantScoped, Base):
     """Epic 19, US19.3: one execution of a whole RegressionSuiteModel --
     `run_ids` are SimulationRunModel ids (one per scenario, started through
     the existing start_twin_run/start_orchestration_run + background-task
@@ -1069,9 +1133,9 @@ class RegressionSuiteRunModel(Base):
     started_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class OrganizationModel(Base):
-    """Epic 27, US27.1: the one organization this deployment serves (hard
-    multi-tenancy is out of scope -- see the epic's Notes). `profile`
+class OrganizationModel(TenantScoped, Base):
+    """Epic 27, US27.1: the organization a tenant is (Epic 38: one per
+    tenant, as row-level security shows each tenant only its own). `profile`
     keeps the wizard's raw answers plus which starter packs were applied
     at which version."""
 
@@ -1089,7 +1153,7 @@ class OrganizationModel(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
-class ContextEntityModel(Base):
+class ContextEntityModel(TenantScoped, Base):
     """Epic 27: every organization-context entity -- business units,
     jurisdictions, roles, approval authorities, regulations, obligations,
     controls, policies, glossary terms (and Epic 29's applications/data
@@ -1138,7 +1202,7 @@ class ContextEntityModel(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
-class ContextEntityVersionModel(Base):
+class ContextEntityVersionModel(TenantScoped, Base):
     """Epic 27 Notes: history rows for ContextEntityModel. One row per
     version ever confirmed, holding the full entity as it was -- Epic 28's
     packs pin (entity_id, version) and need to read the content back."""
@@ -1155,7 +1219,7 @@ class ContextEntityVersionModel(Base):
     changed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class ContextDocumentModel(Base):
+class ContextDocumentModel(TenantScoped, Base):
     """Epic 27, US27.6: an uploaded policy document. Separate from
     DocumentModel, which belongs to one process -- a policy belongs to the
     organization."""
@@ -1178,7 +1242,7 @@ class ContextDocumentModel(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class PolicyPassageModel(Base):
+class PolicyPassageModel(TenantScoped, Base):
     """Epic 27 Notes: policy/regulation clause text in pgvector, with the
     scope metadata Epic 28's filtered retrieval matches against. `version`
     is the owning policy entity's version when the passage was written --
@@ -1204,7 +1268,7 @@ class PolicyPassageModel(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
-class ContextPackModel(Base):
+class ContextPackModel(TenantScoped, Base):
     """Epic 28, US28.1/US28.2: one resolved, versioned Context Pack -- the
     exact entity versions and passages an LLM call was given. Immutable:
     identical content resolves to the same row (`content_hash`), so a pack
@@ -1214,7 +1278,7 @@ class ContextPackModel(Base):
     __tablename__ = "context_packs"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    content_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    content_hash: Mapped[str] = mapped_column(String, nullable=False)
     purpose: Mapped[str] = mapped_column(String, nullable=False)
     scope: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     process_id: Mapped[str | None] = mapped_column(ForeignKey("processes.id", ondelete="SET NULL"), nullable=True)
@@ -1227,8 +1291,10 @@ class ContextPackModel(Base):
     truncated: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    __table_args__ = (UniqueConstraint("tenant_id", "content_hash", name="uq_context_packs_tenant_hash"),)
 
-class ProcessSystemLinkModel(Base):
+
+class ProcessSystemLinkModel(TenantScoped, Base):
     """Epic 29, US29.3: which catalog application a free-text system name
     means within one process. One row per (process, system name) rather
     than an `application_id` field added to every JSON blob that holds a
@@ -1249,7 +1315,7 @@ class ProcessSystemLinkModel(Base):
     linked_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
-class JobModel(Base):
+class JobModel(TenantScoped, Base):
     """Epic 31, US31.1: a durable background job -- Postgres-backed so it
     survives restarts and needs no extra infrastructure. Workers claim jobs
     with SELECT ... FOR UPDATE SKIP LOCKED (app/jobs/queue.py)."""
@@ -1276,7 +1342,7 @@ class JobModel(Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
-class ConnectorModel(Base):
+class ConnectorModel(TenantScoped, Base):
     """Epic 31, US31.2: a configured, read-only connector to a system of
     record. `config` never holds a secret -- only the *name* of the
     environment variable that does (`token_env`)."""
@@ -1284,7 +1350,7 @@ class ConnectorModel(Base):
     __tablename__ = "connectors"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)
     config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     enabled: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
@@ -1296,8 +1362,10 @@ class ConnectorModel(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_connectors_tenant_name"),)
 
-class ConnectorRunModel(Base):
+
+class ConnectorRunModel(TenantScoped, Base):
     __tablename__ = "connector_runs"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -1310,7 +1378,7 @@ class ConnectorRunModel(Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
-class UserBusinessUnitModel(Base):
+class UserBusinessUnitModel(TenantScoped, Base):
     """Epic 31, US31.7: which business units a user belongs to, and whether
     they steward (may confirm/edit) that unit's context. A user with no
     rows is unrestricted -- the single-unit default."""
@@ -1324,7 +1392,7 @@ class UserBusinessUnitModel(Base):
     steward: Mapped[bool] = mapped_column(nullable=False, default=False)
 
 
-class ContextAccessLogModel(Base):
+class ContextAccessLogModel(TenantScoped, Base):
     """Epic 31, US31.10: who and what read which context."""
 
     __tablename__ = "context_access_log"
@@ -1341,7 +1409,7 @@ class ContextAccessLogModel(Base):
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-class LabelledDatasetModel(Base):
+class LabelledDatasetModel(TenantScoped, Base):
     """Epic 32, US32.1: a labelled dataset -- the cases (inputs plus
     expected labels) a data-driven scenario is graded against, kept
     separate from the scenario's test logic. `version` bumps on every
@@ -1362,7 +1430,7 @@ class LabelledDatasetModel(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class DatasetRowModel(Base):
+class DatasetRowModel(TenantScoped, Base):
     """Epic 32: one revision of one case. Rows are never edited in place:
     a change closes the current revision (`valid_to_version`) and opens a
     new one, so the dataset as it was at any version can be read back
@@ -1395,7 +1463,7 @@ class DatasetRowModel(Base):
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
-class DecisionRuleModel(Base):
+class DecisionRuleModel(TenantScoped, Base):
     """Epic 33, US33.1: one gateway branch's condition as an executable
     rule over the process's input fields -- drafted by the LLM from the
     BPMN condition text, confirmed (or edited) by a person. `expression` is
@@ -1424,7 +1492,7 @@ class DecisionRuleModel(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
-class MetamorphicRelationModel(Base):
+class MetamorphicRelationModel(TenantScoped, Base):
     """Epic 33, US33.5: an invariant over a dataset's cases -- perturbing
     `field` must leave the decision unchanged (invariance) or move it in a
     stated direction (directional)."""
@@ -1441,7 +1509,7 @@ class MetamorphicRelationModel(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
-class JudgeRubricModel(Base):
+class JudgeRubricModel(TenantScoped, Base):
     """Epic 33, US33.6: a rubric an LLM judge grades one free-text output
     field against. Gate-eligible only after calibration against human
     verdicts reaches `min_agreement`; any change to the rubric or judge
@@ -1462,7 +1530,7 @@ class JudgeRubricModel(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
-class BatchRunModel(Base):
+class BatchRunModel(TenantScoped, Base):
     """Epic 34, US34.2: one execution of a data-driven scenario over a
     dataset version -- rows x trials runs, executed through the job queue
     (correctness mode) or by an in-process load driver (load mode)."""
@@ -1493,7 +1561,7 @@ class BatchRunModel(Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
-class BatchScheduleModel(Base):
+class BatchScheduleModel(TenantScoped, Base):
     """Epic 34, US34.9: run a tier of a data-driven scenario on a schedule,
     and/or whenever its dataset or the agent's pinned context changes."""
 
@@ -1515,7 +1583,7 @@ class BatchScheduleModel(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
-class ProcessOperatingModel(Base):
+class ProcessOperatingModel(TenantScoped, Base):
     """Epic 36, US36.4: how a process runs today -- per node, who does it,
     how long it takes and waits, what that time costs; per process, how
     many cases arrive. The as-is side of every process twin comparison.
@@ -1531,7 +1599,7 @@ class ProcessOperatingModel(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
-class ProcessTwinBatchModel(Base):
+class ProcessTwinBatchModel(TenantScoped, Base):
     """Epic 36, US36.5: the whole process run as a digital twin over a
     dataset -- one orchestration run per case (SimulationRunModel rows with
     `batch_id` = this id), executed through the job queue. `results` is the

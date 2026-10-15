@@ -120,7 +120,10 @@ before they're actually ready to accept connections.
   `agentic_solution_generator_test` database (same `db` container, separate
   DB -- not the dev one), created once with
   `CREATE DATABASE agentic_solution_generator_test` + `alembic upgrade
-  head` against that URL. `tests/conftest.py` sets `DATABASE_URL` to it and
+  head` against that URL (as the owner, `DATABASE_OWNER_URL`). Epic 38:
+  tests connect as the app role `axyntro_app` (`DATABASE_URL`), so
+  row-level security applies, and refuse to start as a superuser.
+  `tests/conftest.py` sets both URLs (port 5432; override for 5433) and
   truncates every table before each test (an autouse fixture) -- not a
   wrapping transaction rolled back after the test, because
   `app/ingestion/pipeline.py` deliberately opens its own DB session for

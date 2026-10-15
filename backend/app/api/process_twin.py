@@ -20,9 +20,9 @@ from app.schemas.process_twin import (
     ProcessTwinRequest,
 )
 
-from .deps import AgentTestDep, CurrentUserDep, DbDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, ProcessScope
 
-router = APIRouter(prefix="/api/processes/{process_id}/process-twin", tags=["process-twin"])
+router = APIRouter(prefix="/api/processes/{process_id}/process-twin", tags=["process-twin"], dependencies=[ProcessScope])
 
 
 def _bad(exc: Exception) -> HTTPException:

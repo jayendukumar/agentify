@@ -17,8 +17,13 @@ os.environ.setdefault("ENVIRONMENT", "test")
 # A dedicated test database, not the dev one -- see docker-compose.yml. Must
 # already exist with migrations applied (`alembic upgrade head` against
 # this URL); tests truncate its tables between runs but don't create it.
+# Epic 38: the app connects as the app role, so row-level security applies
+# exactly as in production; truncation and tenant setup use the owner.
 os.environ.setdefault(
-    "DATABASE_URL", "postgresql+psycopg://agentic:agentic@127.0.0.1:5432/agentic_solution_generator_test"
+    "DATABASE_URL", "postgresql+psycopg://axyntro_app:axyntro_app@127.0.0.1:5432/agentic_solution_generator_test"
+)
+os.environ.setdefault(
+    "DATABASE_OWNER_URL", "postgresql+psycopg://agentic:agentic@127.0.0.1:5432/agentic_solution_generator_test"
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -31,11 +36,40 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from app.db.models import Base  # noqa: E402
-from app.db.session import get_engine  # noqa: E402
+from app.db.session import get_owner_engine, isolation_enforced  # noqa: E402
 from app.llm.client import get_llm_client  # noqa: E402
 from app.main import app  # noqa: E402
+from app.tenancy.context import reset_current_tenant, set_current_tenant  # noqa: E402
 
 ALL_ROLES = ["analyst", "architect", "process_owner", "approver", "auditor", "admin"]
+
+# Epic 38: every test runs in this tenant, reached at TestClient's default
+# host. Tests about isolation add more with `make_tenant`.
+TEST_TENANT_ID = "ten_test"
+TEST_HOST = "testserver"
+
+
+def make_tenant(tenant_id: str, slug: str, hosts: list[str], status: str = "active") -> str:
+    """Creates a tenant as the platform operator would (the app role can't
+    write platform tables)."""
+    with get_owner_engine().begin() as conn:
+        conn.execute(
+            text("INSERT INTO tenants (id, slug, display_name, status) VALUES (:id, :slug, :name, :status)"),
+            {"id": tenant_id, "slug": slug, "name": slug.title(), "status": status},
+        )
+        for host in hosts:
+            conn.execute(text("INSERT INTO tenant_domains (host, tenant_id) VALUES (:h, :t)"), {"h": host, "t": tenant_id})
+    return tenant_id
+
+
+def pytest_sessionstart(session):
+    # A superuser test connection would skip row-level security and every
+    # isolation test would pass for the wrong reason.
+    if not isolation_enforced():
+        raise pytest.UsageError(
+            "DATABASE_URL connects as a superuser or BYPASSRLS role; tests must use the app role "
+            "(axyntro_app), with the owner in DATABASE_OWNER_URL. See tests/conftest.py."
+        )
 
 
 def sign_in(test_client: TestClient, name: str, roles: list[str], business_unit_id: str | None = None):
@@ -58,10 +92,15 @@ def _clean_db():
     connection for background tasks -- a wrapping-transaction approach
     would leave that session unable to see fixture-created rows."""
     table_names = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
-    engine = get_engine()
-    with engine.begin() as conn:
+    with get_owner_engine().begin() as conn:
         conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
+    make_tenant(TEST_TENANT_ID, "test", [TEST_HOST])
+    # Code a test calls directly (repositories, background tasks, the job
+    # worker's run_pending) runs as the test tenant; requests resolve their
+    # own tenant from the host, as in production.
+    token = set_current_tenant(TEST_TENANT_ID)
     yield
+    reset_current_tenant(token)
 
 
 class FakeLLMClient:

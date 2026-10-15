@@ -67,7 +67,14 @@ class Settings(BaseSettings):
 
     # Matches docker-compose.yml's `db` service (Epic 2, US2.2/US2.3 -- pgvector
     # lives on this same Postgres instance, see local-stack-bootstrap skill).
-    database_url: str = "postgresql+psycopg://agentic:agentic@127.0.0.1:5432/agentic_solution_generator"
+    #
+    # Epic 38, US38.2: the API and worker connect as `axyntro_app`, a role
+    # without BYPASSRLS that owns no tables, so row-level security keeps
+    # tenants apart. Migrations (and `python -m app.tenancy`) connect as the
+    # tables' owner, DATABASE_OWNER_URL; the first migration of Epic 38
+    # creates the app role (password DATABASE_APP_PASSWORD).
+    database_url: str = "postgresql+psycopg://axyntro_app:axyntro_app@127.0.0.1:5432/agentic_solution_generator"
+    database_owner_url: str | None = "postgresql+psycopg://agentic:agentic@127.0.0.1:5432/agentic_solution_generator"
     embedding_model_name: str = "all-MiniLM-L6-v2"
     # Epic 28, US28.8: re-run the regression suites of agents whose pinned
     # Context Pack contained an entity that just changed.
@@ -159,6 +166,19 @@ class Settings(BaseSettings):
     # Okta: "sub" (provision externalId = the user id). Entra ID: "oid"
     # (provision externalId = objectId).
     scim_link_claim: str = "sub"
+
+    # Epic 38, US38.1/US38.4: each tenant is reached at its own host names
+    # (table tenant_domains). Upgrading an existing deployment puts its data
+    # in one tenant, with this slug and display name, reached at these hosts
+    # plus the hosts of FRONTEND_URL, API_PUBLIC_URL and OIDC_REDIRECT_URI.
+    # Only read by that migration; afterwards `python -m app.tenancy` manages
+    # tenants and hosts.
+    tenant_default_slug: str = "default"
+    tenant_default_name: str | None = None
+    tenant_default_hosts: str = "localhost,127.0.0.1"
+    # Browsers call the API from the tenant's own host (frontend/src/api/
+    # client.ts), so locally any <tenant>.localhost:3000 is an allowed origin.
+    cors_origin_regex: str | None = r"^http://([a-z0-9-]+\.)?localhost:3000$"
 
     @property
     def oidc_client_secret(self) -> str:

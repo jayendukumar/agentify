@@ -8,6 +8,13 @@ claiming uses SKIP LOCKED, so a job runs once.
 Handlers are async functions `(payload, session) -> dict | None`,
 registered by kind. Each handler gets its own session and runs under a
 per-kind concurrency limit (`JOB_CONCURRENCY`, default 2 per kind).
+
+Epic 38, US38.3: jobs are tenant rows, invisible without a tenant. The
+worker walks the active tenants (a platform table), claims each one's due
+jobs as that tenant, and runs every job as its tenant. A suspended
+tenant's jobs wait. Each tick starts the walk one tenant further on, so
+no tenant is always first in line for free capacity; real fair share and
+quotas are US38.9.
 """
 
 from __future__ import annotations
@@ -24,6 +31,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings, settings_or_exit
 from app.db.models import JobModel
 from app.db.session import get_session_factory
+from app.tenancy.context import tenant_scope
+from app.tenancy.hosts import active_tenant_ids
 
 from . import queue
 
@@ -54,8 +63,18 @@ def _load_handlers() -> None:
     from app.process_twin import jobs as _process_twin_jobs  # noqa: F401
 
 
-async def run_job(job_id: str) -> None:
-    """Executes one claimed job in its own session and records the outcome."""
+def _active_tenants() -> list[str]:
+    with get_session_factory()() as session:
+        return active_tenant_ids(session)
+
+
+async def run_job(job_id: str, tenant_id: str) -> None:
+    """Executes one claimed job, as its tenant, and records the outcome."""
+    with tenant_scope(tenant_id):
+        await _run_job(job_id)
+
+
+async def _run_job(job_id: str) -> None:
     _load_handlers()
     session = get_session_factory()()
     try:
@@ -89,17 +108,19 @@ async def run_pending(*, kinds: list[str] | None = None, max_jobs: int = 100) ->
     Returns how many ran."""
     _load_handlers()
     ran = 0
-    while ran < max_jobs:
-        session = get_session_factory()()
-        try:
-            claimed = queue.claim(session, "inline", kinds=kinds or list(_HANDLERS), limit=1)
-            session.commit()
-        finally:
-            session.close()
-        if not claimed:
-            return ran
-        await run_job(claimed[0].id)
-        ran += 1
+    for tenant_id in _active_tenants():
+        with tenant_scope(tenant_id):
+            while ran < max_jobs:
+                session = get_session_factory()()
+                try:
+                    claimed = queue.claim(session, "inline", kinds=kinds or list(_HANDLERS), limit=1)
+                    session.commit()
+                finally:
+                    session.close()
+                if not claimed:
+                    break
+                await run_job(claimed[0].id, tenant_id)
+                ran += 1
     return ran
 
 
@@ -112,6 +133,7 @@ class Worker:
         self.lease_seconds = settings.job_lease_seconds
         self._running: dict[str, set[asyncio.Task]] = {}
         self._stopping = asyncio.Event()
+        self._turn = 0
 
     def _capacity(self, kind: str) -> int:
         tasks = self._running.setdefault(kind, set())
@@ -120,12 +142,21 @@ class Worker:
 
     async def tick(self) -> None:
         _load_handlers()
+        tenants = _active_tenants()
+        if not tenants:
+            return
+        self._turn = (self._turn + 1) % len(tenants)
+        for tenant_id in tenants[self._turn:] + tenants[: self._turn]:
+            with tenant_scope(tenant_id):
+                self._tick_tenant(tenant_id)
+
+    def _tick_tenant(self, tenant_id: str) -> None:
+        from app.batches.service import enqueue_due_batches
+        from app.connectors.jobs import enqueue_due_syncs
+
         session = get_session_factory()()
         try:
             queue.recover_expired(session, lease_seconds=self.lease_seconds)
-            from app.batches.service import enqueue_due_batches
-            from app.connectors.jobs import enqueue_due_syncs
-
             enqueue_due_syncs(session)
             enqueue_due_batches(session)
             claimed: list[JobModel] = []
@@ -136,7 +167,7 @@ class Worker:
         finally:
             session.close()
         for job_id, kind in job_ids:
-            task = asyncio.create_task(run_job(job_id))
+            task = asyncio.create_task(run_job(job_id, tenant_id))
             self._running.setdefault(kind, set()).add(task)
 
     async def run(self) -> None:

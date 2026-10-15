@@ -3394,3 +3394,87 @@ and are named by the token's label ("SCIM (Entra ID)"). That's the actor
 type the epic reserved for service accounts (backlog B4), so no schema
 change was needed. Deactivation over SCIM revokes sessions in the same
 transaction, and the next request from that browser is refused.
+
+## 2026-10-15 -- Epic 38, the tenant boundary (build step 1)
+
+### Defect: Postgres checks foreign keys without row-level security
+
+The cross-tenant probe (US38.5) found that tenant B could call
+`PUT /api/processes/{A's process}/systems/{name}` and get 200. Row-level
+security hid A's process from every query, but the route never looked
+the process up: it inserted a `process_system_links` row in B pointing at
+A's process, and the foreign key accepted it, because Postgres checks
+referential integrity as the table owner, bypassing RLS. Six list routes
+in the same routers also answered `200 []` instead of 404. None of this
+was visible before: with one tenant, a missing process simply had no
+children. Five routers (datasets, oracles, batches, process twin, system
+links) now declare `ProcessScope` (`api/deps.py`), which 404s a process
+the tenant can't see before any other dependency runs, so a permission
+check can't answer 403 and confirm it exists. Making foreign keys
+tenant-aware in the database (`(tenant_id, process_id)` references)
+would close the class of bug for good; it's noted in the epic for
+step 3.
+
+### Pooled tables with forced row-level security, failing closed
+
+As decided with the plan: one schema, `tenant_id` on all 60 tenant
+tables, a policy `tenant_id = app_current_tenant()` for reads and writes,
+`ENABLE` and `FORCE`. `app_current_tenant()` is
+`NULLIF(current_setting('app.tenant_id', true), '')`: a transaction with
+no tenant gets NULL, so the policy matches nothing and the column
+default is NULL, which the policy and `NOT NULL` both refuse. The
+`NULLIF` matters: once a connection has used `SET LOCAL`, the setting
+reads back as an empty string, not as missing, in later transactions.
+Without it, a later transaction with no tenant could have inserted rows
+with `tenant_id = ''`. The foreign key to `tenants` would also have
+caught that.
+
+### The app connects as a role that can't bypass it
+
+Superusers ignore row-level security entirely, even forced, and the
+stack connected as the Postgres superuser `agentic`. So the migration
+creates `axyntro_app` (no superuser, no `BYPASSRLS`, owns nothing,
+read-only on the platform tables, no `TRUNCATE`), and the API and worker
+connect as it. Migrations and `python -m app.tenancy` use
+`DATABASE_OWNER_URL`. The API checks its own role at startup:
+production refuses to start if isolation isn't enforced, and `/healthz`
+reports it everywhere. The test suite connects as the app role too, and
+refuses to start as a superuser, or every isolation test would pass for
+the wrong reason.
+
+### The tenant is set at the edges and read by the session
+
+Each transaction gets `SET LOCAL app.tenant_id` from a SQLAlchemy
+`after_begin` hook, so it ends with the transaction and a pooled
+connection never carries a tenant over (also safe under a
+transaction-mode pooler). The value comes from `session.info` (the
+request's `get_db`) or a ContextVar set at the edges: the tenant
+middleware, the worker per job, `tenant_scope()` in scripts and tests.
+The epic had said "explicit, never ambient". Passing a tenant argument
+to every function that opens its own session would have touched the
+audit refusal writer, the local registry and four background tasks for
+no safety gain: a missing context fails closed in the database either
+way. The middleware is pure ASGI, so the context reaches the thread
+pool and background tasks; it's added inside CORS so preflights don't
+need a tenant.
+
+### Jobs: the worker walks tenants, one at a time
+
+`jobs` is a tenant table, so a worker sees no jobs until it picks a
+tenant. Rather than a cross-tenant claim (a `SECURITY DEFINER` function,
+or `jobs` as a platform table), the worker reads the active tenants and
+claims each one's jobs as that tenant, starting one tenant further on
+each tick. That keeps the queue inside RLS, makes suspension pause a
+tenant's jobs for free, and is a first step to fair share (US38.9). Its
+cost is a few queries per tenant per tick, fine at tens of tenants and
+to be revisited with quotas.
+
+### One identity per (tenant, issuer, subject), without changing lookups
+
+`user_identities`' primary key becomes `(tenant_id, issuer, subject)`,
+so one IdP account can exist in two tenants. The ORM keeps `(issuer,
+subject)` as its identity (`__mapper_args__`), because within one
+transaction RLS shows one tenant, so `db.get(UserIdentityModel, (issuer,
+subject))` stays correct and unchanged. User names, connector names,
+context-pack hashes and group mappings became unique per tenant the same
+way.

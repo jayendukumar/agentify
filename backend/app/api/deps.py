@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import audit, sessions, sod
 from app.auth.permissions import Permission, has_permission, missing_permission_message
-from app.db.models import SessionModel, UserModel
+from app.db.models import ProcessModel, SessionModel, UserModel
 from app.db.session import get_db
 from app.llm import LLMClient, get_llm_client
 from app.registry.base import RegistryConnector
@@ -56,6 +56,20 @@ def get_current_user(record: CurrentSessionDep) -> UserModel:
 
 
 CurrentUserDep = Annotated[UserModel, Depends(get_current_user)]
+
+
+def require_process(process_id: str, db: DbDep) -> None:
+    """Epic 38, US38.5: a process this tenant can't see is a 404 before
+    the route does anything. Row-level security already hides the other
+    tenant's rows, so a list would come back empty -- but a write could
+    still store a row that points at the other tenant's process, because
+    Postgres checks foreign keys without row-level security. Routers whose
+    routes don't look the process up themselves declare this."""
+    if db.get(ProcessModel, process_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Process '{process_id}' not found")
+
+
+ProcessScope = Depends(require_process)
 
 
 # Epic 37, US37.2: every write route declares the permission it needs. The

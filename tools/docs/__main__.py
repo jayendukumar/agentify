@@ -28,7 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .generators import GENERATORS, REPO, llm_call_sites, unmapped_tables
+from .generators import GENERATORS, REPO, llm_call_sites, unisolated_tables, unmapped_tables
 
 WIKI = REPO / "docs" / "wiki"
 BLOCK = re.compile(r"(<!-- BEGIN GENERATED: ([\w-]+) -->\n)(.*?)(<!-- END GENERATED: \2 -->)", re.DOTALL)
@@ -79,6 +79,8 @@ def _broken_links() -> list[str]:
 
 def _undocumented() -> list[str]:
     problems = [f"table '{t}' isn't in a domain in tools/docs/generators.py DOMAINS" for t in unmapped_tables()]
+    problems += [f"table '{t}' has no tenant_id: add TenantScoped (Epic 38) or list it in PLATFORM_TABLES"
+                 for t in unisolated_tables()]
     from .generators import _PURPOSE
 
     problems += [f"LLM operation '{s['operation']}' has no purpose in tools/docs/generators.py _PURPOSE"

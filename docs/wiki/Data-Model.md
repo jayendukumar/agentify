@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-15 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**60 tables, 610 columns (90 JSON), 98 foreign keys, 33 Alembic migrations.**
+**62 tables, 679 columns (90 JSON), 159 foreign keys, 34 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -35,6 +35,14 @@ the database stores their paths.
   `contributions` are never updated or deleted by the API. Tokens are
   stored only as SHA-256 hashes (`session_tokens`), never in the form a
   browser presents them. See the [Glossary](Glossary.md).
+- **Every row belongs to a tenant (Epic 38).** Each table except
+  `tenants` and `tenant_domains` has `tenant_id`, defaulting to the
+  transaction's tenant, and a forced row-level security policy: a
+  transaction sees and writes only its own tenant's rows, and one with no
+  tenant sees nothing. The column is left out of the diagrams and the
+  catalogue below. Uniqueness that used to be deployment-wide (user names,
+  connector names, context-pack hashes, IdP identities) is per tenant.
+  See the [Glossary](Glossary.md#many-customers-on-one-deployment-tenancy).
 - **Everything hangs off a process.** Most tables have `process_id` with
   `ON DELETE CASCADE`, so deleting a process removes its whole tree.
   Organization context is the exception: it is organization-wide and
@@ -560,7 +568,7 @@ erDiagram
     directory_groups ||--o{ directory_group_members : "group_id"
 ```
 
-### Platform (Epic 31)
+### Platform (Epics 31, 38)
 
 ```mermaid
 erDiagram
@@ -571,6 +579,15 @@ erDiagram
         string status
         json result
     }
+    tenants {
+        string id PK
+        string status
+    }
+    tenant_domains {
+        string host PK
+        string tenant_id FK
+    }
+    tenants ||--o{ tenant_domains : "tenant_id"
 ```
 <!-- END GENERATED: er-diagrams -->
 
@@ -1033,7 +1050,7 @@ Epic 19, US19.3: one execution of a whole RegressionSuiteModel -- `run_ids` are 
 
 #### `organizations` (OrganizationModel)
 
-Epic 27, US27.1: the one organization this deployment serves (hard multi-tenancy is out of scope -- see the epic's Notes). `profile` keeps the wizard's raw answers plus which starter packs were applied at which version.
+Epic 27, US27.1: the organization a tenant is (Epic 38: one per tenant, as row-level security shows each tenant only its own). `profile` keeps the wizard's raw answers plus which starter packs were applied at which version.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
@@ -1600,7 +1617,7 @@ Epic 37, US37.6: append-only record of sign-ins, privileged writes, approvals an
 | `user_agent` | string | yes |  |
 | `detail` | json | no |  |
 
-### Platform (Epic 31)
+### Platform (Epics 31, 38)
 
 #### `jobs` (JobModel)
 
@@ -1623,4 +1640,27 @@ Epic 31, US31.1: a durable background job -- Postgres-backed so it survives rest
 | `dedupe_key` | string | yes | indexed |
 | `created_at` | datetime | no |  |
 | `finished_at` | datetime | yes |  |
+
+#### `tenants` (TenantModel)
+
+Epic 38, US38.1: one customer of this deployment. Every other table is the tenant's own (TenantScoped).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `slug` | string | no |  |
+| `display_name` | string | no |  |
+| `status` | string | no |  |
+| `region` | string | yes |  |
+| `created_at` | datetime | no |  |
+
+#### `tenant_domains` (TenantDomainModel)
+
+Epic 38, US38.1: a host name that reaches a tenant, matched without the port (`meridian.localhost`, `acme.axyntro.app`, a custom domain).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `host` | string | no | primary key |
+| `tenant_id` | string | no | -> `tenants.id` (cascade); indexed |
+| `created_at` | datetime | no |  |
 <!-- END GENERATED: table-catalogue -->

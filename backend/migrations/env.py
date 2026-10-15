@@ -19,7 +19,10 @@ if config.config_file_name is not None:
 
 # Read the DB URL from app.config.Settings (.env) rather than duplicating it
 # as a static value in alembic.ini -- one source of truth for credentials.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Epic 38: migrations run as the tables' owner, not the app role the API
+# uses (which can't create tables and is subject to row-level security).
+_settings = get_settings()
+config.set_main_option("sqlalchemy.url", (_settings.database_owner_url or _settings.database_url).replace("%", "%%"))
 
 target_metadata = Base.metadata
 

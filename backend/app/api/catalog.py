@@ -23,7 +23,7 @@ from app.schemas.context import (
     ThirdPartyRegisterRow,
 )
 
-from .deps import AgentBuildDep, CatalogEditDep, CurrentUserDep, DbDep
+from .deps import AgentBuildDep, CatalogEditDep, CurrentUserDep, DbDep, ProcessScope
 
 router = APIRouter(prefix="/api/organization/applications", tags=["catalog"])
 
@@ -88,7 +88,7 @@ def third_party_register(db: DbDep, user: CurrentUserDep) -> list[ThirdPartyRegi
     return service.third_party_register(db)
 
 
-process_router = APIRouter(prefix="/api/processes/{process_id}/systems", tags=["catalog"])
+process_router = APIRouter(prefix="/api/processes/{process_id}/systems", tags=["catalog"], dependencies=[ProcessScope])
 
 
 @process_router.get("", response_model=list[SystemResolution])

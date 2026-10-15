@@ -117,23 +117,35 @@ if ($Sso) {
 Write-Host ''
 Write-Host "To stop it later, run: docker compose $($composeFiles -join ' ') down"
 
-if ($Seed -or $SeedProcessTwin) {
-    # Migrations and the embedding model load before the API answers.
-    Write-Host 'Waiting for the API...'
-    $deadline = (Get-Date).AddMinutes(5)
-    while ($true) {
-        try {
-            Invoke-RestMethod -Uri 'http://localhost:8000/healthz' -TimeoutSec 5 | Out-Null
-            break
-        }
-        catch {
-            if ((Get-Date) -gt $deadline) {
-                Write-Error "The API didn't come up within 5 minutes -- check: docker compose logs api"
-                exit 1
-            }
-            Start-Sleep -Seconds 3
-        }
+# Migrations and the embedding model load before the API answers.
+Write-Host 'Waiting for the API...'
+$deadline = (Get-Date).AddMinutes(5)
+while ($true) {
+    try {
+        Invoke-RestMethod -Uri 'http://localhost:8000/healthz' -TimeoutSec 5 | Out-Null
+        break
     }
+    catch {
+        if ((Get-Date) -gt $deadline) {
+            Write-Error "The API didn't come up within 5 minutes -- check: docker compose logs api"
+            exit 1
+        }
+        Start-Sleep -Seconds 3
+    }
+}
+
+# Epic 38: a second tenant, so isolation can be seen in a browser. Its data
+# is entirely separate from Meridian's (the default tenant, at localhost).
+& docker compose exec -T api python -m app.tenancy ensure northwind --name 'Northwind Traders' --host northwind.localhost | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Couldn't create the northwind tenant -- check: docker compose logs api"
+}
+Write-Host 'Tenants:  http://meridian.localhost:3000 (same as localhost) and http://northwind.localhost:3000'
+if ($Sso) {
+    Write-Host '          Single sign-on is set up for Meridian only until each tenant has its own IdP (Epic 38, US38.6).'
+}
+
+if ($Seed -or $SeedProcessTwin) {
     Require-Command 'python'
     if ($Seed) {
         & python (Join-Path $PSScriptRoot 'backend\scripts\demo_seed\seed_demo.py') --base-url 'http://localhost:8000'

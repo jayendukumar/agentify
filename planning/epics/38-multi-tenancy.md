@@ -1,6 +1,7 @@
 # Epic 38 -- Multi-Tenancy: Many Organizations on One Deployment
 
-**Status: groomed 2026-10-15, not started. Decisions confirmed 2026-10-15
+**Status: build step 1 implemented (2026-10-15): US38.1-38.5, the tenant
+boundary. Open: steps 2-5 (US38.6-38.15). Decisions confirmed 2026-10-15
 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
@@ -91,6 +92,60 @@ Measured on 2026-10-15 (54 tables, 196 routes):
   background session takes a tenant argument. Code that touches tenant
   data without a tenant fails (RLS), so the gaps surface in tests rather
   than in production.
+
+## Step 1 as built
+
+- **Code.** `app/tenancy/` (the tenant context, host resolution, the
+  middleware, and `python -m app.tenancy` to manage tenants and hosts
+  until the operator console exists), the `after_begin` hook in
+  `app/db/session.py`, `TenantScoped` and the platform tables in
+  `app/db/models.py`, and migration `f2a3b4c5d6e7`. The job worker walks
+  the active tenants (`app/jobs/worker.py`).
+- **Tests.** `tests/test_tenancy.py` (schema and grants, failing closed,
+  hosts, per-tenant uniqueness, sessions, SCIM tokens, audit, jobs) and
+  `tests/test_cross_tenant_probe.py` (US38.5). The suite connects as the
+  app role and refuses to start as a superuser. Live:
+  `testing/tenancy/smoke_tenancy.py`, plus Epic 37's smoke tests, which
+  still pass under row-level security.
+- **Local stack.** Existing data becomes tenant `meridian` (localhost and
+  `meridian.localhost`); `start.ps1` adds `northwind`
+  (`northwind.localhost`).
+
+Deviations from the stories below, decided while building:
+
+- **The tenant reaches the database through a ContextVar**, not an
+  argument (the design summary said "explicit, never ambient"). It's set
+  only at the edges (the middleware, the worker per job,
+  `tenant_scope()`), and sessions read it in `after_begin`. Passing it
+  explicitly would have meant changing every function that opens a
+  session (the audit refusal writer, the local registry, four kinds of
+  background task) for no gain in safety: a missing context still fails
+  closed in the database.
+- **The tenant column isn't in any composite index or foreign key.** Ids
+  are random and globally unique, so `(tenant_id, id)` keys weren't
+  needed for correctness. But Postgres checks foreign keys *without*
+  row-level security, so a route that inserts a child without looking its
+  parent up can link to another tenant's row. The probe found one
+  (`PUT /processes/{id}/systems/{name}`); five routers now 404 an
+  invisible process first (`api/deps.py` `ProcessScope`). Composite
+  tenant foreign keys would close this in the database; they're a
+  candidate for step 3.
+- **US38.1, local tenants:** the second Keycloak realm (one per tenant)
+  needs per-tenant IdP configuration, so it moves to step 2 (US38.6). On
+  `-Sso`, single sign-on works for meridian only.
+- **US38.3, caches:** the OIDC provider cache stays global until the IdP
+  is per tenant (US38.6).
+- **US38.4, hosts of an upgraded deployment:** the migration registers
+  `TENANT_DEFAULT_HOSTS` plus the hosts of `FRONTEND_URL`,
+  `API_PUBLIC_URL` and `OIDC_REDIRECT_URI`, so an existing deployment
+  keeps answering where it did. Docker adds `api`, the host Keycloak uses
+  for back-channel logout.
+- **US38.5, what counts as a pass:** 404, or 422 when FastAPI rejects the
+  query or body before any handler runs. Parameters that aren't a
+  tenant's objects (node ids, system names, registry names, SCIM schema
+  ids) aren't probed. The test asserts that over 80% of probes use real
+  ids of the other tenant and over 60% reach a handler; on 2026-10-15 it
+  sent 253 requests, 239 with real ids, 211 answered 404 by a handler.
 
 ## User Stories
 

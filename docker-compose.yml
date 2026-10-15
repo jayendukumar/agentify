@@ -31,7 +31,19 @@ services:
       # not 127.0.0.1. APP_DB_NAME switches to the demo database
       # (start.ps1 -Demo), which also raises the job worker's concurrency
       # so demo batches finish in minutes rather than an hour.
-      DATABASE_URL: postgresql+psycopg://agentic:agentic@db:5432/${APP_DB_NAME:-agentic_solution_generator}
+      #
+      # Epic 38: the API connects as axyntro_app, which row-level security
+      # holds to one tenant at a time; migrations and `python -m
+      # app.tenancy` use the owner. The first migration of Epic 38 creates
+      # axyntro_app (password axyntro_app, local only) and puts existing
+      # data in the tenant "meridian", reached at localhost and
+      # meridian.localhost. start.ps1 adds a second tenant, northwind.
+      DATABASE_URL: postgresql+psycopg://axyntro_app:axyntro_app@db:5432/${APP_DB_NAME:-agentic_solution_generator}
+      DATABASE_OWNER_URL: postgresql+psycopg://agentic:agentic@db:5432/${APP_DB_NAME:-agentic_solution_generator}
+      TENANT_DEFAULT_SLUG: meridian
+      TENANT_DEFAULT_NAME: Meridian Group
+      # "api" is how Keycloak reaches the API inside this network (back-channel logout).
+      TENANT_DEFAULT_HOSTS: localhost,127.0.0.1,api,meridian.localhost
       JOB_CONCURRENCY: ${JOB_CONCURRENCY:-2}
       # Epic 37, US37.14: the image defaults to production, which refuses
       # local sign-in. start.ps1 sets demo for -Demo runs.

@@ -14,9 +14,9 @@ The product idea and the domain model are strong, ahead of most tools in
 this space. Process capture, explainable blueprints, governed agent
 definitions, a reproducible twin, ground truth at volume, statistical
 release gates, and now the whole-process twin form one coherent line from
-document to evidence. The *platform* under it is a well-tested single-tenant
-prototype: one process, now with enterprise identity (SSO, SCIM, roles,
-segregation of duties), a database used as a
+document to evidence. The *platform* under it is a well-tested
+prototype, now with enterprise identity (SSO, SCIM, roles, segregation of
+duties) and a database-enforced tenant boundary, but still with a database used as a
 document store, a 2,400-line repository module doing orchestration, an
 in-process job worker, one LLM provider, and nothing that runs an agent in
 production. Most weaknesses below are platform weaknesses, which are
@@ -56,10 +56,16 @@ fixable without rethinking the product.
    only speak SAML. The SCIM sequences aren't yet checked against a live
    Entra or Okta tenant. The local name picker remains for development and
    demos and is refused in production. (`auth/`, `scim/`, Epic 37)
-2. **It's single-tenant by construction.** The organization is a
-   singleton, and no table carries a tenant id. Serving two customers
-   means two deployments, and nothing stops cross-customer data mixing if
-   someone tries otherwise. (`organizations`, every `process_id` tree)
+2. **Tenants are kept apart, but only half-separate.** Every row has a
+   tenant, and Postgres row-level security, not the application, keeps
+   each tenant's rows invisible to the others; a test probes every route
+   with another tenant's ids. Still shared per deployment: the IdP and
+   SCIM settings, registries, the model provider's key, connector
+   secrets, uploaded files and the logs. The job queue walks tenants in
+   turn but has no quotas. Foreign keys aren't tenant-aware: Postgres
+   checks them without row-level security, so a route that doesn't look
+   its parent up first could link a row to another tenant's object (the
+   probe found one, now fixed). (`app/tenancy`, Epic 38 steps 2-4)
 3. **Agents never run in production.** "DEPLOYED" means "published to a
    registry entry". There's no agent runtime, no production tool gateway,
    no identity for an agent to act with, no kill switch, and no production
@@ -192,11 +198,12 @@ fixable without rethinking the product.
 
 The order is in the enterprise-readiness deck. In short:
 
-1. **Tenancy:** tenant id everywhere, row-level security. Identity is
-   done (SSO with MFA, SCIM, group mappings, roles, segregation of duties,
-   audit, session hardening), apart from SAML. A run against a live Entra
-   ID or Okta tenant before the first customer would confirm the SCIM
-   sequences. *(Weaknesses 1, 2)*
+1. **Tenancy, the rest of Epic 38:** identity per tenant and an operator
+   console without data access, then per-tenant secrets, files, quotas and
+   model policy, then the tenant lifecycle. The boundary itself (tenant id
+   everywhere, row-level security, the cross-tenant probe) is done, and
+   so is identity (SSO with MFA, SCIM, group mappings, roles, segregation
+   of duties, audit, sessions), apart from SAML. *(Weaknesses 1, 2)*
 2. **Separate the worker, and make runs append-only:** a worker deployment
    on the same queue, a `run_steps` table appended per step, and summary
    columns maintained on write. *(5, 6, 7)*

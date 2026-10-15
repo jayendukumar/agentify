@@ -205,10 +205,12 @@ provisioning and group mappings. Open: SAML (US37.9).
 
 ## Phase 9 epic (groomed 2026-10-15 for a hosted offering)
 
-Every table, setting, file and job assumes one organization per
+Every table, setting, file and job assumed one organization per
 deployment. Hosting several customers needs isolation the database
 enforces, identity per tenant, fair shares of the job queue, and a tenant
-lifecycle with export and deletion.
+lifecycle with export and deletion. Status: step 1 built 2026-10-15 (the
+tenant boundary: row-level security on every table, tenants by host, the
+cross-tenant probe); steps 2-5 open.
 
 | # | Epic | Summary |
 |---|---|---|

@@ -51,6 +51,9 @@ from app.llm.exceptions import (
 from app.request_context import RequestIDLogFilter, request_id_middleware
 from app.scim.protocol import ScimError
 from app.store import NotFoundError
+from app.tenancy.middleware import TenantMiddleware
+
+logger = logging.getLogger("app.main")
 
 
 def _configure_logging() -> None:
@@ -88,7 +91,12 @@ _configure_logging()
 async def lifespan(app: FastAPI):
     """Epic 31, US31.1: run the durable job worker alongside the API unless
     it's disabled (tests; or a deployment running `python -m
-    app.jobs.worker` separately)."""
+    app.jobs.worker` separately).
+
+    Epic 38, US38.2: checks first that the database enforces tenant
+    isolation for the role the API connects as. Production refuses to
+    start without it."""
+    _check_tenant_isolation(app)
     worker = task = None
     if get_settings().job_worker_enabled:
         from app.jobs.worker import Worker
@@ -101,6 +109,29 @@ async def lifespan(app: FastAPI):
         if worker is not None and task is not None:
             worker.stop()
             await task
+
+
+def _check_tenant_isolation(app: FastAPI) -> None:
+    from app.db.session import isolation_enforced
+
+    try:
+        enforced = isolation_enforced()
+    except Exception as exc:  # the database is down: the first request will say so
+        if get_settings().environment == "production":
+            raise
+        logger.warning("Couldn't check tenant isolation: %s", exc)
+        app.state.tenant_isolation = "unknown"
+        return
+    app.state.tenant_isolation = "enforced" if enforced else "not enforced"
+    if enforced:
+        return
+    message = (
+        "DATABASE_URL connects as a superuser or a role with BYPASSRLS, so row-level security doesn't apply and "
+        "tenants aren't kept apart. Connect as the app role (axyntro_app) and keep the owner for DATABASE_OWNER_URL."
+    )
+    if get_settings().environment == "production":
+        raise RuntimeError(message)
+    logger.warning(message)
 
 
 app = FastAPI(
@@ -116,9 +147,15 @@ app = FastAPI(
 # origins even though they're the same machine, and the frontend is pinned
 # to 127.0.0.1 (see frontend/vite.config.ts) to avoid an IPv6-only binding
 # issue, so both must be allowed here or CORS silently blocks every request.
+# Epic 38, US38.1: added first, so it runs inside CORS -- preflights are
+# answered without resolving a tenant, and a 404 for an unknown host still
+# carries CORS headers the browser can read.
+app.add_middleware(TenantMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    # Epic 38: each tenant's frontend calls the API from its own host.
+    allow_origin_regex=get_settings().cors_origin_regex,
     allow_credentials=True,  # Epic 9/10, US9.9: the session cookie needs this to cross the :3000/:8000 origin gap
     allow_methods=["*"],
     allow_headers=["*"],
@@ -215,7 +252,14 @@ def handle_llm_error(request: Request, exc: LLMError) -> JSONResponse:
 
 
 @app.get("/healthz", tags=["health"])
-def healthz() -> dict[str, str]:
-    # Epic 37, US37.14: lets an operator see at a glance how sign-in is set up.
+def healthz(request: Request) -> dict[str, str]:
+    # Epic 37, US37.14: lets an operator see at a glance how sign-in is set
+    # up. Epic 38: and whether the database keeps tenants apart. Answers on
+    # any host (app/tenancy/middleware.py), and names no tenant.
     settings = get_settings()
-    return {"status": "ok", "environment": settings.environment, "auth_mode": settings.auth_mode}
+    return {
+        "status": "ok",
+        "environment": settings.environment,
+        "auth_mode": settings.auth_mode,
+        "tenant_isolation": getattr(request.app.state, "tenant_isolation", "unknown"),
+    }

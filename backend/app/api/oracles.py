@@ -17,9 +17,9 @@ from app.llm.routing import llm_route_for
 from app.oracles import service
 from app.oracles.rules import RuleView
 
-from .deps import AgentTestDep, CurrentUserDep, DbDep, LLMDep
+from .deps import AgentTestDep, CurrentUserDep, DbDep, LLMDep, ProcessScope
 
-router = APIRouter(prefix="/api/processes/{process_id}", tags=["oracles"])
+router = APIRouter(prefix="/api/processes/{process_id}", tags=["oracles"], dependencies=[ProcessScope])
 
 
 def _bad(exc: Exception) -> HTTPException:

@@ -1,8 +1,8 @@
-# Glossary: identity, access and sessions
+# Glossary: identity, access, sessions and tenancy
 
-Last reviewed: 2026-10-15 · Sources: `backend/app/auth`, `backend/app/api/auth.py`, `backend/app/api/oidc.py`, `backend/app/api/scim.py`, `backend/app/scim`, `backend/app/api/deps.py`, `testing/keycloak`, `backend/app/config.py`, `frontend/src/api/client.ts`, `planning/epics/37-enterprise-identity-and-access.md`
+Last reviewed: 2026-10-15 · Sources: `backend/app/tenancy`, `backend/app/db/session.py`, `backend/app/auth`, `backend/app/api/auth.py`, `backend/app/api/oidc.py`, `backend/app/api/scim.py`, `backend/app/scim`, `backend/app/api/deps.py`, `testing/keycloak`, `backend/app/config.py`, `frontend/src/api/client.ts`, `planning/epics/37-enterprise-identity-and-access.md`
 
-These are the security and governance concepts behind Epic 37. Each entry
+These are the security and governance concepts behind Epics 37 and 38. Each entry
 gives the general meaning and how Axyntro applies it, with the code that
 does it. Concepts marked *(planned)* belong to a step not built yet
 (SAML). The reasons behind the choices are in the
@@ -108,3 +108,16 @@ full stories.
 | **Transactional audit** | The event exists exactly when the action committed. | Successful actions are written in the request's transaction. Refusals, whose request rolls back, are written in their own short transaction (`audit.record_refusal`). The one deliberate exception is refresh-token reuse, which commits the revocation together with its refused event. |
 | **Actor type** | Whether a person, a service or the system acted. | `user` today. `service` is reserved for service accounts (backlog B4), so adding them needs no schema change. |
 | **Evidence export** | The audit and approval trail packaged for compliance. | Epic 30's evidence export lists every approver and their roles. |
+
+## Many customers on one deployment: tenancy
+
+| Term | What it means | In Axyntro |
+|---|---|---|
+| **Tenant** | One customer's isolated share of a shared deployment. | A row in `tenants`. Each has one organization, its own users, processes and everything else. Epic 38. |
+| **Tenant host** | The host name that says which tenant a request is for. | `tenant_domains` maps hosts (without the port) to tenants: `meridian.localhost`, `northwind.localhost` locally. An unknown host gets a 404 that names no tenant; a suspended tenant gets a 403. Cookies are host-only, so a session never travels to another tenant. |
+| **Row-level security (RLS)** | The database filters rows by a policy on every query, whatever the query says. | Every tenant table has the policy `tenant_id = app_current_tenant()` for reads and writes, enabled and *forced* (it applies to the table owner too). A forgotten `WHERE` can't leak. |
+| **Tenant context** | Which tenant the current work is for. | Set at each edge: the middleware for a request, the worker for each job, `tenant_scope()` in scripts and tests. `app/db/session.py` sends it to Postgres at the start of every transaction (`SET LOCAL app.tenant_id`), so it ends with the transaction. |
+| **Fail closed** | When something's missing, refuse rather than allow. | A transaction with no tenant sees no rows and can't insert one: the column default is NULL and the policy refuses. |
+| **App role and owner role** | Separate database logins for running and for changing the schema. | The API and worker connect as `axyntro_app`: not a superuser, no `BYPASSRLS`, owns no tables, can only read the platform tables. Migrations and `python -m app.tenancy` use the owner (`DATABASE_OWNER_URL`). `/healthz` says whether isolation is enforced; production refuses to start if it isn't. |
+| **Platform table** | Data that belongs to the deployment, not a tenant. | `tenants` and `tenant_domains`, with no RLS. `tools.docs check` and `tests/test_tenancy.py` fail on any other table without a tenant. |
+| **Cross-tenant probe** | Testing isolation by trying to break it. | `tests/test_cross_tenant_probe.py` calls every route that takes an id from one tenant with another tenant's ids, and requires a 404 every time (a 403 would confirm the object exists), with the first tenant's data unchanged. `testing/tenancy/smoke_tenancy.py` does the same against the running stack. |
