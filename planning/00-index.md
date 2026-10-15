@@ -198,9 +198,23 @@ separates the duties.
 |---|---|---|
 | 37 | [Enterprise Identity, Roles & Segregation of Duties](epics/37-enterprise-identity-and-access.md) | Analyst/architect/process owner/approver/auditor/admin roles as permissions; route-guard completeness test; roles scoped by business unit (per-process scope kept open); contribution history; any amendment to a process or agent definition needs an independent approval, baselines included; optional two-person approval; audit log; OIDC + SAML SSO with MFA verified from claims; inbound SCIM with group-to-role mapping; 15-min sessions, rotating refresh tokens, admin revocation |
 
-Status: build step 1 (roles, SoD, audit, production guard, demo cast)
-implemented 2026-10-14. Next: session hardening, then OIDC + MFA, SCIM,
-and SAML last.
+Status: build steps 1-4 implemented 2026-10-14 to 2026-10-15: roles,
+segregation of duties, audit, the production guard and demo cast;
+session hardening; OIDC + MFA (tested live against Keycloak); SCIM
+provisioning and group mappings. Open: SAML (US37.9).
+
+## Phase 9 epic (groomed 2026-10-15 for a hosted offering)
+
+Every table, setting, file and job assumes one organization per
+deployment. Hosting several customers needs isolation the database
+enforces, identity per tenant, fair shares of the job queue, and a tenant
+lifecycle with export and deletion.
+
+| # | Epic | Summary |
+|---|---|---|
+| 38 | [Multi-Tenancy: Many Organizations on One Deployment](epics/38-multi-tenancy.md) | Tenants addressed by host name; tenant_id on every row with Postgres row-level security (fails closed); tenant context for requests, jobs and background work; backfill into a first tenant; a cross-tenant probe over every route; per-tenant IdP, SCIM and mappings; operators without standing data access; fair-share jobs and quotas; per-tenant secrets, files, model policy and registries; create, suspend, export and delete; dedicated database and data residency on demand |
+
+Status: groomed 2026-10-15. Not started.
 
 ## Backlog (superseded by the Phase 2 epics above)
 

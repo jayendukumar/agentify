@@ -474,4 +474,5 @@ header on writes, and on a 401 it refreshes the session once and retries
 | [Epic 35 -- Results at Volume & Statistical Release Gate](../../planning/epics/35-results-at-volume-and-statistical-gate.md) | 9 | implemented (2026-10-11) |
 | [Epic 36 -- Process Digital Twin at Volume: Efficiency & Readiness](../../planning/epics/36-process-twin-efficiency.md) | 9 | implemented (2026-10-13), except US36.9 (still open) |
 | [Epic 37 -- Enterprise Identity, Roles & Segregation of Duties](../../planning/epics/37-enterprise-identity-and-access.md) | 15 | build steps 1-4 implemented. Step 1 (2026-10-14): US37.1-37.6, US37.14, US37.15. Step... |
+| [Epic 38 -- Multi-Tenancy: Many Organizations on One Deployment](../../planning/epics/38-multi-tenancy.md) | 15 | groomed 2026-10-15, not started. Decisions confirmed 2026-10-15 (see Notes) |
 <!-- END GENERATED: epic-index -->
