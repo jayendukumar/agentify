@@ -3232,3 +3232,17 @@ is a startup error.
 Each old session's id *was* its cookie value, stored in plain text.
 Turning those into hashed tokens would mean trusting the plain-text
 values, so `c8d9e0f1a2b3` deletes them and everyone signs in once more.
+
+### Defect: the route-guard completeness test was checking no routes
+
+Found by regenerating the wiki. The API catalogue still sorted access by
+the pre-Epic-37 `EditorDep`, and once rewritten to read each route's
+guard, it reported every route as public. FastAPI 0.141 wraps each
+included router in `app.routes`, so a walk over `isinstance(route,
+APIRoute)` sees only the handful of routes declared on the app itself.
+US37.2's `test_every_write_route_declares_a_permission` used that walk,
+so it passed while checking none of the ~190 routes in routers. Walking
+`fastapi.routing.iter_route_contexts(app.routes)` instead finds all 196,
+and every write route was in fact guarded. The test now also fails if it
+checks fewer than 100 write routes, so a future FastAPI change can't
+quietly empty it again.

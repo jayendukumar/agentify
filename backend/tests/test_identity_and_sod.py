@@ -3,7 +3,7 @@ segregation of duties (US37.3-37.5), the audit log (US37.6), and the
 production guard on local sign-in (US37.14)."""
 
 import pytest
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -38,12 +38,16 @@ def _url(process_id: str, artifact_id: str, tail: str = "") -> str:
 
 
 def test_every_write_route_declares_a_permission():
-    unguarded = []
-    for route in app.routes:
-        if not isinstance(route, APIRoute) or not route.path.startswith("/api"):
+    # iter_route_contexts, not app.routes: FastAPI 0.141 wraps each included
+    # router, so app.routes alone holds only the few routes declared on the
+    # app itself -- and this test passed while checking none of them.
+    unguarded, checked = [], 0
+    for route in iter_route_contexts(app.routes):
+        if not isinstance(route.original_route, APIRoute) or not route.path.startswith("/api"):
             continue
         if not (route.methods - {"GET", "HEAD", "OPTIONS"}) or route.path.startswith("/api/auth/"):
             continue
+        checked += 1
         calls = []
         stack = list(route.dependant.dependencies)
         while stack:
@@ -52,6 +56,7 @@ def test_every_write_route_declares_a_permission():
             stack.extend(dep.dependencies)
         if not any(getattr(call, "required_permission", None) for call in calls):
             unguarded.append(f"{sorted(route.methods)} {route.path}")
+    assert checked > 100, f"only {checked} write routes found -- is the route walk still seeing every router?"
     assert unguarded == []
 
 

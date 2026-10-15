@@ -55,7 +55,10 @@ DOMAINS: dict[str, list[str]] = {
         "batch_runs", "batch_schedules",
     ],
     "Process twin (Epic 36)": ["process_operating_models", "process_twin_batches"],
-    "Platform (Epics 9-10, 31)": ["users", "sessions", "jobs"],
+    "Identity and access (Epics 9-10, 37)": [
+        "users", "user_roles", "sessions", "session_tokens", "contributions", "approvals", "audit_events",
+    ],
+    "Platform (Epic 31)": ["jobs"],
 }
 
 
@@ -105,7 +108,7 @@ def er_diagrams() -> str:
             for fk in sorted(table.foreign_keys, key=lambda f: f.parent.name):
                 target = fk.column.table.name
                 if target == "users":
-                    continue  # every audited row points at users; drawn once in Platform
+                    continue  # every audited row points at users; drawn once in Identity and access
                 if target not in present:
                     stubs.add(target)
                 card = "o|" if fk.parent.nullable else "||"
@@ -161,15 +164,29 @@ def schema_stats() -> str:
 # ---- API --------------------------------------------------------------------
 
 
-def _editor_handlers() -> set[str]:
-    """Route handler names whose signature requires the Editor role."""
-    names = set()
-    for path in (BACKEND / "app" / "api").glob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if any(a.annotation is not None and "EditorDep" in ast.unparse(a.annotation) for a in node.args.args):
-                    names.add(node.name)
-    return names
+def _route_access() -> dict[tuple[str, str], str]:
+    """(path, METHOD) -> the permission its guard requires (Epic 37's
+    `require(...)`), "signed in" for any session, or "public"."""
+    from fastapi.routing import APIRoute, iter_route_contexts
+
+    from app.main import app
+
+    access = {}
+    # Not app.routes: FastAPI 0.141 wraps included routers there.
+    for route in iter_route_contexts(app.routes):
+        if not isinstance(route.original_route, APIRoute):
+            continue
+        calls, stack = [], list(route.dependant.dependencies)
+        while stack:
+            dep = stack.pop()
+            calls.append(dep.call)
+            stack.extend(dep.dependencies)
+        permission = next((c.required_permission for c in calls if getattr(c, "required_permission", None)), None)
+        signed_in = any(getattr(c, "__name__", "") in ("get_current_session", "get_current_user") for c in calls)
+        label = f"`{permission.value}`" if permission else ("signed in" if signed_in else "public")
+        for method in route.methods:
+            access[(route.path, method)] = label
+    return access
 
 
 def api_catalogue() -> str:
@@ -177,16 +194,19 @@ def api_catalogue() -> str:
     _backend_on_path()
     from app.main import app
 
-    editor = _editor_handlers()
+    route_access = _route_access()
     by_tag: dict[str, list[tuple[str, str, str, str]]] = defaultdict(list)
     for path, methods in app.openapi()["paths"].items():
         for method, op in methods.items():
-            handler = op.get("operationId", "").split("_api_")[0].split("_healthz")[0]
-            access = "editor" if handler in editor else ("public" if path in ("/healthz", "/api/auth/login") else "signed in")
+            access = route_access.get((path, method.upper()), "public")
             doc = re.sub(r"\s+", " ", (op.get("description") or "").split("\n\n")[0])
             by_tag[(op.get("tags") or ["other"])[0]].append((path, method.upper(), access, doc[:140]))
     total = sum(len(v) for v in by_tag.values())
-    out = [f"**{total} endpoints.** Access: *editor* needs the Editor role; *signed in* any role.", ""]
+    out = [
+        f"**{total} endpoints.** Access: a `permission` (granted by roles, checked against the process's "
+        "business unit -- see Glossary); *signed in* needs any session; *public* needs none.",
+        "",
+    ]
     for tag in sorted(by_tag):
         out += [f"### {tag}", "", "| Method | Path | Access | What it does |", "|---|---|---|---|"]
         for path, method, access, doc in sorted(by_tag[tag]):
