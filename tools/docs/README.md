@@ -7,6 +7,8 @@ Keeps `docs/wiki` true to the code. Full guide:
 python -m tools.docs sync [--with-health]   # regenerate generated blocks (and code health)
 python -m tools.docs check                  # fail on stale blocks, broken links, undocumented tables/epics/LLM calls
 python -m tools.docs status                 # per-page block status and review dates
+python -m tools.docs serve                  # read the wiki in a browser (http://127.0.0.1:8090)
+python -m tools.docs build                  # static HTML copy in docs/site/ (git-ignored)
 git config core.hooksPath tools/hooks       # run both checks before every commit
 ```
 

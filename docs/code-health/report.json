@@ -1,20 +1,20 @@
 {
  "complexity": {
   "backend": {
-   "functions": 916,
-   "mean_cyclomatic": 5.0,
-   "mean_cognitive": 5.0,
+   "functions": 1001,
+   "mean_cyclomatic": 4.91,
+   "mean_cognitive": 4.84,
    "max_cognitive": 98,
    "over_cognitive_limit": 78,
-   "over_cyclomatic_limit": 106
+   "over_cyclomatic_limit": 109
   },
   "frontend": {
-   "functions": 504,
-   "mean_cyclomatic": 5.05,
-   "mean_cognitive": 5.24,
+   "functions": 552,
+   "mean_cyclomatic": 4.93,
+   "mean_cognitive": 5.1,
    "max_cognitive": 93,
-   "over_cognitive_limit": 43,
-   "over_cyclomatic_limit": 59
+   "over_cognitive_limit": 46,
+   "over_cyclomatic_limit": 63
   },
   "limits": {
    "cognitive": 15,
@@ -44,7 +44,7 @@
     "file": "frontend/src/pages/BlueprintPage.tsx",
     "name": "BlueprintPage",
     "line": 34,
-    "length": 420,
+    "length": 421,
     "cyclomatic": 71,
     "cognitive": 91
    },
@@ -185,21 +185,21 @@
    },
    {
     "lang": "typescript",
+    "file": "frontend/src/pages/VersionsPage.tsx",
+    "name": "VersionsPage",
+    "line": 27,
+    "length": 222,
+    "cyclomatic": 34,
+    "cognitive": 50
+   },
+   {
+    "lang": "typescript",
     "file": "frontend/src/pages/ProcessDetailPage.tsx",
     "name": "ProcessDetailPage",
     "line": 49,
     "length": 266,
     "cyclomatic": 51,
     "cognitive": 48
-   },
-   {
-    "lang": "python",
-    "file": "backend/app/catalog/service.py",
-    "name": "import_applications_csv",
-    "line": 246,
-    "length": 72,
-    "cyclomatic": 31,
-    "cognitive": 46
    }
   ],
   "longest": [
@@ -244,7 +244,7 @@
     "file": "frontend/src/pages/BlueprintPage.tsx",
     "name": "BlueprintPage",
     "line": 34,
-    "length": 420,
+    "length": 421,
     "cyclomatic": 71,
     "cognitive": 91
    },
@@ -262,7 +262,7 @@
     "file": "frontend/src/pages/DiagramPage.tsx",
     "name": "DiagramPage",
     "line": 11,
-    "length": 279,
+    "length": 280,
     "cyclomatic": 36,
     "cognitive": 44
    },
@@ -297,9 +297,9 @@
  },
  "duplication": {
   "backend": {
-   "loc": 20996,
+   "loc": 22659,
    "duplicated_lines": 52,
-   "percent": 0.25,
+   "percent": 0.23,
    "clones": [
     {
      "tokens": 90,
@@ -314,16 +314,16 @@
     {
      "tokens": 85,
      "a_file": "backend/app/db/repository.py",
-     "a_start": 1328,
-     "a_end": 1341,
+     "a_start": 1378,
+     "a_end": 1391,
      "b_file": "backend/app/db/repository.py",
-     "b_start": 1915,
-     "b_end": 1928,
+     "b_start": 1965,
+     "b_end": 1978,
      "lines": 14
     }
    ],
    "clone_count": 2,
-   "structural_percent": 4.13,
+   "structural_percent": 3.84,
    "structural_clone_count": 32,
    "structural_clones": [
     {
@@ -349,101 +349,111 @@
     {
      "tokens": 185,
      "a_file": "backend/app/db/repository.py",
-     "a_start": 1643,
-     "a_end": 1674,
+     "a_start": 1693,
+     "a_end": 1724,
      "b_file": "backend/app/db/repository.py",
-     "b_start": 2038,
-     "b_end": 2070,
+     "b_start": 2088,
+     "b_end": 2120,
      "lines": 33
     },
     {
      "tokens": 149,
      "a_file": "backend/app/db/repository.py",
-     "a_start": 892,
-     "a_end": 918,
+     "a_start": 942,
+     "a_end": 968,
      "b_file": "backend/app/db/repository.py",
-     "b_start": 1643,
-     "b_end": 1668,
+     "b_start": 1693,
+     "b_end": 1718,
      "lines": 27
     },
     {
      "tokens": 149,
      "a_file": "backend/app/db/repository.py",
-     "a_start": 892,
-     "a_end": 918,
+     "a_start": 942,
+     "a_end": 968,
      "b_file": "backend/app/db/repository.py",
-     "b_start": 2038,
-     "b_end": 2063,
+     "b_start": 2088,
+     "b_end": 2113,
      "lines": 27
     },
     {
      "tokens": 143,
      "a_file": "backend/app/db/models.py",
-     "a_start": 545,
-     "a_end": 558,
+     "a_start": 672,
+     "a_end": 685,
      "b_file": "backend/app/db/models.py",
-     "b_start": 657,
-     "b_end": 673,
+     "b_start": 784,
+     "b_end": 800,
      "lines": 17
     },
     {
      "tokens": 132,
      "a_file": "backend/app/db/repository.py",
-     "a_start": 1254,
-     "a_end": 1280,
+     "a_start": 1304,
+     "a_end": 1330,
      "b_file": "backend/app/db/repository.py",
-     "b_start": 1838,
-     "b_end": 1866,
+     "b_start": 1888,
+     "b_end": 1916,
      "lines": 29
     },
     {
-     "tokens": 130,
+     "tokens": 131,
      "a_file": "backend/app/db/repository.py",
-     "a_start": 483,
-     "a_end": 501,
+     "a_start": 509,
+     "a_end": 528,
      "b_file": "backend/app/db/repository.py",
-     "b_start": 894,
-     "b_end": 914,
-     "lines": 21
+     "b_start": 943,
+     "b_end": 964,
+     "lines": 22
+    },
+    {
+     "tokens": 131,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 509,
+     "a_end": 528,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 1694,
+     "b_end": 1715,
+     "lines": 22
+    },
+    {
+     "tokens": 131,
+     "a_file": "backend/app/db/repository.py",
+     "a_start": 509,
+     "a_end": 528,
+     "b_file": "backend/app/db/repository.py",
+     "b_start": 2089,
+     "b_end": 2110,
+     "lines": 22
     },
     {
      "tokens": 130,
-     "a_file": "backend/app/db/repository.py",
-     "a_start": 483,
-     "a_end": 501,
-     "b_file": "backend/app/db/repository.py",
-     "b_start": 1645,
-     "b_end": 1665,
-     "lines": 21
-    },
-    {
-     "tokens": 130,
-     "a_file": "backend/app/db/repository.py",
-     "a_start": 483,
-     "a_end": 501,
-     "b_file": "backend/app/db/repository.py",
-     "b_start": 2040,
-     "b_end": 2060,
-     "lines": 21
+     "a_file": "backend/app/main.py",
+     "a_start": 123,
+     "a_end": 140,
+     "b_file": "backend/app/main.py",
+     "b_start": 137,
+     "b_end": 153,
+     "lines": 18
     },
     {
      "tokens": 129,
      "a_file": "backend/app/db/models.py",
-     "a_start": 565,
-     "a_end": 603,
+     "a_start": 692,
+     "a_end": 730,
      "b_file": "backend/app/db/models.py",
-     "b_start": 635,
-     "b_end": 655,
+     "b_start": 762,
+     "b_end": 782,
      "lines": 39
     },
     {
      "tokens": 126,
      "a_file": "backend/app/db/models.py",
-     "a_start": 698,
-     "a_end": 705,
+     "a_start": 825,
+     "a_end": 832,
      "b_file": "backend/app/db/models.py",
-     "b_start": 742,
-     "b_end": 751,
+     "b_start": 869,
+     "b_end": 878,
      "lines": 10
     },
     {
@@ -465,16 +475,6 @@
      "b_start": 16,
      "b_end": 34,
      "lines": 19
-    },
-    {
-     "tokens": 122,
-     "a_file": "backend/app/main.py",
-     "a_start": 116,
-     "a_end": 132,
-     "b_file": "backend/app/main.py",
-     "b_start": 130,
-     "b_end": 145,
-     "lines": 17
     }
    ],
    "worst_files": [
@@ -491,9 +491,9 @@
    ]
   },
   "frontend": {
-   "loc": 14036,
+   "loc": 14959,
    "duplicated_lines": 14,
-   "percent": 0.1,
+   "percent": 0.09,
    "clones": [
     {
      "tokens": 81,
@@ -507,7 +507,7 @@
     }
    ],
    "clone_count": 1,
-   "structural_percent": 0.74,
+   "structural_percent": 0.7,
    "structural_clone_count": 2,
    "structural_clones": [
     {
@@ -556,8 +556,14 @@
    {
     "node": "app.api",
     "afferent": 1,
-    "efferent": 22,
+    "efferent": 23,
     "instability": 0.96
+   },
+   {
+    "node": "app.auth",
+    "afferent": 2,
+    "efferent": 4,
+    "instability": 0.67
    },
    {
     "node": "app.batches",
@@ -591,7 +597,7 @@
    },
    {
     "node": "app.config",
-    "afferent": 13,
+    "afferent": 14,
     "efferent": 0,
     "instability": 0.0
    },
@@ -615,8 +621,8 @@
    },
    {
     "node": "app.db",
-    "afferent": 14,
-    "efferent": 14,
+    "afferent": 15,
+    "efferent": 15,
     "instability": 0.5
    },
    {
@@ -627,7 +633,7 @@
    },
    {
     "node": "app.ids",
-    "afferent": 14,
+    "afferent": 15,
     "efferent": 0,
     "instability": 0.0
    },
@@ -681,9 +687,9 @@
    },
    {
     "node": "app.schemas",
-    "afferent": 17,
+    "afferent": 18,
     "efferent": 1,
-    "instability": 0.06
+    "instability": 0.05
    },
    {
     "node": "app.store",
@@ -702,44 +708,44 @@
    {
     "node": "app.db.repository",
     "afferent": 28,
-    "efferent": 43,
+    "efferent": 44,
     "instability": 0.61
    },
    {
     "node": "app.db.models",
-    "afferent": 34,
+    "afferent": 41,
     "efferent": 0,
     "instability": 0.0
    },
    {
+    "node": "app.api.deps",
+    "afferent": 25,
+    "efferent": 9,
+    "instability": 0.26
+   },
+   {
     "node": "app.main",
     "afferent": 1,
-    "efferent": 30,
+    "efferent": 31,
     "instability": 0.97
    },
    {
-    "node": "app.api.deps",
-    "afferent": 24,
-    "efferent": 6,
-    "instability": 0.2
-   },
-   {
     "node": "app.ids",
-    "afferent": 25,
+    "afferent": 28,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.config",
-    "afferent": 24,
+    "afferent": 26,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.context.repository",
-    "afferent": 14,
+    "afferent": 15,
     "efferent": 6,
-    "instability": 0.3
+    "instability": 0.29
    },
    {
     "node": "app.llm",
@@ -756,8 +762,8 @@
    {
     "node": "app.api.organization",
     "afferent": 1,
-    "efferent": 16,
-    "instability": 0.94
+    "efferent": 18,
+    "instability": 0.95
    },
    {
     "node": "app.context.resolver",
@@ -800,12 +806,12 @@
    {
     "node": "frontend/src",
     "afferent": 0,
-    "efferent": 4,
+    "efferent": 5,
     "instability": 1.0
    },
    {
     "node": "frontend/src/api",
-    "afferent": 6,
+    "afferent": 7,
     "efferent": 0,
     "instability": 0.0
    },
@@ -855,27 +861,27 @@
   "frontend_files_top": [
    {
     "node": "frontend/src/api/types.ts",
-    "afferent": 62,
+    "afferent": 68,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "frontend/src/api/client.ts",
-    "afferent": 42,
+    "afferent": 47,
     "efferent": 1,
     "instability": 0.02
    },
    {
     "node": "frontend/src/auth/AuthContext.tsx",
-    "afferent": 13,
+    "afferent": 18,
     "efferent": 2,
-    "instability": 0.13
+    "instability": 0.1
    },
    {
     "node": "frontend/src/App.tsx",
     "afferent": 1,
-    "efferent": 13,
-    "instability": 0.93
+    "efferent": 18,
+    "instability": 0.95
    },
    {
     "node": "frontend/src/pages/BlueprintPage.tsx",
@@ -937,6 +943,7 @@
   "backend_packages": [
    [
     "app.agents",
+    "app.auth",
     "app.batches",
     "app.bpmn",
     "app.catalog",
@@ -957,6 +964,7 @@
    [
     "app.agents",
     "app.api",
+    "app.auth",
     "app.batches",
     "app.blueprint",
     "app.bpmn",
@@ -985,7 +993,7 @@
     "frontend/src/components"
    ]
   ],
-  "deferred_import_count": 48
+  "deferred_import_count": 49
  },
  "dead_code": {
   "python": [
@@ -1075,7 +1083,7 @@
    },
    {
     "file": "backend/app/db/repository.py",
-    "line": 332,
+    "line": 331,
     "name": "list_schema_changes",
     "kind": "function",
     "status": "unused"
@@ -1110,7 +1118,7 @@
    },
    {
     "file": "backend/app/schemas/versions.py",
-    "line": 24,
+    "line": 30,
     "name": "VersionDiffRequest",
     "kind": "class",
     "status": "unused"
@@ -1196,393 +1204,421 @@
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 150,
+    "line": 155,
     "name": "BlueprintStepType",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 161,
+    "line": 166,
     "name": "AgentIOField",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 205,
+    "line": 210,
     "name": "AgentArtifactStatus",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 208,
+    "line": 213,
     "name": "PermissionAction",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 210,
+    "line": 215,
     "name": "ResourcePermission",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 215,
+    "line": 220,
     "name": "RuntimeGuardrails",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 226,
+    "line": 231,
     "name": "EscalationTarget",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 231,
+    "line": 236,
     "name": "EscalationPolicy",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 236,
+    "line": 241,
     "name": "KnowledgeSourceRef",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 244,
+    "line": 249,
     "name": "ToolSandboxMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 246,
+    "line": 251,
     "name": "ToolContract",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 257,
+    "line": 262,
     "name": "ModelPolicy",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 316,
+    "line": 321,
     "name": "ChecklistItemKey",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 334,
+    "line": 339,
     "name": "ChecklistItem",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 368,
+    "line": 373,
     "name": "GapKind",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 371,
+    "line": 376,
     "name": "GapFindingOption",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 483,
+    "line": 488,
     "name": "EvaluationDimensionName",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 497,
+    "line": 502,
     "name": "EvaluationDimension",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 503,
+    "line": 508,
     "name": "EvaluationResult",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 524,
+    "line": 529,
     "name": "RegressionSuiteScenarioResult",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 554,
+    "line": 559,
     "name": "FaultType",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 596,
+    "line": 601,
     "name": "ReproducibilityTier",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 607,
+    "line": 612,
     "name": "TwinSystemStubMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 608,
+    "line": 613,
     "name": "TwinHumanCheckpointMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 609,
+    "line": 614,
     "name": "TwinRuleOperator",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 611,
+    "line": 616,
     "name": "TwinStaticResponseRule",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 621,
+    "line": 626,
     "name": "TwinHumanDecisionRule",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 639,
+    "line": 644,
     "name": "TwinExpectedStepKind",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 675,
+    "line": 680,
     "name": "TwinStepMatch",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 695,
+    "line": 700,
     "name": "CoverageKind",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 697,
+    "line": 702,
     "name": "ReviewerBehaviour",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 746,
+    "line": 751,
     "name": "GatewayContext",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 787,
+    "line": 792,
     "name": "TwinDeviation",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 827,
+    "line": 832,
     "name": "TwinBaselineComparison",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 853,
+    "line": 858,
     "name": "NodeRunKind",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 854,
+    "line": 859,
     "name": "ManualNodeMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 857,
+    "line": 862,
     "name": "HandoffMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 858,
+    "line": 863,
     "name": "GatewayRouting",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 937,
+    "line": 942,
     "name": "PublicationStatus",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 941,
+    "line": 946,
     "name": "AgentLifecycleStatus",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 994,
+    "line": 1034,
+    "name": "RoleOption",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1047,
+    "name": "ChangeEntry",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1056,
+    "name": "ApprovalRecord",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/api/types.ts",
+    "line": 1124,
     "name": "ContextStatus",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 996,
+    "line": 1126,
     "name": "AppliesTo",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1150,
+    "line": 1280,
     "name": "ContextPackEntry",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1160,
+    "line": 1290,
     "name": "ContextPackPassage",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1170,
+    "line": 1300,
     "name": "StaleEntry",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1214,
+    "line": 1344,
     "name": "ApiOperation",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1231,
+    "line": 1361,
     "name": "ApplicationImportRow",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1266,
+    "line": 1396,
     "name": "SituationEvidence",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1381,
+    "line": 1511,
     "name": "Provenance",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1442,
+    "line": 1572,
     "name": "RowChange",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1623,
+    "line": 1753,
     "name": "SegmentResult",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1629,
+    "line": 1759,
     "name": "FailureCluster",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1637,
+    "line": 1767,
     "name": "Distribution",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1712,
+    "line": 1842,
     "name": "RoleCost",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1788,
+    "line": 1918,
     "name": "CaseEfficiency",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1810,
+    "line": 1940,
     "name": "NodeEfficiency",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/auth/roles.ts",
+    "line": 14,
+    "name": "roleLabel",
     "kind": "export",
     "status": "export-unneeded"
    },
@@ -1623,7 +1659,7 @@
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 167,
+    "line": 172,
     "name": "AgentSpec",
     "kind": "export",
     "status": "test-only"
@@ -1644,70 +1680,70 @@
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 256,
+    "line": 413,
     "name": "updateAgentGovernance",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 402,
+    "line": 547,
     "name": "pushToRegistry",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 504,
+    "line": 649,
     "name": "cancelTwinRun",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 508,
+    "line": 653,
     "name": "resumeTwinRun",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 673,
+    "line": 818,
     "name": "updateOrganization",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 753,
+    "line": 890,
     "name": "listPolicyPassages",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 766,
+    "line": 903,
     "name": "getProcessScope",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 779,
+    "line": 916,
     "name": "previewContextPack",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 915,
+    "line": 1043,
     "name": "getDataset",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 929,
+    "line": 1057,
     "name": "addDatasetRows",
     "kind": "export",
     "status": "unused"
@@ -1726,51 +1762,67 @@
  "hotspots": [
   {
    "file": "backend/app/db/repository.py",
-   "commits": 19,
-   "lines_changed": 2604,
-   "cognitive": 325,
-   "loc": 2113,
-   "score": 6175
+   "commits": 22,
+   "lines_changed": 2852,
+   "cognitive": 335,
+   "loc": 2164,
+   "score": 7370
   },
   {
    "file": "backend/app/twin/engine.py",
-   "commits": 8,
-   "lines_changed": 997,
+   "commits": 9,
+   "lines_changed": 1054,
    "cognitive": 219,
    "loc": 596,
-   "score": 1752
-  },
-  {
-   "file": "frontend/src/pages/BlueprintPage.tsx",
-   "commits": 11,
-   "lines_changed": 529,
-   "cognitive": 106,
-   "loc": 419,
-   "score": 1166
+   "score": 1971
   },
   {
    "file": "frontend/src/api/client.ts",
-   "commits": 19,
-   "lines_changed": 1194,
-   "cognitive": 54,
-   "loc": 971,
-   "score": 1026
+   "commits": 22,
+   "lines_changed": 1489,
+   "cognitive": 66,
+   "loc": 1074,
+   "score": 1452
+  },
+  {
+   "file": "frontend/src/pages/BlueprintPage.tsx",
+   "commits": 12,
+   "lines_changed": 542,
+   "cognitive": 106,
+   "loc": 420,
+   "score": 1272
   },
   {
    "file": "backend/app/twin/orchestrator.py",
-   "commits": 4,
-   "lines_changed": 1074,
+   "commits": 5,
+   "lines_changed": 1304,
    "cognitive": 246,
    "loc": 685,
-   "score": 984
+   "score": 1230
+  },
+  {
+   "file": "backend/app/oracles/service.py",
+   "commits": 4,
+   "lines_changed": 755,
+   "cognitive": 241,
+   "loc": 582,
+   "score": 964
   },
   {
    "file": "frontend/src/pages/ProcessDetailPage.tsx",
-   "commits": 8,
-   "lines_changed": 346,
+   "commits": 10,
+   "lines_changed": 370,
    "cognitive": 74,
    "loc": 287,
-   "score": 592
+   "score": 740
+  },
+  {
+   "file": "frontend/src/pages/DiagramPage.tsx",
+   "commits": 8,
+   "lines_changed": 326,
+   "cognitive": 68,
+   "loc": 261,
+   "score": 544
   },
   {
    "file": "frontend/src/components/OrchestrationPanel.tsx",
@@ -1779,22 +1831,6 @@
    "cognitive": 103,
    "loc": 461,
    "score": 515
-  },
-  {
-   "file": "backend/app/oracles/service.py",
-   "commits": 2,
-   "lines_changed": 714,
-   "cognitive": 241,
-   "loc": 580,
-   "score": 482
-  },
-  {
-   "file": "frontend/src/pages/DiagramPage.tsx",
-   "commits": 7,
-   "lines_changed": 315,
-   "cognitive": 68,
-   "loc": 260,
-   "score": 476
   },
   {
    "file": "backend/app/batches/results.py",
@@ -1821,6 +1857,38 @@
    "score": 350
   },
   {
+   "file": "frontend/src/components/TwinTestBuilder.tsx",
+   "commits": 3,
+   "lines_changed": 637,
+   "cognitive": 115,
+   "loc": 593,
+   "score": 345
+  },
+  {
+   "file": "backend/app/bpmn/chat_ops.py",
+   "commits": 3,
+   "lines_changed": 264,
+   "cognitive": 91,
+   "loc": 215,
+   "score": 273
+  },
+  {
+   "file": "frontend/src/pages/ProcessTwinPage.tsx",
+   "commits": 2,
+   "lines_changed": 510,
+   "cognitive": 124,
+   "loc": 469,
+   "score": 248
+  },
+  {
+   "file": "frontend/src/pages/VersionsPage.tsx",
+   "commits": 4,
+   "lines_changed": 280,
+   "cognitive": 62,
+   "loc": 228,
+   "score": 248
+  },
+  {
    "file": "backend/app/ingestion/structuring.py",
    "commits": 5,
    "lines_changed": 511,
@@ -1829,60 +1897,28 @@
    "score": 245
   },
   {
-   "file": "frontend/src/components/TwinTestBuilder.tsx",
-   "commits": 2,
-   "lines_changed": 633,
-   "cognitive": 115,
-   "loc": 593,
-   "score": 230
-  },
-  {
-   "file": "backend/app/llm/client.py",
-   "commits": 3,
-   "lines_changed": 294,
-   "cognitive": 66,
-   "loc": 256,
-   "score": 198
-  },
-  {
-   "file": "backend/app/datasets/service.py",
-   "commits": 1,
-   "lines_changed": 598,
-   "cognitive": 196,
-   "loc": 517,
-   "score": 196
-  },
-  {
    "file": "frontend/src/pages/ProcessListPage.tsx",
-   "commits": 5,
-   "lines_changed": 296,
+   "commits": 6,
+   "lines_changed": 310,
    "cognitive": 38,
    "loc": 158,
-   "score": 190
+   "score": 228
   },
   {
-   "file": "backend/app/catalog/service.py",
-   "commits": 1,
-   "lines_changed": 459,
-   "cognitive": 188,
-   "loc": 391,
-   "score": 188
+   "file": "frontend/src/pages/GapReviewPage.tsx",
+   "commits": 5,
+   "lines_changed": 229,
+   "cognitive": 41,
+   "loc": 186,
+   "score": 205
   },
   {
-   "file": "backend/app/bpmn/chat_ops.py",
+   "file": "backend/app/api/organization.py",
    "commits": 2,
-   "lines_changed": 258,
-   "cognitive": 91,
-   "loc": 213,
-   "score": 182
-  },
-  {
-   "file": "frontend/src/components/RunDetailView.tsx",
-   "commits": 3,
-   "lines_changed": 236,
-   "cognitive": 57,
-   "loc": 217,
-   "score": 171
+   "lines_changed": 619,
+   "cognitive": 100,
+   "loc": 486,
+   "score": 200
   }
  ],
  "growth": [
@@ -2295,6 +2331,66 @@
    "endpoints": 161,
    "stories": 229,
    "stories_implemented": 201
+  },
+  {
+   "commit": "8cf10b5",
+   "date": "2026-10-14",
+   "subject": "Build Epic 36: the process digital twin at volume",
+   "prod_loc": 35032,
+   "test_loc": 11627,
+   "endpoints": 169,
+   "stories": 239,
+   "stories_implemented": 211
+  },
+  {
+   "commit": "09f79b6",
+   "date": "2026-10-14",
+   "subject": "Build Epic 37 step 1: roles, segregation of duties and audit",
+   "prod_loc": 37042,
+   "test_loc": 11932,
+   "endpoints": 182,
+   "stories": 254,
+   "stories_implemented": 226
+  },
+  {
+   "commit": "ecfe734",
+   "date": "2026-10-14",
+   "subject": "Add the docs and code-health tooling, the wiki, and the enterprise-readiness deck",
+   "prod_loc": 37042,
+   "test_loc": 11932,
+   "endpoints": 182,
+   "stories": 254,
+   "stories_implemented": 226
+  },
+  {
+   "commit": "2ccfeda",
+   "date": "2026-10-14",
+   "subject": "Stop tracking Python bytecode and Office lock files",
+   "prod_loc": 37042,
+   "test_loc": 11932,
+   "endpoints": 182,
+   "stories": 254,
+   "stories_implemented": 226
+  },
+  {
+   "commit": "15a7c49",
+   "date": "2026-10-15",
+   "subject": "Rework the header identity block and update the enterprise-readiness deck",
+   "prod_loc": 37042,
+   "test_loc": 11932,
+   "endpoints": 182,
+   "stories": 254,
+   "stories_implemented": 226
+  },
+  {
+   "commit": "2a853e1",
+   "date": "2026-10-15",
+   "subject": "Build Epic 37 step 2: short, rotating, revocable sessions",
+   "prod_loc": 37618,
+   "test_loc": 12194,
+   "endpoints": 188,
+   "stories": 254,
+   "stories_implemented": 226
   }
  ],
  "mutation": {
@@ -2624,9 +2720,9 @@
   }
  },
  "size": {
-  "backend_prod_loc": 20996,
-  "backend_test_loc": 8649,
-  "frontend_prod_loc": 14036,
-  "frontend_test_loc": 2978
+  "backend_prod_loc": 22659,
+  "backend_test_loc": 9078,
+  "frontend_prod_loc": 14959,
+  "frontend_test_loc": 3116
  }
 }

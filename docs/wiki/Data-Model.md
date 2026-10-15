@@ -1,9 +1,9 @@
 # Data Model
 
-Last reviewed: 2026-10-13 · Sources: `backend/app/db/models.py`, `backend/migrations`
+Last reviewed: 2026-10-15 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**49 tables, 506 columns (85 JSON), 89 foreign keys, 29 Alembic migrations.**
+**54 tables, 564 columns (88 JSON), 94 foreign keys, 31 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -31,6 +31,10 @@ the database stores their paths.
 - **Runs are append-mostly.** `simulation_runs` is the unified run table
   (Epic 17). The older `twin_runs` and `orchestration_runs` are kept
   read-only for history, and reads merge all three.
+- **Identity is append-only where it's evidence.** `audit_events` and
+  `contributions` are never updated or deleted by the API. Tokens are
+  stored only as SHA-256 hashes (`session_tokens`), never in the form a
+  browser presents them. See the [Glossary](Glossary.md).
 - **Everything hangs off a process.** Most tables have `process_id` with
   `ON DELETE CASCADE`, so deleting a process removes its whole tree.
   Organization context is the exception: it is organization-wide and
@@ -103,6 +107,8 @@ erDiagram
         string id PK
         string process_id FK
         string created_by FK
+        string status
+        string decided_by FK
     }
     gap_findings {
         string id PK
@@ -312,6 +318,7 @@ erDiagram
         string id PK
         string name
         json profile
+        json governance
     }
     context_entities {
         string id PK
@@ -489,7 +496,7 @@ erDiagram
     processes ||--o{ process_twin_batches : "process_id"
 ```
 
-### Platform (Epics 9-10, 31)
+### Identity and access (Epics 9-10, 37)
 
 ```mermaid
 erDiagram
@@ -497,10 +504,41 @@ erDiagram
         string id PK
         string name
     }
+    user_roles {
+        string user_id PK,FK
+        string role PK
+        string scope_type PK
+        string scope_id PK
+    }
     sessions {
         string id PK
         string user_id FK
     }
+    session_tokens {
+        string token_hash PK
+        string session_id FK
+        string kind
+    }
+    contributions {
+        bigint seq PK
+        string actor_id FK
+        json detail
+    }
+    approvals {
+        string id PK
+        string approver_id FK
+    }
+    audit_events {
+        string id PK
+        json detail
+    }
+    sessions ||--o{ session_tokens : "session_id"
+```
+
+### Platform (Epic 31)
+
+```mermaid
+erDiagram
     jobs {
         string id PK
         string kind
@@ -516,13 +554,17 @@ erDiagram
 | Thing | States | Stored as |
 |---|---|---|
 | Document | queued -> processing -> done / failed | `documents.status` |
-| Process | draft -> finalized versions (v1, v2, ...) | `bpmn_drafts` + `versions` |
+| Process | draft -> version pending_approval -> approved / rejected / superseded; only the latest approved version is the baseline (Epic 37) | `bpmn_drafts` + `versions.status` |
 | Agent artifact | DRAFT -> SIMULATION_READY -> SIMULATING -> EVALUATED -> RELEASE_CANDIDATE -> APPROVED -> DEPLOYED | derived on read from checklist, runs, timestamps, publications |
 | Simulation run | CREATED ... COMPLETED / FAILED / ESCALATED / TIMED_OUT / CANCELLED | `simulation_runs.status` |
 | Context entity | proposed -> confirmed -> retired | `context_entities.status` + versions |
 | Decision rule | proposed -> confirmed / unstructurable | `decision_rules.status` |
 | Batch / process twin batch | running -> completed / cancelled / stopped_budget (paused in between) | `batch_runs.status`, `process_twin_batches.status` |
 | Job | queued -> running -> done / failed (retried with backoff) | `jobs.status` |
+| Agent approval | each high-risk change voids the approval; APPROVED once enough distinct, eligible approvers sign | `approvals` rows + `agent_artifacts.approved_through_seq` |
+| User | active -> deactivated (history kept, every session revoked) | `users.active` |
+| Session | live -> revoked (signed out, by user, by admin, deactivation, refresh-token reuse) or expired (idle 30 min / 12 h cap) | `sessions.revoked_at`, `last_used_at`, `expires_at` |
+| Session token | issued -> rotated (kept, to detect reuse) -> deleted with its session | `session_tokens.rotated_at` |
 
 ## Table catalogue
 
@@ -667,6 +709,10 @@ US6.1: an immutable snapshot of a finalized BPMN diagram -- one row per finalize
 | `xml` | text | no |  |
 | `created_at` | datetime | no |  |
 | `created_by` | string | yes | -> `users.id` (set null) |
+| `status` | string | no |  |
+| `contribution_seq` | bigint | no |  |
+| `decided_at` | datetime | yes |  |
+| `decided_by` | string | yes | -> `users.id` (set null) |
 
 #### `gap_findings` (GapFindingModel)
 
@@ -722,6 +768,7 @@ Epic 12: a generated, portable agent definition for one blueprint node or a cons
 | `marked_release_candidate_at` | datetime | yes |  |
 | `approved_at` | datetime | yes |  |
 | `approved_by` | string | yes | -> `users.id` (set null) |
+| `approved_through_seq` | bigint | yes |  |
 | `context_pack_id` | string | yes |  |
 | `release_criteria` | json | yes |  |
 
@@ -970,6 +1017,7 @@ Epic 27, US27.1: the one organization this deployment serves (hard multi-tenancy
 | `industry` | string | yes |  |
 | `size` | string | yes |  |
 | `profile` | json | no |  |
+| `governance` | json | no |  |
 | `created_at` | datetime | no |  |
 | `updated_at` | datetime | no |  |
 
@@ -1330,29 +1378,118 @@ Epic 36, US36.5: the whole process run as a digital twin over a dataset -- one o
 | `created_at` | datetime | no |  |
 | `finished_at` | datetime | yes |  |
 
-### Platform (Epics 9-10, 31)
+### Identity and access (Epics 9-10, 37)
 
 #### `users` (UserModel)
 
-Epic 9/10, US9.9/US10.4: a lightweight named-user model -- no password, "log in" means selecting a name and role. Each login updates the user's role, which also applies to their existing sessions. This role selector is for trusted local-team use (see app/api/auth.py). Deliberately not a dead end: a real SSO login would only replace this table's population + app/api/auth.py's login endpoint, not the SessionModel/CurrentUserDep/EditorDep plumbing every other route already depends on.
+Epic 9/10, US9.9/US10.4: a named user. In AUTH_MODE=local (Epic 37, US37.14: never in production) "log in" means typing a name and picking roles; SSO (US37.7+) will only change how rows get here. What a user may do is their UserRoleModel grants, not a column on this table (US37.1).
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | string | no | primary key |
 | `name` | string | no |  |
-| `role` | string | no |  |
+| `actor_type` | string | no |  |
+| `active` | bool | no |  |
 | `created_at` | datetime | no |  |
+
+#### `user_roles` (UserRoleModel)
+
+Epic 37, US37.1: one role grant at one scope. `scope_type` is `organization` (scope_id "") or `business_unit` (a context entity id). A `process` scope is deliberately left open: permission checks walk a process's scope chain (app/auth/permissions.py), so adding it means accepting one more value here, not changing any route guard.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `user_id` | string | no | primary key; -> `users.id` (cascade) |
+| `role` | string | no | primary key |
+| `scope_type` | string | no | primary key |
+| `scope_id` | string | no | primary key |
+| `source` | string | no |  |
+| `granted_at` | datetime | no |  |
+| `granted_by` | string | yes |  |
 
 #### `sessions` (SessionModel)
 
-`id` is itself the opaque session token (a secrets.token_urlsafe(32) value, minted in app/api/auth.py) stored in an httponly cookie -- not a separate id+token pair, since nothing ever needs to look up a session except by presenting that exact token.
+Epic 37, US37.12: one sign-in on one browser. `id` isn't a secret -- it's what the Sessions lists show and revoke by. The browser holds tokens for it instead (SessionTokenModel), stored only as hashes.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | string | no | primary key |
 | `user_id` | string | no | -> `users.id` (cascade); indexed |
 | `created_at` | datetime | no |  |
+| `last_used_at` | datetime | no |  |
 | `expires_at` | datetime | no |  |
+| `revoked_at` | datetime | yes |  |
+| `revoked_reason` | string | yes |  |
+| `csrf_token` | string | no |  |
+| `ip` | string | yes |  |
+| `user_agent` | string | yes |  |
+
+#### `session_tokens` (SessionTokenModel)
+
+Epic 37, US37.12: a token the browser holds for a session -- a short-lived `access` token (the session cookie) or a `refresh` token (the refresh cookie). Only the SHA-256 hash is stored. A refreshed token is kept with `rotated_at` set, rather than deleted, so a second use of it can be recognized as theft (app/auth/sessions.py).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `token_hash` | string | no | primary key |
+| `session_id` | string | no | -> `sessions.id` (cascade); indexed |
+| `kind` | string | no |  |
+| `issued_at` | datetime | no |  |
+| `expires_at` | datetime | no |  |
+| `rotated_at` | datetime | yes |  |
+
+#### `contributions` (ContributionModel)
+
+Epic 37, US37.3: who changed a process or an agent, how, and at what risk tier. `seq` orders contributions globally; a change set awaiting approval is "this object's contributions after the last approved one" (app/auth/sod.py), which is what decides who may approve it.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `seq` | bigint | no | primary key |
+| `object_type` | string | no |  |
+| `object_id` | string | no |  |
+| `process_id` | string | yes | indexed |
+| `actor_type` | string | no |  |
+| `actor_id` | string | yes | -> `users.id` (set null) |
+| `action` | string | no |  |
+| `tier` | string | no |  |
+| `at` | datetime | no |  |
+| `detail` | json | no |  |
+
+#### `approvals` (ApprovalModel)
+
+Epic 37, US37.4/US37.5: one approver's decision on one change set. `through_seq` is the object's last high-risk contribution when the decision was made, so a later high-risk change makes it count for nothing without deleting it (the audit keeps it).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `object_type` | string | no |  |
+| `object_id` | string | no | indexed |
+| `process_id` | string | yes | indexed |
+| `through_seq` | bigint | no |  |
+| `approver_id` | string | yes | -> `users.id` (set null) |
+| `decision` | string | no |  |
+| `comment` | text | yes |  |
+| `at` | datetime | no |  |
+
+#### `audit_events` (AuditEventModel)
+
+Epic 37, US37.6: append-only record of sign-ins, privileged writes, approvals and refusals. No API updates or deletes it. `actor_name` is copied in so the trail still reads correctly if a user is renamed.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `at` | datetime | no | indexed |
+| `actor_type` | string | no |  |
+| `actor_id` | string | yes | indexed |
+| `actor_name` | string | yes |  |
+| `action` | string | no | indexed |
+| `object_type` | string | yes |  |
+| `object_id` | string | yes |  |
+| `process_id` | string | yes | indexed |
+| `outcome` | string | no |  |
+| `ip` | string | yes |  |
+| `user_agent` | string | yes |  |
+| `detail` | json | no |  |
+
+### Platform (Epic 31)
 
 #### `jobs` (JobModel)
 

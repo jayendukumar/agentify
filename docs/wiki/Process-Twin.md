@@ -1,6 +1,6 @@
 # The process digital twin (Epic 36)
 
-Last reviewed: 2026-10-13 · Sources: `backend/app/process_twin`, `backend/app/twin/orchestrator.py`, `backend/app/twin/records.py`, `planning/epics/36-process-twin-efficiency.md`
+Last reviewed: 2026-10-15 · Sources: `backend/app/process_twin`, `backend/app/twin/orchestrator.py`, `backend/app/twin/records.py`, `planning/epics/36-process-twin-efficiency.md`
 
 The process twin runs the **whole** agentic process (every generated
 agent, the people still in the loop, every decision point) over hundreds

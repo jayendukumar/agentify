@@ -25,6 +25,8 @@ dependencies installed, and Node for the frontend analysis):
 | `python -m tools.docs sync --with-health` | Re-measure code health first, then regenerate |
 | `python -m tools.docs check` | Exit 1 if a block is stale, a link is broken, or a table, epic or LLM operation isn't documented; list narrative pages due for review |
 | `python -m tools.docs status` | Show each page's blocks, whether each is current, and its review date |
+| `python -m tools.docs serve` | Read the wiki in a browser at http://127.0.0.1:8090: sidebar of every page, planning doc and epic, on-page contents, rendered Mermaid diagrams. Renders on each request, so edits show on refresh. Needs the `markdown` package |
+| `python -m tools.docs build` | Write a static HTML copy to `docs/site/` (git-ignored) that opens straight from disk |
 | `python -m tools.code_health report` | Re-measure code health (`docs/code-health/report.md`) |
 | `python -m tools.code_health check` | Exit 1 if code health got worse than the baseline |
 

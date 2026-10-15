@@ -1,6 +1,6 @@
 # Critical review of the architecture
 
-Last reviewed: 2026-10-13 · Sources: `backend/app`, `frontend/src`, `docker-compose.yml`, `docs/code-health/report.json`
+Last reviewed: 2026-10-15 · Sources: `backend/app`, `frontend/src`, `docker-compose.yml`, `docs/code-health/report.json`
 
 This is a candid assessment of where Axyntro is weak, written to decide
 what to fix before it's offered to enterprise customers. It's grounded in
@@ -15,7 +15,8 @@ this space. Process capture, explainable blueprints, governed agent
 definitions, a reproducible twin, ground truth at volume, statistical
 release gates, and now the whole-process twin form one coherent line from
 document to evidence. The *platform* under it is a well-tested single-tenant
-prototype: one process with no real identity, a database used as a
+prototype: one process with roles and segregation of duties but no
+single sign-on yet, a database used as a
 document store, a 2,400-line repository module doing orchestration, an
 in-process job worker, one LLM provider, and nothing that runs an agent in
 production. Most weaknesses below are platform weaknesses, which are
@@ -35,18 +36,25 @@ fixable without rethinking the product.
 - **Production safety in the twin.** API mode is deny-by-default and
   re-checks every call. Sample-data systems (Epic 36) remove the need to
   touch real systems at all.
-- **Test discipline.** About 480 backend tests and a typed frontend
+- **Test discipline.** About 520 backend tests and a typed frontend
   client. Defects found live are written up in `planning/decision-log.md`.
 
 ## Weaknesses, by severity
 
 ### Critical: blocks any enterprise deployment
 
-1. **There is no real authentication.** `POST /api/auth/login` accepts a
-   name and a *self-chosen* role. Anyone who can reach the API can become
-   an Editor. There's no password, SSO (OIDC/SAML), MFA, SCIM provisioning,
-   or session revocation beyond logout. Sessions last 30 days.
-   (`api/auth.py`)
+1. **There is still no real authentication.** `POST /api/auth/login`
+   accepts a name and *self-chosen* roles, so anyone who can reach the API
+   can become an Approver or Admin. Epic 37 has built everything around
+   sign-in, but not sign-in itself:
+   - roles and permissions, scoped by business unit;
+   - segregation of duties and an append-only audit log;
+   - short, rotating, revocable sessions with CSRF protection;
+   - a startup refusal of local sign-in in production.
+
+   SSO (OIDC/SAML), MFA verification and SCIM provisioning are steps 3-5.
+   Until they land, the product can't be deployed for real users.
+   (`api/auth.py`, `auth/`, Epic 37)
 2. **It's single-tenant by construction.** The organization is a
    singleton, and no table carries a tenant id. Serving two customers
    means two deployments, and nothing stops cross-customer data mixing if
@@ -173,22 +181,25 @@ fixable without rethinking the product.
   the customer supplying honest time and motion data.
 - **Generated agents are specifications, not products.** A customer still
   needs an engineering team and a runtime to deploy them (weakness 3).
-- **Who owns what is unclear.** Process Analyst, Automation Architect,
-  Process Owner and approver all touch the same screens, and roles are only
-  viewer/editor.
+- **Who owns what is clearer, but the screens aren't.** Epic 37's six
+  roles match the work, and the server enforces them per business unit.
+  The UI still shows the same screens to everyone, and only enables or
+  disables actions. A scoped user sees enabled buttons on another unit's
+  process and gets a 403 with a reason.
 
 ## What to do first
 
 The order is in the enterprise-readiness deck. In short:
 
-1. **Identity and tenancy:** OIDC SSO, RBAC with real roles, tenant id
+1. **Identity and tenancy:** OIDC SSO with MFA, SCIM provisioning (roles,
+   segregation of duties, audit and session hardening are done), tenant id
    everywhere, row-level security. *(Weaknesses 1, 2)*
 2. **Separate the worker, and make runs append-only:** a worker deployment
    on the same queue, a `run_steps` table appended per step, and summary
    columns maintained on write. *(5, 6, 7)*
 3. **Security baseline:** a secrets manager, object storage with
    encryption, KMS, default-deny model policy, DLP-grade redaction, and
-   audit logging. *(4)*
+   tamper-evident export of the audit log. *(4)*
 4. **Agent runtime:** a production executor reusing the twin's tool
    gateway and guardrails, agent identities, kill switch, monitoring, and
    drift detection against the twin baseline. *(3)*

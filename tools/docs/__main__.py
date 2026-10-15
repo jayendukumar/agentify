@@ -10,6 +10,8 @@ Wiki pages are hand-written, with generated blocks between markers:
     python -m tools.docs check                  # exit 1 if any block is stale, a link is broken,
                                                 # or a table/epic/LLM call site isn't documented
     python -m tools.docs status                 # list blocks and whether each is current
+    python -m tools.docs serve [--port N]       # read the wiki in a browser, with navigation
+    python -m tools.docs build [--out DIR]      # a static HTML copy (default docs/site)
 
 `check` is what a pre-commit hook or CI runs (see tools/docs/README.md);
 `sync` is the "update the docs now" button. Narrative sections (the
@@ -140,6 +142,22 @@ def cmd_status(args) -> int:
     return 0
 
 
+def cmd_serve(args) -> int:
+    from .site import serve
+
+    serve(args.port, open_browser=not args.no_open)
+    return 0
+
+
+def cmd_build(args) -> int:
+    from .site import build
+
+    out = Path(args.out).resolve()
+    pages = build(out)
+    print(f"Wrote {len(pages)} pages to {out} -- open {out / 'index.html'}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m tools.docs")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -148,6 +166,13 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_sync)
     sub.add_parser("check").set_defaults(func=cmd_check)
     sub.add_parser("status").set_defaults(func=cmd_status)
+    p = sub.add_parser("serve", help="read the wiki in a browser")
+    p.add_argument("--port", type=int, default=8090)
+    p.add_argument("--no-open", action="store_true", help="don't open a browser tab")
+    p.set_defaults(func=cmd_serve)
+    p = sub.add_parser("build", help="write a static HTML copy of the wiki")
+    p.add_argument("--out", default=str(WIKI.parent / "site"))
+    p.set_defaults(func=cmd_build)
     args = parser.parse_args(argv)
     return args.func(args)
 

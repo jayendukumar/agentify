@@ -25,3 +25,6 @@ __pycache__/
 
 # Office lock files left while a deck is open
 ~$*
+
+# Static wiki build (python -m tools.docs build)
+docs/site/

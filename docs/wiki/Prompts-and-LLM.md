@@ -1,6 +1,6 @@
 # Prompts and LLM use
 
-Last reviewed: 2026-10-13 · Sources: `backend/app/llm`, `backend/app/blueprint/prompts.py`, `backend/app/chat/prompts.py`, `backend/app/gap_analysis/prompts.py`
+Last reviewed: 2026-10-15 · Sources: `backend/app/llm`, `backend/app/blueprint/prompts.py`, `backend/app/chat/prompts.py`, `backend/app/gap_analysis/prompts.py`
 
 ## How model calls are made
 
@@ -47,7 +47,10 @@ There are three styles, and the catalogue below shows each one's source:
   schema to return, plus a builder that renders the process and the
   organization's **context pack** (Epic 28: applicable rules, roles,
   approval authority, applications, each citable by id) into the user
-  message.
+  message. A large diagram is evaluated in chunks. Each call lists only
+  its chunk's steps for judging, followed by the rest of the diagram
+  marked "context only", so the model still sees the whole process but
+  returns results and consolidates agents only within its chunk.
 - **Inline prompts** in the service that makes the call, for short,
   single-purpose calls (rule structuring, data adapter, system
   simulation, tool-schema inference).
