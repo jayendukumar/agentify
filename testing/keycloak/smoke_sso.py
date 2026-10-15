@@ -84,7 +84,14 @@ def sign_in(username: str, *, with_otp: bool = True, strip_acr: bool = False) ->
     if response.status_code == 200 and 'name="otp"' in response.text:
         if not with_otp:
             return browser, "stopped at the one-time code page"
-        response = browser.post(form_action(response.text), data={"otp": totp(otp_secret(username))})
+        page = response.text
+        response = browser.post(form_action(page), data={"otp": totp(otp_secret(username))})
+        if response.status_code == 200 and 'name="otp"' in response.text:
+            # Keycloak refuses a code already used in this 30-second window
+            # (replay protection) -- a second sign-in by the same person
+            # within it needs the next code.
+            time.sleep(30 - time.time() % 30 + 1)
+            response = browser.post(form_action(response.text), data={"otp": totp(otp_secret(username))})
     if response.status_code != 302:
         raise RuntimeError(f"Keycloak didn't redirect back: {response.status_code} {response.text[:300]}")
     callback = response.headers["location"]

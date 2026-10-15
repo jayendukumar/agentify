@@ -3,6 +3,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -20,6 +22,7 @@ from app.api import (
     documents,
     environments,
     evaluation,
+    directory,
     gap_analysis,
     governance,
     oidc,
@@ -30,6 +33,7 @@ from app.api import (
     publish,
     registries,
     results,
+    scim,
     twin,
     twin_builder,
     versions,
@@ -45,6 +49,7 @@ from app.llm.exceptions import (
     LLMTimeoutError,
 )
 from app.request_context import RequestIDLogFilter, request_id_middleware
+from app.scim.protocol import ScimError
 from app.store import NotFoundError
 
 
@@ -125,6 +130,8 @@ app.middleware("http")(request_id_middleware)
 
 app.include_router(auth.router)
 app.include_router(oidc.router)
+app.include_router(directory.router)
+app.include_router(scim.router)
 app.include_router(governance.router)
 app.include_router(processes.router)
 app.include_router(documents.router)
@@ -153,6 +160,18 @@ app.include_router(oracles.router)
 app.include_router(batches.router)
 app.include_router(results.router)
 app.include_router(process_twin.router)
+
+
+app.add_exception_handler(ScimError, scim.scim_error_handler)
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Epic 37, US37.10: an IdP's malformed SCIM request gets a SCIM error,
+    not FastAPI's own format. Every other route keeps the default."""
+    if request.url.path.startswith("/scim/"):
+        return await scim.scim_error_handler(request, ScimError(400, str(exc.errors()[:3]), "invalidSyntax"))
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.exception_handler(NotFoundError)

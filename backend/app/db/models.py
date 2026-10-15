@@ -363,6 +363,23 @@ class UserModel(Base):
     # US37.10/US37.13: a deactivated user keeps their history but can't sign in.
     active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # Epic 37, US37.10-37.11: how the user came to exist -- local (name
+    # picker), sso (created at first SSO sign-in) or scim (pushed by the
+    # IdP, which then owns their groups and active flag).
+    provisioned_by: Mapped[str] = mapped_column(String, nullable=False, default="local", server_default="local")
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
+    # SCIM: the IdP's userName and externalId, and the rest of the resource
+    # as the IdP last sent it (returned unchanged, as SCIM clients expect).
+    # externalId links the user to their SSO sign-in (SCIM_LINK_CLAIM).
+    scim_user_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    scim_external_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    scim_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # SCIM DELETE: gone from the IdP's view, history kept here.
+    scim_deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # The groups claim at the last SSO sign-in, for users whose groups don't
+    # come over SCIM -- lets a mapping change be applied (and previewed)
+    # without waiting for everyone to sign in again.
+    idp_groups: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     roles: Mapped[list["UserRoleModel"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
 
@@ -522,6 +539,66 @@ class UserIdentityModel(Base):
     username: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     last_sign_in_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ScimTokenModel(Base):
+    """Epic 37, US37.10: a bearer token the IdP's provisioning uses. Shown
+    once when generated, stored only as a SHA-256 hash. Several can be
+    live at once so a rotation doesn't interrupt provisioning: generate a
+    new one, switch the IdP over, revoke the old one."""
+
+    __tablename__ = "scim_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class DirectoryGroupModel(Base):
+    """Epic 37, US37.10: a group the IdP pushed over SCIM. Its display name
+    and external id are what group mappings match on."""
+
+    __tablename__ = "directory_groups"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    display_name: Mapped[str] = mapped_column(String, nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    members: Mapped[list["DirectoryGroupMemberModel"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+
+
+class DirectoryGroupMemberModel(Base):
+    __tablename__ = "directory_group_members"
+
+    group_id: Mapped[str] = mapped_column(ForeignKey("directory_groups.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+
+
+class GroupRoleMappingModel(Base):
+    """Epic 37, US37.11: members of a group hold a role at a scope (the
+    same scope_type/scope_id as UserRoleModel). The group is matched,
+    ignoring case, against a SCIM group's display name or external id, or
+    a value in the SSO groups claim (a name for Keycloak and Okta, an
+    object id for Entra ID). Grants made this way are UserRoleModel rows
+    with source "group", recomputed whenever groups or mappings change."""
+
+    __tablename__ = "group_role_mappings"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    group: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String, nullable=False)
+    scope_type: Mapped[str] = mapped_column(String, nullable=False, default="organization")
+    scope_id: Mapped[str] = mapped_column(String, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    __table_args__ = (UniqueConstraint("group", "role", "scope_type", "scope_id"),)
 
 
 class OidcLoginRequestModel(Base):

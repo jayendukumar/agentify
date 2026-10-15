@@ -41,11 +41,12 @@ def _event(
     request: Request | None,
     detail: dict[str, Any] | None,
     actor_name: str | None = None,
+    actor_type: str | None = None,
 ) -> AuditEventModel:
     ip, user_agent = _client(request)
     return AuditEventModel(
         id=new_id("audit"),
-        actor_type=actor.actor_type if actor is not None else "system",
+        actor_type=actor.actor_type if actor is not None else (actor_type or "system"),
         actor_id=actor.id if actor is not None else None,
         actor_name=actor.name if actor is not None else actor_name,
         action=action,
@@ -71,6 +72,7 @@ def record(
     detail: dict[str, Any] | None = None,
     actor_name: str | None = None,
     outcome: str = "success",
+    actor_type: str | None = None,
 ) -> None:
     """`outcome="refused"` is for a refusal the caller commits on purpose
     (a reused refresh token revokes the session); `record_refusal` covers
@@ -86,6 +88,7 @@ def record(
             request=request,
             detail=detail,
             actor_name=actor_name,
+            actor_type=actor_type,
         )
     )
 

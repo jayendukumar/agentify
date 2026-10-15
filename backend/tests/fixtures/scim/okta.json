@@ -1,0 +1,79 @@
+{
+  "source": "Transcribed from Okta's developer guide 'SCIM 2.0 protocol reference' (the requests Okta's provisioning sends), not captured from a live org. Ids, names and emails are the guide's placeholders.",
+  "steps": [
+    {"name": "check the user doesn't exist", "method": "GET",
+     "path": "/Users?filter=userName eq \"test.user@okta.local\"&startIndex=1&count=100",
+     "status": 200, "expect": {"totalResults": 0, "startIndex": 1}},
+    {"name": "create the user, password included", "method": "POST", "path": "/Users",
+     "body": {
+       "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+       "userName": "test.user@okta.local",
+       "name": {"givenName": "Test", "familyName": "User"},
+       "emails": [{"primary": true, "value": "test.user@okta.local", "type": "work"}],
+       "displayName": "Test User",
+       "locale": "en-US",
+       "externalId": "00ujl29u0le5T6Aj10h7",
+       "groups": [],
+       "password": "1mz050nq",
+       "active": true
+     },
+     "status": 201, "capture": {"user": "id"},
+     "expect": {"userName": "test.user@okta.local", "displayName": "Test User", "password": "__absent__"}},
+    {"name": "read the user", "method": "GET", "path": "/Users/{{user}}", "status": 200,
+     "expect": {"externalId": "00ujl29u0le5T6Aj10h7", "locale": "en-US", "password": "__absent__"}},
+    {"name": "replace the user", "method": "PUT", "path": "/Users/{{user}}",
+     "body": {
+       "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+       "id": "{{user}}",
+       "userName": "test.user@okta.local",
+       "name": {"givenName": "Another", "familyName": "User"},
+       "emails": [{"primary": true, "value": "test.user@okta.local", "type": "work"}],
+       "displayName": "Another User",
+       "locale": "en-US",
+       "externalId": "00ujl29u0le5T6Aj10h7",
+       "groups": [],
+       "active": true,
+       "meta": {"resourceType": "User"}
+     },
+     "status": 200, "expect": {"name.givenName": "Another", "displayName": "Another User"}},
+    {"name": "deactivate with a path-less value object", "method": "PATCH", "path": "/Users/{{user}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [{"op": "replace", "value": {"active": false}}]},
+     "status": 200, "expect": {"active": false}},
+    {"name": "reactivate", "method": "PATCH", "path": "/Users/{{user}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [{"op": "replace", "value": {"active": true}}]},
+     "status": 200, "expect": {"active": true}},
+    {"name": "page through users", "method": "GET", "path": "/Users?startIndex=1&count=2", "status": 200,
+     "expect": {"startIndex": 1, "itemsPerPage": 1}},
+    {"name": "create a group", "method": "POST", "path": "/Groups",
+     "body": {"schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"], "displayName": "Test SCIMv2", "members": []},
+     "status": 201, "capture": {"group": "id"}},
+    {"name": "rename the group with a path-less value object", "method": "PATCH", "path": "/Groups/{{group}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"op": "replace", "value": {"id": "{{group}}", "displayName": "Test SCIMv2 renamed"}}
+     ]},
+     "status": 204},
+    {"name": "add a member", "method": "PATCH", "path": "/Groups/{{group}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"op": "add", "path": "members", "value": [{"value": "{{user}}", "display": "test.user@okta.local"}]}
+     ]},
+     "status": 204},
+    {"name": "the member and the new name", "method": "GET", "path": "/Groups/{{group}}", "status": 200,
+     "expect": {"displayName": "Test SCIMv2 renamed", "members.0.value": "{{user}}"}},
+    {"name": "the user lists the group", "method": "GET", "path": "/Users/{{user}}", "status": 200,
+     "expect": {"groups.0.value": "{{group}}"}},
+    {"name": "remove the member by a filtered path", "method": "PATCH", "path": "/Groups/{{group}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"op": "remove", "path": "members[value eq \"{{user}}\"]"}
+     ]},
+     "status": 204},
+    {"name": "replace the whole membership", "method": "PATCH", "path": "/Groups/{{group}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"op": "replace", "path": "members", "value": [{"value": "{{user}}"}]}
+     ]},
+     "status": 204},
+    {"name": "replace the group", "method": "PUT", "path": "/Groups/{{group}}",
+     "body": {"schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"], "id": "{{group}}", "displayName": "Test SCIMv2 renamed", "members": []},
+     "status": 200, "expect": {"members": []}},
+    {"name": "delete the group", "method": "DELETE", "path": "/Groups/{{group}}", "status": 204}
+  ]
+}

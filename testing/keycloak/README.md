@@ -31,7 +31,7 @@ already set up, so Keycloak asks for a one-time code after the password.
 
 To get a one-time code, add the person's secret to an authenticator app
 (Google Authenticator, Microsoft Authenticator, 1Password). The secret is
-`axyntro-dev-otp-<username>`, padded with zeros to 20 characters and then
+`axyntro-dev-otp-<username>`, cut or zero-padded to exactly 20 characters and then
 base32-encoded, because authenticator apps expect base32. Or print the
 current code:
 
@@ -71,14 +71,28 @@ password-only token, and Axyntro refuses it. That refusal is what
 `smoke_sso.py` checks. For a real deployment, set the minimum ACR in the
 IdP as well: defence in depth.
 
-## The live smoke test
+## Provisioning over SCIM
+
+Keycloak doesn't push users over SCIM, so locally you play the IdP's
+provisioning side:
+
+1. Sign in as `sam` (Admin), open **Directory** and generate a token.
+2. Send requests to `http://localhost:8000/scim/v2` with
+   `Authorization: Bearer <token>` and `Content-Type: application/scim+json`.
+
+To link a provisioned person to their Keycloak sign-in, use their Keycloak
+user id as the SCIM `externalId` (`SCIM_LINK_CLAIM=sub`). `smoke_scim.py`
+does exactly that for `olivia`.
+
+## The live smoke tests
 
 ```powershell
-python testing/keycloak/smoke_sso.py
+python testing/keycloak/smoke_sso.py    # sign-in, MFA, logout, sessions
+python testing/keycloak/smoke_scim.py   # SCIM provisioning and group mappings
 ```
 
-It signs in through Keycloak's real pages (a password, then a computed
-one-time code) and checks:
+`smoke_sso.py` signs in through Keycloak's real pages (a password, then a
+computed one-time code) and checks:
 
 - users are created from the ID token, with roles from their groups;
 - the MFA refusal;
@@ -86,3 +100,11 @@ one-time code) and checks:
 - a user disabled in Keycloak losing their session at the next refresh;
 - logout through Keycloak;
 - the audit trail.
+
+`smoke_scim.py`:
+- replays Entra ID's SCIM request sequence over HTTP;
+- provisions `olivia` and checks she's linked at her first real sign-in,
+  with roles from her SCIM group;
+- previews a mapping change without applying it;
+- deactivates her over SCIM and checks her session ends on the next
+  request.

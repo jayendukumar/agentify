@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**199 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *public* needs none.
+**223 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -114,6 +114,18 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | DELETE | `/api/processes/{process_id}/datasets/{dataset_id}/rows/{row_key}` | `agent.test` |  |
 | PATCH | `/api/processes/{process_id}/datasets/{dataset_id}/rows/{row_key}` | `agent.test` | US32.4: correct or confirm a label (recorded with who did it). |
 | PUT | `/api/processes/{process_id}/datasets/{dataset_id}/rows/{row_key}/ambiguity` | `agent.test` | US32.5. |
+
+### directory
+
+| Method | Path | Access | What it does |
+|---|---|---|---|
+| GET | `/api/directory/group-mappings` | `users.manage` |  |
+| PUT | `/api/directory/group-mappings` | `users.manage` | Replaces every mapping and applies them to everyone now. |
+| POST | `/api/directory/group-mappings/preview` | `users.manage` | US37.11: who would gain or lose which role. Changes nothing. |
+| GET | `/api/directory/groups` | `users.manage` |  |
+| GET | `/api/directory/scim` | `users.manage` |  |
+| POST | `/api/directory/scim/tokens` | `users.manage` | The token is in this response only; afterwards just its hash exists. |
+| DELETE | `/api/directory/scim/tokens/{token_id}` | `users.manage` |  |
 
 ### documents
 
@@ -300,6 +312,28 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/processes/{process_id}/batch-comparison` | signed in | US35.6: paired on the cases both batches ran. |
 | GET | `/api/processes/{process_id}/batches/{batch_id}/evidence` | signed in | US35.9. |
 | GET | `/api/processes/{process_id}/batches/{batch_id}/results` | signed in | US35.1-US35.5, US35.8 -- partial while the batch is still running. |
+
+### scim
+
+| Method | Path | Access | What it does |
+|---|---|---|---|
+| GET | `/scim/v2/Groups` | SCIM token |  |
+| POST | `/scim/v2/Groups` | SCIM token |  |
+| DELETE | `/scim/v2/Groups/{group_id}` | SCIM token |  |
+| GET | `/scim/v2/Groups/{group_id}` | SCIM token |  |
+| PATCH | `/scim/v2/Groups/{group_id}` | SCIM token | 204, as Entra ID and Okta expect for group changes (RFC 7644 allows 200 with the resource or 204). |
+| PUT | `/scim/v2/Groups/{group_id}` | SCIM token |  |
+| GET | `/scim/v2/ResourceTypes` | SCIM token |  |
+| GET | `/scim/v2/ResourceTypes/{type_id}` | SCIM token |  |
+| GET | `/scim/v2/Schemas` | SCIM token |  |
+| GET | `/scim/v2/Schemas/{schema_id}` | SCIM token |  |
+| GET | `/scim/v2/ServiceProviderConfig` | SCIM token |  |
+| GET | `/scim/v2/Users` | SCIM token |  |
+| POST | `/scim/v2/Users` | SCIM token |  |
+| DELETE | `/scim/v2/Users/{user_id}` | SCIM token |  |
+| GET | `/scim/v2/Users/{user_id}` | SCIM token |  |
+| PATCH | `/scim/v2/Users/{user_id}` | SCIM token |  |
+| PUT | `/scim/v2/Users/{user_id}` | SCIM token |  |
 
 ### twin
 

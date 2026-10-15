@@ -1007,8 +1007,62 @@ export interface User {
   // Held at some scope -- the server still checks the scope per request.
   permissions: Permission[]
   created_at: string
-  // Epic 37, US37.13: only on the Users list.
+  // Epic 37, US37.10: local, sso or scim. With scim the IdP owns this
+  // user's groups and whether they're active.
+  provisioned_by?: string
+  email?: string | null
+  // US37.13 / US37.11: only on the Users list.
   active_sessions?: number | null
+  groups?: string[] | null
+}
+
+// Epic 37, US37.10-37.11: the Directory page.
+export interface ScimToken {
+  id: string
+  label: string
+  created_at: string
+  created_by: string | null
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+export interface ScimTokenIssued extends ScimToken {
+  token: string
+}
+
+export interface ScimSetup {
+  base_url: string
+  link_claim: string
+  tokens: ScimToken[]
+}
+
+export interface GroupMapping {
+  group: string
+  role: Role
+  scope_type: 'organization' | 'business_unit'
+  scope_id: string
+  scope_name?: string | null
+}
+
+export interface RoleGrantChange {
+  role: Role
+  scope_type: 'organization' | 'business_unit'
+  scope_id: string
+  scope_name: string | null
+}
+
+export interface RoleChange {
+  user_id: string
+  user_name: string
+  gained: RoleGrantChange[]
+  lost: RoleGrantChange[]
+}
+
+export interface KnownGroup {
+  name: string
+  external_id: string | null
+  source: 'scim' | 'sign-in'
+  members: number
 }
 
 // US37.12: what sign-in, refresh and /api/auth/me return to the

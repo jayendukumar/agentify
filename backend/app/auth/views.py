@@ -32,6 +32,8 @@ def user_out(session: Session, user: UserModel) -> UserOut:
         roles=grants,
         permissions=effective_permissions(user),
         created_at=user.created_at,
+        provisioned_by=user.provisioned_by,
+        email=user.email,
     )
 
 

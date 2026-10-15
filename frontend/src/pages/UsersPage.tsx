@@ -185,6 +185,13 @@ function ApprovalPolicy({ units }: { units: ContextEntity[] }) {
   )
 }
 
+// Epic 37, US37.10: how each person came to exist here.
+const PROVISIONED: Record<string, string> = {
+  scim: 'Provisioned (SCIM)',
+  sso: 'Single sign-on',
+  local: 'Local sign-in',
+}
+
 // Epic 37, US37.1: an admin grants roles (organization-wide or for one
 // business unit) and deactivates leavers. Admin is deliberately a
 // separate duty: it grants no build or approve permission.
@@ -238,6 +245,7 @@ export default function UsersPage() {
         <thead>
           <tr>
             <th>Name</th>
+            <th>Directory</th>
             <th>Current roles</th>
             <th>Change roles</th>
             <th>Status</th>
@@ -249,6 +257,10 @@ export default function UsersPage() {
             <Fragment key={u.id}>
               <tr>
                 <td>{u.name}</td>
+                <td>
+                  {PROVISIONED[u.provisioned_by ?? 'local'] ?? u.provisioned_by}
+                  {u.groups && u.groups.length > 0 && <div className="meta">Groups: {u.groups.join(', ')}</div>}
+                </td>
                 <td>{u.roles.length ? u.roles.map(grantLabel).join(', ') : <span className="meta">Read only</span>}</td>
                 <td>
                   <RoleEditor key={u.roles.map((g) => `${g.role}:${g.scope_id}`).join('|')} user={u} units={units} onSaved={replace} />
@@ -275,7 +287,7 @@ export default function UsersPage() {
               </tr>
               {openSessions === u.id && (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <UserSessions user={u} onCountChange={(count) => replace({ ...u, active_sessions: count })} />
                   </td>
                 </tr>

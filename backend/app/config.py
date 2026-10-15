@@ -142,12 +142,23 @@ class Settings(BaseSettings):
     # Create the user at first sign-in. Off: only users already known (by
     # issuer + subject) may sign in.
     oidc_jit_provisioning: bool = True
-    # Until US37.11's admin-managed mappings: IdP group -> roles, each
-    # "role" (organization-wide) or "role@<business unit name>". JSON, e.g.
-    # '{"axyntro-approvers": ["approver"], "retail-analysts": ["analyst@Retail Banking"]}'.
+    # US37.11: the first group-to-role mappings, copied into the table
+    # (app/auth/directory.py) the first time mappings are needed, so a new
+    # deployment's first admin can sign in. After that, admins edit them on
+    # the Directory page. JSON: group -> roles, each "role" or
+    # "role@<business unit name>", e.g.
+    # '{"axyntro-admins": ["admin"], "retail-analysts": ["analyst@Retail Banking"]}'.
     oidc_group_roles: dict[str, list[str]] = Field(default_factory=dict)
     # Where the browser lands after signing in or out.
     frontend_url: str = "http://localhost:3000"
+    # The API's address as the IdP reaches it -- shown to admins as the
+    # SCIM base URL (US37.10): <api_public_url>/scim/v2.
+    api_public_url: str = "http://localhost:8000"
+    # US37.10: the ID token claim whose value is a SCIM user's externalId.
+    # It links a provisioned user to their first SSO sign-in. Keycloak and
+    # Okta: "sub" (provision externalId = the user id). Entra ID: "oid"
+    # (provision externalId = objectId).
+    scim_link_claim: str = "sub"
 
     @property
     def oidc_client_secret(self) -> str:

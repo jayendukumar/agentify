@@ -241,3 +241,10 @@ button.run-step-row-selected, button.run-step-row-selected:not(:disabled):hover 
 .results-weak td { background: var(--axyntro-danger-bg, #fff1f0); }
 .results-diagonal { font-weight: 600; }
 .results-miss { color: var(--axyntro-danger, #b42318); font-weight: 600; }
+
+/* Epic 37, US37.10: the Directory page. */
+.directory-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--axyntro-space-1) var(--axyntro-space-3); margin: var(--axyntro-space-3) 0; }
+.directory-facts dt { font-weight: 600; }
+.directory-facts dd { margin: 0; overflow-wrap: anywhere; }
+.directory-token { border: 1px solid var(--border); border-radius: var(--axyntro-radius-control); padding: var(--axyntro-space-3); margin: var(--axyntro-space-3) 0; }
+.directory-token-value { overflow-wrap: anywhere; }

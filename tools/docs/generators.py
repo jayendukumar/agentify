@@ -57,6 +57,7 @@ DOMAINS: dict[str, list[str]] = {
     "Process twin (Epic 36)": ["process_operating_models", "process_twin_batches"],
     "Identity and access (Epics 9-10, 37)": [
         "users", "user_roles", "user_identities", "sessions", "session_tokens", "oidc_login_requests",
+        "scim_tokens", "directory_groups", "directory_group_members", "group_role_mappings",
         "contributions", "approvals", "audit_events",
     ],
     "Platform (Epic 31)": ["jobs"],
@@ -184,7 +185,10 @@ def _route_access() -> dict[tuple[str, str], str]:
             stack.extend(dep.dependencies)
         permission = next((c.required_permission for c in calls if getattr(c, "required_permission", None)), None)
         signed_in = any(getattr(c, "__name__", "") in ("get_current_session", "get_current_user") for c in calls)
-        label = f"`{permission.value}`" if permission else ("signed in" if signed_in else "public")
+        scim_token = any(getattr(c, "__name__", "") == "scim_client" for c in calls)
+        label = f"`{permission.value}`" if permission else (
+            "signed in" if signed_in else "SCIM token" if scim_token else "public"
+        )
         for method in route.methods:
             access[(route.path, method)] = label
     return access
@@ -205,7 +209,8 @@ def api_catalogue() -> str:
     total = sum(len(v) for v in by_tag.values())
     out = [
         f"**{total} endpoints.** Access: a `permission` (granted by roles, checked against the process's "
-        "business unit -- see Glossary); *signed in* needs any session; *public* needs none.",
+        "business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token "
+        "from the Directory page; *public* needs none.",
         "",
     ]
     for tag in sorted(by_tag):

@@ -1,11 +1,11 @@
 # Glossary: identity, access and sessions
 
-Last reviewed: 2026-10-15 · Sources: `backend/app/auth`, `backend/app/api/auth.py`, `backend/app/api/oidc.py`, `backend/app/api/deps.py`, `testing/keycloak`, `backend/app/config.py`, `frontend/src/api/client.ts`, `planning/epics/37-enterprise-identity-and-access.md`
+Last reviewed: 2026-10-15 · Sources: `backend/app/auth`, `backend/app/api/auth.py`, `backend/app/api/oidc.py`, `backend/app/api/scim.py`, `backend/app/scim`, `backend/app/api/deps.py`, `testing/keycloak`, `backend/app/config.py`, `frontend/src/api/client.ts`, `planning/epics/37-enterprise-identity-and-access.md`
 
 These are the security and governance concepts behind Epic 37. Each entry
 gives the general meaning and how Axyntro applies it, with the code that
-does it. Concepts marked *(planned)* belong to steps not built yet (SAML,
-SCIM). The reasons behind the choices are in the
+does it. Concepts marked *(planned)* belong to a step not built yet
+(SAML). The reasons behind the choices are in the
 [decision log](../../planning/decision-log.md), and the
 [epic](../../planning/epics/37-enterprise-identity-and-access.md) has the
 full stories.
@@ -29,9 +29,15 @@ full stories.
 | **Multi-factor authentication (MFA)** | A second proof besides a password: an authenticator app, a hardware key. | US37.8. Enforced at the IdP, then *verified* here: the ID token must carry an accepted `amr` method or `acr` value, or the sign-in is refused and audited. The live test shows why: removing `acr_values` from the sign-in URL gets a password-only token from Keycloak, and the API refuses it. |
 | **amr / acr** | `amr`: how the user authenticated (`pwd`, `otp`, `mfa`, `hwk`). `acr`: the assurance level reached. | `AUTH_MFA_AMR_VALUES` (default `mfa`, `otp`, `hwk`, `swk`) and `AUTH_MFA_ACR_VALUES`. The local Keycloak maps its level 2 (password + code) to `acr` "mfa". |
 | **Level of authentication (LoA)** | Keycloak's step-up: flows gated by level, mapped to `acr` names. | The `browser-mfa` flow in the realm. Level 2 asks for the one-time code on every sign-in. |
-| **SCIM** | A standard API the IdP uses to create, update and deactivate users and groups in an app. | *(planned)* US37.10 inbound. Unrelated to Epic 31's outbound `ScimConnector`, which reads groups into *context* roles. |
-| **Just-in-time (JIT) provisioning** | Creating the user on first sign-in instead of in advance. | On by default (`OIDC_JIT_PROVISIONING`). Off: only people already known by issuer and subject may sign in. |
-| **Group-to-role mapping** | Turning directory groups into product roles. | Until US37.11, `OIDC_GROUP_ROLES` maps groups to roles, optionally scoped `role@<business unit>`. It's reapplied at every sign-in; these grants are `source="group"`, read-only on the Users page. |
+| **SCIM** | A standard API (RFC 7643/7644) the IdP uses to create, update and deactivate users and groups in an app. | US37.10: an inbound server at `/scim/v2` (`app/scim`), for Users and Groups, with filtering and PATCH as Entra ID and Okta send them. Not Epic 31's outbound `ScimConnector`, which reads groups into *context* roles. |
+| **SCIM token** | The bearer token the IdP's provisioning authenticates with. | Generated on the Directory page and shown once; only its hash is stored. Several may be live, so it can be rotated without a gap. Revoking one stops it at once. |
+| **Joiner / mover / leaver** | Someone starting, changing role, or leaving. | Joiner: SCIM creates them before their first day. Mover: their group membership changes, and roles follow. Leaver: `active=false` or DELETE deactivates them and revokes every session in the same transaction. Their history stays. |
+| **externalId and the link claim** | SCIM's place for the IdP's own id for a user. | At first sign-in, the claim named by `SCIM_LINK_CLAIM` (`sub`, or `oid` for Entra ID) must equal it. That links the provisioned account to the sign-in by an immutable id, never by email. |
+| **Service actor** | Something other than a person acting. | SCIM writes are audited with actor type `service`, named by the token's label, e.g. "SCIM (Entra ID)". |
+| **Just-in-time (JIT) provisioning** | Creating the user on first sign-in instead of in advance. | On by default (`OIDC_JIT_PROVISIONING`). Turn it off with SCIM: then only people provisioned (or already known) may sign in. |
+| **Group-to-role mapping** | Turning directory groups into product roles. | US37.11: rows in `group_role_mappings`, edited on the Directory page. A group is matched ignoring case, by name or (for Entra ID) object id. Grants are `source="group"` and read-only on the Users page. `OIDC_GROUP_ROLES` only seeds the table, once. |
+| **Mapping preview** | Seeing the effect of a change before making it. | Who would gain or lose which role. The page won't save until you've previewed. People whose groups aren't known yet are left alone and updated at their next sign-in. |
+| **Source of a user's groups** | Where the product learns someone's groups. | SCIM for provisioned users (the claim is then ignored). Otherwise the groups claim at their last sign-in, which is recorded so mapping changes apply at once. |
 | **Groups overage** | Entra ID replaces the `groups` claim with a Graph link once a user is in too many groups. | Detected from `_claim_names`. The user keeps their previous group roles instead of losing them, and the sign-in audit event says so. |
 | **RP-initiated logout** | The app sends the browser to the IdP to end the IdP session too. | Logout returns the IdP's `logout_url`, with the ID token as a hint. Without it, "Sign in" would go straight back in. |
 | **Back-channel logout** | The IdP calls the app server to server when a user's IdP session ends. | `POST /api/auth/oidc/backchannel-logout` validates the signed logout token and revokes the sessions with that `sid` (or all of that `sub`'s). |

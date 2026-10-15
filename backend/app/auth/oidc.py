@@ -39,10 +39,9 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.permissions import Role
+from app.auth import directory
 from app.config import Settings, get_settings
-from app.db.models import ContextEntityModel, UserIdentityModel, UserModel
-from app.db import repository
+from app.db.models import UserIdentityModel, UserModel
 from app.ids import new_id, utcnow
 
 logger = logging.getLogger(__name__)
@@ -310,33 +309,6 @@ def groups_overage(claims: dict[str, Any], claim: str) -> bool:
     return claim in (claims.get("_claim_names") or {})
 
 
-def roles_from_groups(db: Session, settings: Settings, groups: list[str]) -> tuple[list[tuple[str, str, str]], list[str]]:
-    """(role, scope_type, scope_id) grants from OIDC_GROUP_ROLES, and any
-    mapping that couldn't be applied (unknown role or business unit)."""
-    valid_roles = {r.value for r in Role}
-    grants: list[tuple[str, str, str]] = []
-    problems: list[str] = []
-    for group in groups:
-        for spec in settings.oidc_group_roles.get(group, []):
-            role, _, unit_name = spec.partition("@")
-            if role not in valid_roles:
-                problems.append(f"{group}: unknown role {role!r}")
-                continue
-            if not unit_name:
-                grants.append((role, "organization", ""))
-                continue
-            unit = db.scalar(
-                select(ContextEntityModel).where(
-                    ContextEntityModel.kind == "business_unit", ContextEntityModel.name.ilike(unit_name.strip())
-                )
-            )
-            if unit is None:
-                problems.append(f"{group}: no business unit named {unit_name!r}")
-            else:
-                grants.append((role, "business_unit", unit.id))
-    return grants, problems
-
-
 def _unique_name(db: Session, claims: dict[str, Any]) -> str:
     base = (claims.get("name") or claims.get("preferred_username") or claims.get("email") or claims["sub"]).strip()
     qualifier = claims.get("preferred_username") or claims.get("email") or claims["sub"][:8]
@@ -353,21 +325,51 @@ class SignedIn:
     detail: dict[str, Any] = field(default_factory=dict)
 
 
+def _scim_user_for(db: Session, settings: Settings, claims: dict[str, Any]) -> UserModel | None:
+    """US37.10: a user the IdP provisioned over SCIM who hasn't signed in
+    yet, found by the claim that carries their SCIM externalId -- an
+    immutable IdP id, never an email or a name."""
+    value = claims.get(settings.scim_link_claim)
+    if not value:
+        return None
+    candidates = db.scalars(
+        select(UserModel).where(
+            UserModel.provisioned_by == "scim", UserModel.scim_external_id == str(value),
+            UserModel.scim_deleted_at.is_(None),
+        )
+    ).all()
+    for user in candidates:
+        linked = db.scalar(
+            select(UserIdentityModel).where(
+                UserIdentityModel.user_id == user.id, UserIdentityModel.issuer == claims["iss"]
+            )
+        )
+        if linked is None:
+            return user
+    return None
+
+
 def sign_in(db: Session, settings: Settings, claims: dict[str, Any]) -> SignedIn:
-    """Finds (or, with JIT provisioning, creates) the user for verified
-    claims and applies their IdP groups. Raises OidcError to refuse."""
+    """Finds the user for verified claims -- an earlier sign-in, a user
+    provisioned over SCIM, or (with JIT provisioning) a new one -- and
+    brings their group roles up to date. Raises OidcError to refuse."""
     issuer, subject = claims["iss"], claims["sub"]
     identity = db.get(UserIdentityModel, (issuer, subject))
     created = False
+    detail: dict[str, Any] = {"issuer": issuer, "subject": subject}
     if identity is None:
-        if not settings.oidc_jit_provisioning:
+        user = _scim_user_for(db, settings, claims)
+        if user is not None:
+            detail["linked_scim_user"] = True
+        elif not settings.oidc_jit_provisioning:
             raise OidcError("not_provisioned", f"No account here for {claims.get('email') or subject}, and JIT provisioning is off")
-        user = UserModel(id=new_id("user"), name=_unique_name(db, claims))
-        db.add(user)
-        db.flush()
+        else:
+            user = UserModel(id=new_id("user"), name=_unique_name(db, claims), provisioned_by="sso")
+            db.add(user)
+            db.flush()
+            created = True
         identity = UserIdentityModel(issuer=issuer, subject=subject, user_id=user.id)
         db.add(identity)
-        created = True
     user = db.get(UserModel, identity.user_id)
     if user is None or not user.active:
         raise OidcError("deactivated", "This account is deactivated")
@@ -376,17 +378,23 @@ def sign_in(db: Session, settings: Settings, claims: dict[str, Any]) -> SignedIn
     identity.last_sign_in_at = utcnow().replace(tzinfo=None)
 
     claim = settings.oidc_groups_claim
-    detail: dict[str, Any] = {"issuer": issuer, "subject": subject}
-    if groups_overage(claims, claim):
+    if user.provisioned_by == "scim":
+        # The IdP's SCIM pushes own this user's groups; the claim may lag.
+        detail["groups_from"] = "scim"
+    elif groups_overage(claims, claim):
         # Keep the roles they had rather than silently stripping them.
         detail["groups_overage"] = True
     else:
-        groups = group_names(claims, claim)
-        grants, problems = roles_from_groups(db, settings, groups)
-        repository.replace_group_roles(db, user, grants)
-        detail.update(groups=groups, roles=sorted(f"{r}@{t}:{i}".rstrip(":") for r, t, i in grants))
-        if problems:
-            detail["mapping_problems"] = problems
+        user.email = claims.get("email") or user.email
+        user.idp_groups = group_names(claims, claim)
+        detail["groups"] = user.idp_groups
+    if not detail.get("groups_overage"):
+        mappings = directory.load(db, settings)
+        change = directory.apply(db, user, mappings)
+        granted = directory.grants_for(directory.user_groups(db, user), mappings)
+        detail["roles"] = [f"{r}@{t}:{i}".rstrip(":") for r, t, i in granted]
+        if change.gained or change.lost:
+            detail["roles_changed"] = True
     db.flush()
     return SignedIn(user=user, created=created, detail=detail)
 

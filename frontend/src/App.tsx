@@ -9,6 +9,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import AuditLogPage from './pages/AuditLogPage'
 import BatchResultsPage from './pages/BatchResultsPage'
 import DatasetsPage from './pages/DatasetsPage'
+import DirectoryPage from './pages/DirectoryPage'
 import GapReviewPage from './pages/GapReviewPage'
 import ProcessDetailPage from './pages/ProcessDetailPage'
 import OrganizationPage from './pages/OrganizationPage'
@@ -70,6 +71,11 @@ function AppHeader() {
                 Users
               </NavLink>
             )}
+            {can('users.manage') && (
+              <NavLink to="/directory" className="app-header-nav-link">
+                Directory
+              </NavLink>
+            )}
             <NavLink to="/sessions" className="app-header-nav-link">
               Sessions
             </NavLink>
@@ -119,6 +125,7 @@ function AppRoutes() {
       <Route path="/audit" element={<AuditLogPage />} />
       <Route path="/users" element={<UsersPage />} />
       <Route path="/sessions" element={<SessionsPage />} />
+      <Route path="/directory" element={<DirectoryPage />} />
       <Route path="/processes/:processId" element={<ProcessDetailPage />} />
       <Route path="/processes/:processId/diagram" element={<DiagramPage />} />
       <Route path="/processes/:processId/versions" element={<VersionsPage />} />

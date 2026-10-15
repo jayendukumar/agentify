@@ -1,0 +1,95 @@
+{
+  "source": "Transcribed from Microsoft Learn, 'Tutorial: Develop and plan provisioning for a SCIM endpoint in Microsoft Entra ID' (the request/response examples Entra's provisioning service and its SCIM validator send), not captured from a live tenant. Ids, names and emails are the documentation's placeholders.",
+  "steps": [
+    {"name": "find the user before creating them",
+     "method": "GET", "path": "/Users?filter=userName eq \"Test_User_ab6490ee-1e48-479e-a20b-2d77186b5dd1\"",
+     "status": 200, "expect": {"totalResults": 0}},
+    {"name": "create the user",
+     "method": "POST", "path": "/Users",
+     "body": {
+       "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User", "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"],
+       "externalId": "0a21f0f2-8d2a-4f8e-bf98-7363c4aed4ef",
+       "userName": "Test_User_ab6490ee-1e48-479e-a20b-2d77186b5dd1",
+       "active": true,
+       "emails": [{"primary": true, "type": "work", "value": "Test_User_fd0ea19b-0777-472c-9f96-4f70d2226f2e@testuser.com"}],
+       "meta": {"resourceType": "User"},
+       "name": {"formatted": "givenName familyName", "familyName": "familyName", "givenName": "givenName"},
+       "roles": []
+     },
+     "status": 201, "capture": {"user": "id"},
+     "expect": {"userName": "Test_User_ab6490ee-1e48-479e-a20b-2d77186b5dd1", "active": true,
+                "externalId": "0a21f0f2-8d2a-4f8e-bf98-7363c4aed4ef", "name.familyName": "familyName"}},
+    {"name": "read the user back",
+     "method": "GET", "path": "/Users/{{user}}", "status": 200,
+     "expect": {"id": "{{user}}", "emails.0.value": "Test_User_fd0ea19b-0777-472c-9f96-4f70d2226f2e@testuser.com"}},
+    {"name": "find the user by userName",
+     "method": "GET", "path": "/Users?filter=userName eq \"Test_User_ab6490ee-1e48-479e-a20b-2d77186b5dd1\"",
+     "status": 200, "expect": {"totalResults": 1, "Resources.0.id": "{{user}}"}},
+    {"name": "find the user by externalId",
+     "method": "GET", "path": "/Users?filter=externalId eq \"0a21f0f2-8d2a-4f8e-bf98-7363c4aed4ef\"",
+     "status": 200, "expect": {"totalResults": 1}},
+    {"name": "a userName that isn't there",
+     "method": "GET", "path": "/Users?filter=userName eq \"non-existent user\"", "status": 200, "expect": {"totalResults": 0}},
+    {"name": "creating the same userName again is a conflict",
+     "method": "POST", "path": "/Users",
+     "body": {"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"], "userName": "Test_User_ab6490ee-1e48-479e-a20b-2d77186b5dd1", "active": true},
+     "status": 409, "expect": {"scimType": "uniqueness"}},
+    {"name": "update attributes, with filtered and dotted paths and capitalised ops",
+     "method": "PATCH", "path": "/Users/{{user}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"op": "Replace", "path": "emails[type eq \"work\"].value", "value": "updatedEmail@microsoft.com"},
+       {"op": "Replace", "path": "name.familyName", "value": "updatedFamilyName"}
+     ]},
+     "status": 200, "expect": {"emails.0.value": "updatedEmail@microsoft.com", "name.familyName": "updatedFamilyName"}},
+    {"name": "an enterprise extension attribute by URN path",
+     "method": "PATCH", "path": "/Users/{{user}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"op": "Add", "path": "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department", "value": "Finance"}
+     ]},
+     "status": 200, "expect": {"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User.department": "Finance"}},
+    {"name": "disable the user, with the boolean as a string",
+     "method": "PATCH", "path": "/Users/{{user}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"op": "Replace", "path": "active", "value": "False"}
+     ]},
+     "status": 200, "expect": {"active": false}},
+    {"name": "create a group",
+     "method": "POST", "path": "/Groups",
+     "body": {"externalId": "8aa1a0c0-c4c3-4bc0-b4a5-2ef676900159", "displayName": "displayName",
+              "meta": {"resourceType": "Group"}, "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"]},
+     "status": 201, "capture": {"group": "id"}, "expect": {"displayName": "displayName", "members": []}},
+    {"name": "read the group without members",
+     "method": "GET", "path": "/Groups/{{group}}?excludedAttributes=members", "status": 200,
+     "expect": {"displayName": "displayName", "members": "__absent__"}},
+    {"name": "find the group by displayName",
+     "method": "GET", "path": "/Groups?excludedAttributes=members&filter=displayName eq \"displayName\"",
+     "status": 200, "expect": {"totalResults": 1, "Resources.0.id": "{{group}}"}},
+    {"name": "add a member",
+     "method": "PATCH", "path": "/Groups/{{group}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"name": "addMember", "op": "add", "path": "members", "value": [{"$ref": null, "value": "{{user}}"}]}
+     ]},
+     "status": 204},
+    {"name": "the member is there",
+     "method": "GET", "path": "/Groups/{{group}}", "status": 200, "expect": {"members.0.value": "{{user}}"}},
+    {"name": "remove the member",
+     "method": "PATCH", "path": "/Groups/{{group}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"name": "removeMember", "op": "remove", "path": "members", "value": [{"$ref": null, "value": "{{user}}"}]}
+     ]},
+     "status": 204},
+    {"name": "rename the group",
+     "method": "PATCH", "path": "/Groups/{{group}}",
+     "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [
+       {"op": "Replace", "path": "displayName", "value": "1879db59-3bdf-4490-ad68-ab880a269474updatedDisplayName"}
+     ]},
+     "status": 204},
+    {"name": "the rename and the empty membership stuck",
+     "method": "GET", "path": "/Groups/{{group}}", "status": 200,
+     "expect": {"displayName": "1879db59-3bdf-4490-ad68-ab880a269474updatedDisplayName", "members": []}},
+    {"name": "delete the group", "method": "DELETE", "path": "/Groups/{{group}}", "status": 204},
+    {"name": "the group is gone", "method": "GET", "path": "/Groups/{{group}}", "status": 404},
+    {"name": "delete the user", "method": "DELETE", "path": "/Users/{{user}}", "status": 204},
+    {"name": "the user is gone", "method": "GET", "path": "/Users/{{user}}", "status": 404}
+  ]
+}

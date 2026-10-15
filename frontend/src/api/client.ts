@@ -95,6 +95,11 @@ import type {
   LogoutResult,
   GovernanceSettings,
   RunComparison,
+  GroupMapping,
+  KnownGroup,
+  RoleChange,
+  ScimSetup,
+  ScimTokenIssued,
   SessionInfo,
   SignedInUser,
   RunSnapshotView,
@@ -283,6 +288,35 @@ export function setUserRoles(userId: string, roles: RoleGrant[]): Promise<User> 
 
 export function setUserActive(userId: string, active: boolean): Promise<User> {
   return request(`/api/users/${userId}/${active ? 'activate' : 'deactivate'}`, { method: 'POST' })
+}
+
+// Epic 37, US37.10-37.11: SCIM tokens and group-to-role mappings.
+export function getScimSetup(): Promise<ScimSetup> {
+  return request('/api/directory/scim')
+}
+
+export function createScimToken(label: string): Promise<ScimTokenIssued> {
+  return request('/api/directory/scim/tokens', { method: 'POST', body: JSON.stringify({ label }) })
+}
+
+export function revokeScimToken(tokenId: string): Promise<void> {
+  return request(`/api/directory/scim/tokens/${tokenId}`, { method: 'DELETE' })
+}
+
+export function listKnownGroups(): Promise<KnownGroup[]> {
+  return request('/api/directory/groups')
+}
+
+export function listGroupMappings(): Promise<GroupMapping[]> {
+  return request('/api/directory/group-mappings')
+}
+
+export function previewGroupMappings(mappings: GroupMapping[]): Promise<RoleChange[]> {
+  return request('/api/directory/group-mappings/preview', { method: 'POST', body: JSON.stringify({ mappings }) })
+}
+
+export function saveGroupMappings(mappings: GroupMapping[]): Promise<{ mappings: GroupMapping[]; changes: RoleChange[] }> {
+  return request('/api/directory/group-mappings', { method: 'PUT', body: JSON.stringify({ mappings }) })
 }
 
 // Epic 37, US37.13: where someone is signed in, and ending it.

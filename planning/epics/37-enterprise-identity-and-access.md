@@ -1,10 +1,10 @@
 # Epic 37 -- Enterprise Identity, Roles & Segregation of Duties
 
-**Status: build steps 1-3 implemented. Step 1 (2026-10-14): US37.1-37.6,
+**Status: build steps 1-4 implemented. Step 1 (2026-10-14): US37.1-37.6,
 US37.14, US37.15. Step 2 (2026-10-15): US37.12-37.13, sessions. Step 3
 (2026-10-15): US37.7-37.8, OIDC sign-in and MFA, plus the IdP parts of
-US37.12-37.13. Open: US37.9 (SAML), US37.10-37.11 (SCIM, group mappings
-in the database).** Groomed from the
+US37.12-37.13. Step 4 (2026-10-15): US37.10-37.11, SCIM provisioning and
+group mappings. Open: US37.9 (SAML).** Groomed from the
 enterprise-readiness ask: SSO with the customer's IdP, SCIM provisioning,
 roles that match the work, segregation of duties, and short, revocable
 sessions. Built in `app/auth/` (permissions, sod, audit, views),
@@ -26,6 +26,16 @@ token validation, MFA, groups to roles) and `app/api/oidc.py` (`/login`,
 (`user_identities`, `oidc_login_requests`, IdP details on sessions).
 Keycloak runs locally via `docker-compose.sso.yml` / `start.ps1 -Sso`.
 The realm, its people and a live smoke test are in `testing/keycloak/`.
+
+Step 4 is built in `app/scim/` (the protocol: filters and PATCH as Entra
+ID and Okta send them; users and groups), `app/api/scim.py` (`/scim/v2`),
+`app/auth/directory.py` (group mappings, preview, recomputing roles) and
+`app/api/directory.py` (tokens and mappings for admins), with migration
+`e0f1a2b3c4d5`. Frontend: a Directory page (SCIM tokens, the mapping
+editor with its preview), and on Users, how each person was provisioned
+and their groups. Request sequences for Entra ID and Okta are in
+`backend/tests/fixtures/scim/`, and `testing/keycloak/smoke_scim.py` runs
+the live check.
 
 Deviations from the stories below, decided while building:
 - US37.5's trigger is a per-organization / per-business-unit approval
@@ -52,10 +62,25 @@ Deviations from the stories below, decided while building:
   session ends if the IdP refuses it. If the IdP is unreachable, the
   session continues. OIDC back-channel logout revokes the matching
   sessions. SAML Single Logout waits for US37.9.
-- Group-to-role mappings come from configuration (`OIDC_GROUP_ROLES`)
-  until US37.11 moves them into a table with an admin UI and preview.
-  Group-granted roles are read-only on the Users page and survive an
-  admin's role edits, as US37.11 asks.
+- Group-to-role mappings live in `group_role_mappings` (US37.11).
+  `OIDC_GROUP_ROLES` only seeds the table, once, so a new deployment's
+  first admin can sign in. Mappings are edited and saved as a whole set
+  on the Directory page, after a preview; saving is refused until there's
+  been a preview.
+- US37.10's "tested against recorded Entra ID and Okta request
+  sequences": the sequences are transcribed from each vendor's published
+  SCIM documentation, not captured from a live tenant (there isn't one
+  here). Each fixture names its source. Keycloak has no outbound SCIM, so
+  the live check plays the IdP's provisioning side over HTTP.
+- A SCIM user is linked to their first SSO sign-in by `SCIM_LINK_CLAIM`
+  (default `sub`; `oid` for Entra ID), which must equal their SCIM
+  `externalId`. That's an immutable IdP id, keeping the "never by email"
+  rule. Someone who signed in with SSO before being provisioned is
+  adopted when SCIM creates them with that externalId.
+- For a SCIM-provisioned user, SCIM is the only source of groups; the
+  sign-in groups claim is ignored. For everyone else, the groups claim at
+  their last sign-in is kept (`users.idp_groups`), so a mapping change
+  applies to them at once rather than at their next sign-in.
 - MFA is verified from `acr` as well as `amr`. Keycloak signals it with
   a level of authentication mapped to `acr` "mfa" (`AUTH_MFA_ACR_VALUES`).
 - `POST /api/auth/logout` returns 200 with the IdP's `logout_url`

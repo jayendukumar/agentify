@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-15 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**56 tables, 582 columns (88 JSON), 95 foreign keys, 32 Alembic migrations.**
+**60 tables, 610 columns (90 JSON), 98 foreign keys, 33 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -503,6 +503,8 @@ erDiagram
     users {
         string id PK
         string name
+        json scim_profile
+        json idp_groups
     }
     user_roles {
         string user_id PK,FK
@@ -527,6 +529,20 @@ erDiagram
     oidc_login_requests {
         string state_hash PK
     }
+    scim_tokens {
+        string id PK
+        string created_by FK
+    }
+    directory_groups {
+        string id PK
+    }
+    directory_group_members {
+        string group_id PK,FK
+        string user_id PK,FK
+    }
+    group_role_mappings {
+        string id PK
+    }
     contributions {
         bigint seq PK
         string actor_id FK
@@ -541,6 +557,7 @@ erDiagram
         json detail
     }
     sessions ||--o{ session_tokens : "session_id"
+    directory_groups ||--o{ directory_group_members : "group_id"
 ```
 
 ### Platform (Epic 31)
@@ -1399,6 +1416,13 @@ Epic 9/10, US9.9/US10.4: a named user. In AUTH_MODE=local (Epic 37, US37.14: nev
 | `actor_type` | string | no |  |
 | `active` | bool | no |  |
 | `created_at` | datetime | no |  |
+| `provisioned_by` | string | no |  |
+| `email` | string | yes |  |
+| `scim_user_name` | string | yes | indexed |
+| `scim_external_id` | string | yes | indexed |
+| `scim_profile` | json | yes |  |
+| `scim_deleted_at` | datetime | yes |  |
+| `idp_groups` | json | yes |  |
 
 #### `user_roles` (UserRoleModel)
 
@@ -1475,6 +1499,53 @@ Epic 37, US37.7: one sign-in in flight, between sending the browser to the IdP a
 | `code_verifier` | string | no |  |
 | `return_to` | string | no |  |
 | `created_at` | datetime | no |  |
+
+#### `scim_tokens` (ScimTokenModel)
+
+Epic 37, US37.10: a bearer token the IdP's provisioning uses. Shown once when generated, stored only as a SHA-256 hash. Several can be live at once so a rotation doesn't interrupt provisioning: generate a new one, switch the IdP over, revoke the old one.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `token_hash` | string | no |  |
+| `label` | string | no |  |
+| `created_at` | datetime | no |  |
+| `created_by` | string | yes | -> `users.id` (set null) |
+| `last_used_at` | datetime | yes |  |
+| `revoked_at` | datetime | yes |  |
+
+#### `directory_groups` (DirectoryGroupModel)
+
+Epic 37, US37.10: a group the IdP pushed over SCIM. Its display name and external id are what group mappings match on.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `display_name` | string | no |  |
+| `external_id` | string | yes | indexed |
+| `created_at` | datetime | no |  |
+| `updated_at` | datetime | no |  |
+
+#### `directory_group_members` (DirectoryGroupMemberModel)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `group_id` | string | no | primary key; -> `directory_groups.id` (cascade) |
+| `user_id` | string | no | primary key; -> `users.id` (cascade); indexed |
+
+#### `group_role_mappings` (GroupRoleMappingModel)
+
+Epic 37, US37.11: members of a group hold a role at a scope (the same scope_type/scope_id as UserRoleModel). The group is matched, ignoring case, against a SCIM group's display name or external id, or a value in the SSO groups claim (a name for Keycloak and Okta, an object id for Entra ID). Grants made this way are UserRoleModel rows with source "group", recomputed whenever groups or mappings change.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `group` | string | no | indexed |
+| `role` | string | no |  |
+| `scope_type` | string | no |  |
+| `scope_id` | string | no |  |
+| `created_at` | datetime | no |  |
+| `created_by` | string | yes |  |
 
 #### `contributions` (ContributionModel)
 

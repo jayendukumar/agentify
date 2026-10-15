@@ -38,8 +38,13 @@ class UserOut(BaseModel):
     # checks the scope on every request.
     permissions: list[str] = []
     created_at: datetime
-    # US37.13: only on the Users list.
+    # US37.10: local, sso or scim -- and with scim, the IdP owns this
+    # user's groups and whether they're active.
+    provisioned_by: str = "local"
+    email: str | None = None
+    # US37.13 / US37.11: only on the Users list.
     active_sessions: int | None = None
+    groups: list[str] | None = None
 
 
 class SignedInUser(UserOut):

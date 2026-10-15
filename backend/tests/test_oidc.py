@@ -209,7 +209,8 @@ def test_business_unit_mapping_and_bad_mappings(client, idp):
     sso, _ = _sso(idp, groups=["retail-owners", "typo-group"])
     roles = sso.get("/api/auth/me").json()["roles"]
     assert [(g["role"], g["scope_type"], g["scope_id"]) for g in roles] == [("process_owner", "business_unit", unit["id"])]
-    problems = _audit("sign_in")[-1].detail["mapping_problems"]
+    # OIDC_GROUP_ROLES seeded the mappings table; what it couldn't map is audited.
+    problems = _audit("group_mappings_seeded")[-1].detail["problems"]
     assert any("wizard" in p for p in problems) and any("Nowhere" in p for p in problems)
 
 

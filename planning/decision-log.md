@@ -3323,3 +3323,74 @@ only revokes sessions that are already revoked.
 sign-in) instead of 204. Without RP-initiated logout, the next "Sign in"
 would go straight back in on the IdP's session cookie, and signing out
 would look broken.
+
+## 2026-10-15 -- Epic 37, SCIM provisioning and group mappings (build step 4)
+
+### Defect: a mapping change would have stripped roles from people not seen since the upgrade
+
+Found by the live smoke test (`testing/keycloak/smoke_scim.py`). The
+preview of a change that only *added* a mapping said three people would
+lose every role. They'd signed in during step 3, before
+`users.idp_groups` existed, so their groups were unknown, and the code
+treated unknown as "no groups". Saving would have taken their roles
+away. Now only users whose groups are known are recomputed by a mapping
+change: everyone provisioned over SCIM, and anyone with a recorded
+groups claim. The rest are updated at their next sign-in. This is the
+same principle as Entra's groups overage: missing information isn't
+evidence of no groups. The test suite couldn't show it: every test user
+was created after the column existed.
+
+### Linking a SCIM user to their sign-in by an immutable id
+
+SCIM provisions people before they've ever signed in, so there's no
+(issuer, `sub`) to match them on yet. At their first sign-in, the ID
+token claim named by `SCIM_LINK_CLAIM` must equal their SCIM
+`externalId`. The default is `sub`, which suits Okta and Keycloak when
+externalId is the IdP's user id; Entra ID uses `oid`, its objectId.
+Email would have been easier and is what the epic forbids: emails are
+reassigned. The reverse case is handled too: someone who signed in with
+JIT before being provisioned is adopted when SCIM creates them with that
+externalId, rather than getting a second account. Live, Olivia was
+provisioned with her Keycloak id and linked on her first sign-in.
+
+### SCIM owns a provisioned user's groups
+
+Once a user is provisioned over SCIM, their sign-in groups claim is
+ignored. Two sources for one fact can disagree: the claim is cut at the
+moment of sign-in, while SCIM pushes changes as they happen. Users who
+aren't provisioned keep using the claim, and it's now recorded
+(`idp_groups`) so a mapping change applies to them immediately.
+
+### Mappings seed from configuration once, then live in the table
+
+`OIDC_GROUP_ROLES` from step 3 seeds `group_role_mappings` the first time
+mappings are needed, so a new deployment's first admin can sign in. It
+never seeds again. The audit log records the seeding and every save, so
+"has anyone decided the mappings yet" is answered by the append-only log
+rather than a flag that could be reset. An admin who deliberately clears
+every mapping keeps an empty set.
+
+### What the IdP sends, not just what the RFC says
+
+The protocol layer (`app/scim/protocol.py`) is written for Entra ID's
+and Okta's documented requests:
+- capitalised ops (`"Replace"`) and string booleans (`"False"`);
+- filtered paths (`emails[type eq "work"].value`) and enterprise
+  extension URN paths;
+- path-less value objects (`{"op": "replace", "value": {"active":
+  false}}`);
+- group member removal by `members[value eq "..."]`;
+- `excludedAttributes=members`.
+
+Okta sends the user's password on create. It's never stored, and a test
+checks that. Group PATCH answers 204, which both vendors expect. The
+reference sequences are transcribed from the vendors' docs, not captured
+from live tenants, and each fixture says so.
+
+### SCIM writes are audited as a service, not a person
+
+The SCIM client isn't a user, so its events have actor type `service`
+and are named by the token's label ("SCIM (Entra ID)"). That's the actor
+type the epic reserved for service accounts (backlog B4), so no schema
+change was needed. Deactivation over SCIM revokes sessions in the same
+transaction, and the next request from that browser is refused.

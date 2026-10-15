@@ -8,7 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 
-from app.auth import audit, sessions
+from app.auth import audit, directory, sessions
 from app.auth.views import user_out
 from app.db import repository
 from app.context.repository import get_organization_model
@@ -41,7 +41,9 @@ def _org_admins(db) -> set[str]:
 def list_users(db: DbDep, user: UsersManageDep) -> list[UserOut]:
     del user
     return [
-        user_out(db, u).model_copy(update={"active_sessions": len(sessions.active_sessions(db, u.id))})
+        user_out(db, u).model_copy(update={
+            "active_sessions": len(sessions.active_sessions(db, u.id)), "groups": directory.group_labels(db, u),
+        })
         for u in repository.list_users(db)
     ]
 
