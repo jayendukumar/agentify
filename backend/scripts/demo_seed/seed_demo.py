@@ -163,13 +163,44 @@ class JobFailed(Exception):
 
 
 class Api:
-    """A logged-in session, cookie and all, like the browser's."""
+    """A logged-in session, cookies and all, like the browser's.
+
+    Epic 37, US37.12: like the frontend, it sends the session's CSRF token
+    on writes, and on a 401 swaps its refresh cookie for new ones and
+    retries. The seed can wait on long jobs for longer than a session's
+    idle timeout, so if the refresh is refused too it signs in again."""
 
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        self._csrf: str | None = None
+        self._login_body: Any = None
 
-    def request(
+    def request(self, method: str, path: str, **kw: Any) -> Any:
+        try:
+            result = self._send(method, path, **kw)
+        except ApiError as exc:
+            if exc.status != 401 or path.startswith("/api/auth/") or not self._renew():
+                raise
+            result = self._send(method, path, **kw)
+        if path == "/api/auth/login":
+            self._login_body = kw.get("json_body")
+        if path in ("/api/auth/login", "/api/auth/me") and isinstance(result, dict):
+            self._csrf = result.get("csrf_token", self._csrf)
+        return result
+
+    def _renew(self) -> bool:
+        for path, body in (("/api/auth/refresh", {}), ("/api/auth/login", self._login_body)):
+            if body is None:
+                continue
+            try:
+                self._csrf = self._send("POST", path, json_body=body)["csrf_token"]
+                return True
+            except ApiError:
+                continue
+        return False
+
+    def _send(
         self,
         method: str,
         path: str,
@@ -184,6 +215,8 @@ class Api:
         if params:
             url += "?" + urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
         headers = {"Accept": "application/json"}
+        if method not in ("GET", "HEAD", "OPTIONS") and self._csrf:
+            headers["X-CSRF-Token"] = self._csrf
         data = None
         if files is not None or form is not None:
             data, content_type = _multipart(files or {}, form or {})

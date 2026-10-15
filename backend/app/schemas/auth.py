@@ -38,6 +38,30 @@ class UserOut(BaseModel):
     # checks the scope on every request.
     permissions: list[str] = []
     created_at: datetime
+    # US37.13: only on the Users list.
+    active_sessions: int | None = None
+
+
+class SignedInUser(UserOut):
+    """US37.12: what sign-in, refresh and /me return to the signed-in user
+    themselves -- their CSRF token for writes, and when the session ends."""
+
+    csrf_token: str
+    session_id: str
+    session_expires_at: datetime
+    idle_timeout_minutes: int
+
+
+class SessionOut(BaseModel):
+    """US37.13: one live sign-in, for the user's own list and the admin's."""
+
+    id: str
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    ip: str | None = None
+    user_agent: str | None = None
+    current: bool = False
 
 
 class RoleOption(BaseModel):

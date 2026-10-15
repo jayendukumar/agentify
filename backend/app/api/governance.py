@@ -1,5 +1,5 @@
-"""Epic 37: users and their roles (US37.1), the audit log (US37.6), and the
-organization's approval policy (US37.5)."""
+"""Epic 37: users and their roles (US37.1), their sessions (US37.13), the
+audit log (US37.6), and the organization's approval policy (US37.5)."""
 
 import csv
 import io
@@ -8,15 +8,16 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 
-from app.auth import audit
+from app.auth import audit, sessions
 from app.auth.views import user_out
 from app.db import repository
 from app.context.repository import get_organization_model
 from app.db.models import AuditEventModel, ContextEntityModel, SessionModel, UserModel
-from app.schemas.auth import UserOut, UserRolesUpdate
+from app.schemas.auth import SessionOut, UserOut, UserRolesUpdate
 from app.schemas.governance import AuditEvent, GovernanceSettings
 
-from .deps import AuditReadDep, CurrentUserDep, DbDep, OrgAdminDep, UsersManageDep
+from .auth import session_out
+from .deps import AuditReadDep, CurrentSessionDep, CurrentUserDep, DbDep, OrgAdminDep, UsersManageDep
 
 router = APIRouter(prefix="/api", tags=["governance"])
 
@@ -39,7 +40,10 @@ def _org_admins(db) -> set[str]:
 @router.get("/users", response_model=list[UserOut])
 def list_users(db: DbDep, user: UsersManageDep) -> list[UserOut]:
     del user
-    return [user_out(db, u) for u in repository.list_users(db)]
+    return [
+        user_out(db, u).model_copy(update={"active_sessions": len(sessions.active_sessions(db, u.id))})
+        for u in repository.list_users(db)
+    ]
 
 
 @router.put("/users/{user_id}/roles", response_model=UserOut)
@@ -76,10 +80,12 @@ def deactivate_user(user_id: str, db: DbDep, request: Request, user: UsersManage
     if _org_admins(db) == {target.id}:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="This is the last organization admin")
     target.active = False
-    for session in db.scalars(select(SessionModel).where(SessionModel.user_id == target.id)):
-        db.delete(session)
+    revoked = sessions.revoke_all(db, target.id, "user_deactivated")
     db.flush()
-    audit.record(db, actor=user, action="user_deactivated", object_type="user", object_id=target.id, request=request)
+    audit.record(
+        db, actor=user, action="user_deactivated", object_type="user", object_id=target.id, request=request,
+        detail={"sessions_revoked": revoked},
+    )
     return user_out(db, target)
 
 
@@ -90,6 +96,49 @@ def activate_user(user_id: str, db: DbDep, request: Request, user: UsersManageDe
     db.flush()
     audit.record(db, actor=user, action="user_activated", object_type="user", object_id=target.id, request=request)
     return user_out(db, target)
+
+
+@router.get("/users/{user_id}/sessions", response_model=list[SessionOut])
+def list_user_sessions(user_id: str, db: DbDep, user: UsersManageDep, current: CurrentSessionDep) -> list[SessionOut]:
+    """US37.13: where a user is signed in right now."""
+    del user
+    _get_user(db, user_id)
+    return [session_out(s, current.id) for s in sessions.active_sessions(db, user_id)]
+
+
+@router.delete("/users/{user_id}/sessions/{session_id}", status_code=204)
+def revoke_user_session(
+    user_id: str, session_id: str, db: DbDep, request: Request, response: Response, user: UsersManageDep,
+    current: CurrentSessionDep,
+) -> None:
+    """US37.13: ends one session; it stops working on its next request."""
+    target = db.get(SessionModel, session_id)
+    if target is None or target.user_id != user_id or not sessions.is_alive(target):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No such active session")
+    sessions.revoke(db, target, "revoked_by_admin")
+    audit.record(
+        db, actor=user, action="session_revoked", object_type="session", object_id=target.id, request=request,
+        detail={"user_id": user_id, "by": "admin"},
+    )
+    if target.id == current.id:
+        sessions.clear_cookies(response)
+
+
+@router.post("/users/{user_id}/sessions/revoke-all")
+def revoke_all_user_sessions(
+    user_id: str, db: DbDep, request: Request, response: Response, user: UsersManageDep, current: CurrentSessionDep,
+) -> dict[str, int]:
+    """US37.13: "Sign out everywhere" -- for a lost laptop or an incident,
+    without waiting for the IdP."""
+    target = _get_user(db, user_id)
+    revoked = sessions.revoke_all(db, target.id, "revoked_by_admin")
+    audit.record(
+        db, actor=user, action="sessions_revoked_all", object_type="user", object_id=target.id, request=request,
+        detail={"sessions_revoked": revoked},
+    )
+    if target.id == current.user_id:
+        sessions.clear_cookies(response)
+    return {"revoked": revoked}
 
 
 def _audit_query(

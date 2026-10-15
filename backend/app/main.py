@@ -116,6 +116,8 @@ app.add_middleware(
     allow_credentials=True,  # Epic 9/10, US9.9: the session cookie needs this to cross the :3000/:8000 origin gap
     allow_methods=["*"],
     allow_headers=["*"],
+    # Epic 37, US37.12: tells the frontend a 403 was a stale CSRF token.
+    expose_headers=["X-Auth-Error"],
 )
 
 app.middleware("http")(request_id_middleware)

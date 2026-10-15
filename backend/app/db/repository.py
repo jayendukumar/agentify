@@ -8,8 +8,6 @@ and Epic 15's publish history -- see app/db/models.py's module docstring.
 from __future__ import annotations
 
 import contextlib
-import secrets
-from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -106,7 +104,6 @@ from .models import (
     ProcessSchemaChangeModel,
     RegressionSuiteModel,
     RegressionSuiteRunModel,
-    SessionModel,
     SimulationRunModel,
     SourceRefModel,
     TwinBaselineModel,
@@ -2491,31 +2488,3 @@ def set_admin_roles(
 
 def list_users(session: Session) -> list[UserModel]:
     return list(session.scalars(select(UserModel).order_by(UserModel.name)))
-
-
-def create_session(session: Session, user_id: str, *, ttl_days: int = 30) -> SessionModel:
-    # SessionModel.expires_at is a plain (naive) DateTime column, same as
-    # every other timestamp column in this project (Postgres/psycopg
-    # returns them naive on read) -- utcnow() is tz-aware, so its tzinfo
-    # is stripped here rather than mixing naive/aware datetimes, which
-    # raises a TypeError the moment expires_at is compared after a
-    # round-trip through the DB (get_user_for_session below).
-    expires_at = (utcnow() + timedelta(days=ttl_days)).replace(tzinfo=None)
-    record = SessionModel(id=secrets.token_urlsafe(32), user_id=user_id, expires_at=expires_at)
-    session.add(record)
-    session.flush()
-    return record
-
-
-def get_user_for_session(session: Session, session_id: str) -> UserModel | None:
-    record = session.get(SessionModel, session_id)
-    if record is None or record.expires_at < utcnow().replace(tzinfo=None):
-        return None
-    return session.get(UserModel, record.user_id)
-
-
-def delete_session(session: Session, session_id: str) -> None:
-    record = session.get(SessionModel, session_id)
-    if record is not None:
-        session.delete(record)
-        session.flush()

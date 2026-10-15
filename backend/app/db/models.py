@@ -14,7 +14,7 @@ additive, see its own docstring; TwinRunModel/OrchestrationRunModel are
 kept for historical rows), Epic 19's regression suites
 (RegressionSuiteModel/RegressionSuiteRunModel), Epic 21's digital twin
 environments (TwinEnvironmentModel), and Epic 9/10's users/
-sessions (UserModel/SessionModel), each promoted out of
+sessions (UserModel/SessionModel; Epic 37 adds SessionTokenModel), each promoted out of
 the in-memory store (app/store.py) once its own epic made the data real.
 app/store.py now only defines NotFoundError -- nothing left to hold in
 memory.
@@ -451,19 +451,49 @@ class AuditEventModel(Base):
 
 
 class SessionModel(Base):
-    """`id` is itself the opaque session token (a secrets.token_urlsafe(32)
-    value, minted in app/api/auth.py) stored in an httponly cookie -- not
-    a separate id+token pair, since nothing ever needs to look up a
-    session except by presenting that exact token."""
+    """Epic 37, US37.12: one sign-in on one browser. `id` isn't a secret --
+    it's what the Sessions lists show and revoke by. The browser holds
+    tokens for it instead (SessionTokenModel), stored only as hashes.
+
+    A session is alive while it isn't revoked, `expires_at` (the absolute
+    lifetime) hasn't passed and it was used within the idle timeout
+    (app/auth/sessions.py). Timestamps are set in Python, not by the
+    database, because they're compared against Python's clock. The CSRF
+    token is kept in plain text: on its own it grants nothing, and the
+    frontend gets it back from /api/auth/me after a page reload."""
 
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    last_used_at: Mapped[datetime] = mapped_column(nullable=False)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # signed_out | revoked_by_user | revoked_by_admin | user_deactivated | refresh_token_reuse
+    revoked_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    csrf_token: Mapped[str] = mapped_column(String, nullable=False)
+    ip: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
 
     user: Mapped[UserModel] = relationship()
+
+
+class SessionTokenModel(Base):
+    """Epic 37, US37.12: a token the browser holds for a session -- a
+    short-lived `access` token (the session cookie) or a `refresh` token
+    (the refresh cookie). Only the SHA-256 hash is stored. A refreshed
+    token is kept with `rotated_at` set, rather than deleted, so a second
+    use of it can be recognized as theft (app/auth/sessions.py)."""
+
+    __tablename__ = "session_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # access | refresh
+    issued_at: Mapped[datetime] = mapped_column(nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    rotated_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class AgentArtifactModel(Base):

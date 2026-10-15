@@ -4,10 +4,9 @@ from typing import Annotated
 from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.auth import audit, sod
+from app.auth import audit, sessions, sod
 from app.auth.permissions import Permission, has_permission, missing_permission_message
-from app.db import repository
-from app.db.models import UserModel
+from app.db.models import SessionModel, UserModel
 from app.db.session import get_db
 from app.llm import LLMClient, get_llm_client
 from app.registry.base import RegistryConnector
@@ -25,18 +24,35 @@ DbDep = Annotated[Session, Depends(get_db, scope="function")]
 # registry (US13.6), so those paths need a fake connector injected here.
 RegistriesDep = Annotated[dict[str, RegistryConnector], Depends(get_registries)]
 
-SESSION_COOKIE_NAME = "asg_session"
-
-
-def get_current_user(
-    db: DbDep, asg_session: Annotated[str | None, Cookie()] = None
-) -> UserModel:
+def get_current_session(
+    request: Request, db: DbDep, asg_session: Annotated[str | None, Cookie()] = None
+) -> SessionModel:
+    """Epic 37, US37.12: the live session behind the session cookie. A 401
+    tells the frontend to try /api/auth/refresh once before signing out.
+    Writes (anything but GET/HEAD/OPTIONS) also need the session's CSRF
+    token in a header; the 403 carries `X-Auth-Error: csrf` so the
+    frontend can fetch the current token and retry."""
     if asg_session is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Not logged in")
-    user = repository.get_user_for_session(db, asg_session)
-    if user is None or not user.active:
+    record = sessions.authenticate(db, asg_session)
+    if record is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Session expired or invalid -- log in again")
-    return user
+    if request.method not in sessions.SAFE_METHODS and not sessions.csrf_ok(
+        record, request.headers.get(sessions.CSRF_HEADER)
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Missing or outdated CSRF token -- reload the page and try again",
+            headers={"X-Auth-Error": "csrf"},
+        )
+    return record
+
+
+CurrentSessionDep = Annotated[SessionModel, Depends(get_current_session)]
+
+
+def get_current_user(record: CurrentSessionDep) -> UserModel:
+    return record.user  # already loaded by authenticate(), so no extra query
 
 
 CurrentUserDep = Annotated[UserModel, Depends(get_current_user)]

@@ -15,6 +15,7 @@ import OrganizationPage from './pages/OrganizationPage'
 import ProcessListPage from './pages/ProcessListPage'
 import ProcessTwinPage from './pages/ProcessTwinPage'
 import RegistriesPage from './pages/RegistriesPage'
+import SessionsPage from './pages/SessionsPage'
 import UsersPage from './pages/UsersPage'
 import VersionsPage from './pages/VersionsPage'
 
@@ -69,14 +70,19 @@ function AppHeader() {
                 Users
               </NavLink>
             )}
+            <NavLink to="/sessions" className="app-header-nav-link">
+              Sessions
+            </NavLink>
           </nav>
           <span className="app-header-user">
-            <span className="app-header-user-name">
-              {user.name}{' '}
-              {user.roles.length === 0 && <span className="badge role-badge">Read only</span>}
-              {user.roles.map((grant) => (
-                <span key={`${grant.role}:${grant.scope_id}`} className="badge role-badge">{grantLabel(grant)}</span>
-              ))}
+            <span className="app-header-identity">
+              <span className="app-header-user-name" title={user.name}>{user.name}</span>
+              <span className="app-header-roles">
+                {user.roles.length === 0 && <span className="badge role-badge">Read only</span>}
+                {user.roles.map((grant) => (
+                  <span key={`${grant.role}:${grant.scope_id}`} className="badge role-badge">{grantLabel(grant)}</span>
+                ))}
+              </span>
             </span>
             <button type="button" className="button-secondary" disabled={loggingOut} onClick={handleLogout}>
               {loggingOut ? 'Logging out...' : 'Log out'}
@@ -112,6 +118,7 @@ function AppRoutes() {
       <Route path="/organization" element={<OrganizationPage />} />
       <Route path="/audit" element={<AuditLogPage />} />
       <Route path="/users" element={<UsersPage />} />
+      <Route path="/sessions" element={<SessionsPage />} />
       <Route path="/processes/:processId" element={<ProcessDetailPage />} />
       <Route path="/processes/:processId/diagram" element={<DiagramPage />} />
       <Route path="/processes/:processId/versions" element={<VersionsPage />} />

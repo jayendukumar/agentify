@@ -1007,6 +1007,28 @@ export interface User {
   // Held at some scope -- the server still checks the scope per request.
   permissions: Permission[]
   created_at: string
+  // Epic 37, US37.13: only on the Users list.
+  active_sessions?: number | null
+}
+
+// US37.12: what sign-in, refresh and /api/auth/me return to the
+// signed-in user -- the CSRF token writes need, and when the session ends.
+export interface SignedInUser extends User {
+  csrf_token: string
+  session_id: string
+  session_expires_at: string
+  idle_timeout_minutes: number
+}
+
+// US37.13: one live sign-in.
+export interface SessionInfo {
+  id: string
+  created_at: string
+  last_used_at: string
+  expires_at: string
+  ip: string | null
+  user_agent: string | null
+  current: boolean
 }
 
 export interface RoleOption {

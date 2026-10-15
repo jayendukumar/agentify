@@ -12,14 +12,12 @@ from app.main import app
 
 from .test_api_agents import _automatable_node, _seed_blueprint
 from .test_api_blueprint import _finalize, _valid_xml, approve_agent_as_other_user
+from .conftest import sign_in
 
 
 def _login(name: str, roles: list[str], business_unit_id: str | None = None) -> TestClient:
     c = TestClient(app)
-    body = {"name": name, "roles": roles}
-    if business_unit_id:
-        body["business_unit_id"] = business_unit_id
-    r = c.post("/api/auth/login", json=body)
+    r = sign_in(c, name, roles, business_unit_id)
     assert r.status_code == 200, r.text
     return c
 

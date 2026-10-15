@@ -1,7 +1,8 @@
 # Epic 37 -- Enterprise Identity, Roles & Segregation of Duties
 
-**Status: build step 1 implemented (2026-10-14): US37.1-37.6, US37.14,
-US37.15. Open: US37.7-37.13 (SSO, MFA, SCIM, sessions).** Groomed from the
+**Status: build steps 1-2 implemented. Step 1 (2026-10-14): US37.1-37.6,
+US37.14, US37.15. Step 2 (2026-10-15): US37.12-37.13, sessions. Open:
+US37.7-37.11 (SSO, MFA, SCIM, group mappings).** Groomed from the
 enterprise-readiness ask: SSO with the customer's IdP, SCIM provisioning,
 roles that match the work, segregation of duties, and short, revocable
 sessions. Built in `app/auth/` (permissions, sod, audit, views),
@@ -10,6 +11,12 @@ audit log, approval policy), baseline approval in `app/api/versions.py`,
 migration `b7c8d9e0f1a2`. Frontend: role checkboxes on sign-in, a
 local-mode banner, `ApprovalPanel` on Version history and each agent's
 lifecycle panel, and the Audit log and Users pages.
+
+Step 2 is built in `app/auth/sessions.py` (tokens, rotation, reuse
+detection, revocation), `app/api/auth.py` (`/refresh`, own sessions),
+`app/api/governance.py` (admin session endpoints) and migration
+`c8d9e0f1a2b3`. Frontend: refresh-on-401 and the CSRF header in
+`api/client.ts`, a Sessions page, and a sessions panel on Users.
 
 Deviations from the stories below, decided while building:
 - US37.5's trigger is a per-organization / per-business-unit approval
@@ -21,6 +28,20 @@ Deviations from the stories below, decided while building:
 - Publishing now requires an APPROVED agent (it didn't check before).
   The raw registry push (`POST /api/registries/{name}/push`) still takes
   any definition. It's guarded by `agent.publish` but not by approval.
+- US37.12's CSRF token is returned in the body of sign-in, refresh and
+  `/me` and sent back in `X-CSRF-Token`, rather than a double-submit
+  cookie, so it still works if the API moves to another host. `/refresh`
+  itself needs no CSRF header (see the decision log, 2026-10-15).
+- A refresh token reused within 10 seconds of its rotation (two tabs
+  refreshing at once) gets no new tokens but doesn't revoke the session.
+  Later reuse does.
+- `Secure` cookies default on only in production (`AUTH_COOKIE_SECURE`),
+  because Python's and httpx's cookie jars won't send them over http,
+  even to localhost.
+- Deferred to step 3, because they need an IdP: confirming the account
+  with the IdP refresh token on refresh, OIDC back-channel logout and
+  SAML Single Logout (US37.12/US37.13). The Users page shows each user's
+  roles, but the IdP groups they came from wait for US37.11.
 - The frontend shows or hides actions by permissions held at *any*
   scope. A business-unit-scoped user sees enabled buttons on another
   unit's process and gets the server's 403 with a plain reason.

@@ -3175,3 +3175,60 @@ A refused request rolls back, which would take its audit event with it.
 `audit.record_refusal` commits in a separate short session. Successful
 writes are audited in the request's own transaction, so an event exists
 exactly when the action committed.
+
+## 2026-10-15 -- Epic 37, session hardening and revocation (build step 2)
+
+### The CSRF token travels in response bodies, not in a double-submit cookie
+
+US37.12 suggested a double-submit cookie. The frontend runs on :3000 and
+the API on :8000. Script on :3000 can read a cookie set by :8000 only
+because cookies ignore ports. That breaks as soon as the API moves to
+another host. So the token is a random value stored on the session row.
+Sign-in, refresh and `/api/auth/me` return it, the client keeps it in
+memory, and writes send it as `X-CSRF-Token`. It stays the same for the
+life of the session. Rotating it on refresh would break any other open
+tab still holding the old token. A stale token (signed in again in
+another tab) gets a 403 with `X-Auth-Error: csrf`; the client then
+re-reads `/me` and retries once.
+
+### Refresh doesn't require the CSRF header
+
+After a page reload the frontend has no token until a request succeeds.
+If the session cookie has also expired, refresh is the only way to get
+one. A cross-site page can't send the refresh cookie (SameSite=Lax, path
+`/api/auth/refresh`), can't read the response (CORS), and a forced
+refresh only rotates tokens the victim already holds.
+
+### Reusing a refresh token within 10 seconds isn't treated as theft
+
+Two tabs hitting a 401 together both present the same refresh token. The
+strict rule ("a rotated token came back, so revoke the session") would
+sign out the user every time that happened. The client now runs one
+refresh at a time per tab, and across tabs there's a 10-second grace
+(`sessions.REUSE_GRACE`). Within it, the second refresh gets 200 with the
+user and CSRF token but **no new cookies**: the first response already
+put them in the shared cookie jar. A thief replaying within the window
+gets nothing usable. After the window, reuse revokes the session and is
+audited as `refresh_token_reuse` (refused).
+
+### A reuse refusal is returned, not raised
+
+`get_db` rolls back on any exception. Raising the 401 would also roll back
+the revocation, and theft detection would do nothing. `/api/auth/refresh`
+returns a `JSONResponse(401)` instead, so the revocation and its audit
+event commit. `audit.record` gained `outcome=` for this deliberate
+committed refusal.
+
+### Secure cookies by default only in production
+
+Python's cookie jar (the demo seed) and httpx's (TestClient) never send a
+`Secure` cookie over http, not even to localhost. Development, test and
+demo all run on http. `AUTH_COOKIE_SECURE` therefore defaults to secure
+only when `ENVIRONMENT=production`, and setting it to false in production
+is a startup error.
+
+### Existing sessions are dropped by the migration
+
+Each old session's id *was* its cookie value, stored in plain text.
+Turning those into hashed tokens would mean trusting the plain-text
+values, so `c8d9e0f1a2b3` deletes them and everyone signs in once more.

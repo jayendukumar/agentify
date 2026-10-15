@@ -9,6 +9,7 @@ from app.llm.types import ChatCompletionResult, Usage
 from app.main import app
 from app.schemas.blueprint import AgentSpec, BlueprintNodeResult
 from app.schemas.common import ProcessElement, ProcessFlow, ProcessSchema, SourceRef
+from tests.conftest import sign_in
 
 
 def _ref() -> SourceRef:
@@ -59,7 +60,7 @@ def approve_agent_as_other_user(process_id: str, artifact_id: str) -> dict:
     """Epic 37, US37.4: an agent's release is approved by someone who
     didn't build it."""
     approver = TestClient(app)
-    approver.post("/api/auth/login", json={"name": "test-release-approver", "roles": ["approver"]})
+    sign_in(approver, "test-release-approver", ["approver"])
     response = approver.post(f"/api/processes/{process_id}/blueprint/agent-artifacts/{artifact_id}/approve")
     assert response.status_code == 200, response.text
     return response.json()
@@ -67,7 +68,7 @@ def approve_agent_as_other_user(process_id: str, artifact_id: str) -> dict:
 
 def approve_as_other_user(process_id: str, version_id: str) -> dict:
     approver = TestClient(app)
-    approver.post("/api/auth/login", json={"name": "test-baseline-approver", "roles": ["process_owner"]})
+    sign_in(approver, "test-baseline-approver", ["process_owner"])
     response = approver.post(f"/api/processes/{process_id}/versions/{version_id}/approve", json={})
     assert response.status_code == 200, response.text
     return response.json()

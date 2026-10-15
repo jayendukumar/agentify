@@ -94,6 +94,8 @@ import type {
   AuthConfig,
   GovernanceSettings,
   RunComparison,
+  SessionInfo,
+  SignedInUser,
   RunSnapshotView,
   Situation,
   TestBuilderContext,
@@ -131,11 +133,12 @@ export class ApiError extends Error {
   }
 }
 
-// Any request can come back 401 mid-session once the server-side session
-// expires (backend/app/api/deps.py) -- not just the initial /api/auth/me
-// check. AuthContext registers itself here so a 401 from *any* endpoint
-// drops the user back to the login screen, instead of every call site
-// having to notice and redirect itself.
+// Any request can come back 401 mid-session -- the session cookie only
+// lasts 15 minutes (Epic 37, US37.12), and the session can be revoked or
+// time out. apiFetch first swaps the refresh cookie for new ones and
+// retries; only if that fails does AuthContext's listener drop the user
+// back to the login screen, instead of every call site having to notice
+// and redirect itself.
 type UnauthorizedListener = () => void
 let unauthorizedListener: UnauthorizedListener | null = null
 
@@ -154,21 +157,77 @@ async function readErrorDetail(response: Response): Promise<string> {
   return detail
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+// Epic 37, US37.12: every write carries the session's CSRF token in a
+// header, since cookies are the only credential. The token comes back in
+// the body of sign-in, refresh and /api/auth/me -- not in a cookie, which
+// script on :3000 couldn't read if the API moved to another host.
+const CSRF_HEADER = 'X-CSRF-Token'
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+let csrfToken: string | null = null
+
+function rememberSession(body: unknown): void {
+  const token = (body as Partial<SignedInUser> | null)?.csrf_token
+  if (token) csrfToken = token
+}
+
+// One refresh at a time: a page firing several requests that all 401 at
+// once would otherwise present the same refresh token several times, and
+// the server treats a reused refresh token as theft.
+let refreshing: Promise<boolean> | null = null
+
+function refreshSession(): Promise<boolean> {
+  refreshing ??= fetch(`${API_BASE_URL}/api/auth/refresh`, { method: 'POST', credentials: 'include' })
+    .then(async (response) => {
+      if (!response.ok) return false
+      rememberSession(await response.json())
+      return true
+    })
+    .catch(() => false)
+    .finally(() => {
+      refreshing = null
+    })
+  return refreshing
+}
+
+const NO_RETRY = new Set(['/api/auth/login', '/api/auth/refresh'])
+
+async function apiFetch(path: string, init: RequestInit = {}, retried = false): Promise<Response> {
+  const headers = new Headers(init.headers)
+  if (!SAFE_METHODS.has((init.method ?? 'GET').toUpperCase()) && csrfToken) headers.set(CSRF_HEADER, csrfToken)
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    headers,
     // Epic 9/10, US9.9: the session cookie lives on the API's origin
     // (:8000), distinct from the frontend's (:3000) -- without this, the
     // browser never sends/stores it and every request looks logged-out.
     credentials: 'include',
+  })
+  if (retried || NO_RETRY.has(path)) return response
+  if (response.status === 401 && (await refreshSession())) return apiFetch(path, init, true)
+  // Signed in again in another tab: this tab's token is for the old session.
+  if (response.status === 403 && response.headers.get('X-Auth-Error') === 'csrf') {
+    const me = await apiFetch('/api/auth/me')
+    if (me.ok) {
+      rememberSession(await me.json())
+      return apiFetch(path, init, true)
+    }
+  }
+  return response
+}
+
+async function failure(response: Response): Promise<ApiError> {
+  const detail = await readErrorDetail(response)
+  if (response.status === 401) unauthorizedListener?.()
+  return new ApiError(response.status, detail)
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await apiFetch(path, {
+    ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
 
-  if (!response.ok) {
-    const detail = await readErrorDetail(response)
-    if (response.status === 401) unauthorizedListener?.()
-    throw new ApiError(response.status, detail)
-  }
+  if (!response.ok) throw await failure(response)
 
   if (response.status === 204) {
     return undefined as T
@@ -176,11 +235,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function login(name: string, roles: Role[] = [], businessUnitId?: string | null): Promise<User> {
-  return request('/api/auth/login', {
+export async function login(name: string, roles: Role[] = [], businessUnitId?: string | null): Promise<SignedInUser> {
+  const user = await request<SignedInUser>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ name, roles, business_unit_id: businessUnitId || null }),
   })
+  rememberSession(user)
+  return user
 }
 
 export function getAuthConfig(): Promise<AuthConfig> {
@@ -223,6 +284,27 @@ export function setUserActive(userId: string, active: boolean): Promise<User> {
   return request(`/api/users/${userId}/${active ? 'activate' : 'deactivate'}`, { method: 'POST' })
 }
 
+// Epic 37, US37.13: where someone is signed in, and ending it.
+export function listMySessions(): Promise<SessionInfo[]> {
+  return request('/api/auth/sessions')
+}
+
+export function endMySession(sessionId: string): Promise<void> {
+  return request(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' })
+}
+
+export function listUserSessions(userId: string): Promise<SessionInfo[]> {
+  return request(`/api/users/${userId}/sessions`)
+}
+
+export function revokeUserSession(userId: string, sessionId: string): Promise<void> {
+  return request(`/api/users/${userId}/sessions/${sessionId}`, { method: 'DELETE' })
+}
+
+export function revokeAllUserSessions(userId: string): Promise<{ revoked: number }> {
+  return request(`/api/users/${userId}/sessions/revoke-all`, { method: 'POST' })
+}
+
 function auditQuery(filters: AuditFilters): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value)
@@ -246,13 +328,16 @@ export function setGovernanceSettings(settings: GovernanceSettings): Promise<Gov
   return request('/api/organization/governance', { method: 'PUT', body: JSON.stringify(settings) })
 }
 
-export function logout(): Promise<void> {
-  return request('/api/auth/logout', { method: 'POST' })
+export async function logout(): Promise<void> {
+  await request('/api/auth/logout', { method: 'POST' })
+  csrfToken = null
 }
 
-export async function getCurrentUser(): Promise<User | null> {
+export async function getCurrentUser(): Promise<SignedInUser | null> {
   try {
-    return await request<User>('/api/auth/me')
+    const user = await request<SignedInUser>('/api/auth/me')
+    rememberSession(user)
+    return user
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) return null
     throw err
@@ -352,14 +437,8 @@ export function approveAgentArtifact(processId: string, artifactId: string, comm
 
 // Not JSON (returns text/markdown), so this bypasses the request() helper.
 export async function exportBlueprint(processId: string): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/api/processes/${processId}/blueprint/export?format=markdown`, {
-    credentials: 'include',
-  })
-  if (!response.ok) {
-    const detail = await readErrorDetail(response)
-    if (response.status === 401) unauthorizedListener?.()
-    throw new ApiError(response.status, detail)
-  }
+  const response = await apiFetch(`/api/processes/${processId}/blueprint/export?format=markdown`)
+  if (!response.ok) throw await failure(response)
   return response.text()
 }
 
@@ -449,17 +528,8 @@ export async function uploadDocuments(processId: string, files: FileList | File[
     formData.append('files', file)
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/processes/${processId}/documents`, {
-    method: 'POST',
-    credentials: 'include',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const detail = await readErrorDetail(response)
-    if (response.status === 401) unauthorizedListener?.()
-    throw new ApiError(response.status, detail)
-  }
+  const response = await apiFetch(`/api/processes/${processId}/documents`, { method: 'POST', body: formData })
+  if (!response.ok) throw await failure(response)
 
   return (await response.json()) as DocumentSummary[]
 }
@@ -808,16 +878,8 @@ export async function uploadPolicyDocument(
   const formData = new FormData()
   formData.append('file', file)
   for (const [key, value] of Object.entries(fields)) formData.append(key, value)
-  const response = await fetch(`${API_BASE_URL}/api/organization/documents`, {
-    method: 'POST',
-    credentials: 'include',
-    body: formData,
-  })
-  if (!response.ok) {
-    const detail = await readErrorDetail(response)
-    if (response.status === 401) unauthorizedListener?.()
-    throw new ApiError(response.status, detail)
-  }
+  const response = await apiFetch('/api/organization/documents', { method: 'POST', body: formData })
+  if (!response.ok) throw await failure(response)
   return (await response.json()) as ContextDocument
 }
 
@@ -866,12 +928,8 @@ export function rerunAffectedSuites(entityId: string): Promise<ContextImpact> {
 
 // Epic 29 -- application and data catalog
 async function uploadForm<T>(path: string, method: string, form: FormData): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { method, credentials: 'include', body: form })
-  if (!response.ok) {
-    const detail = await readErrorDetail(response)
-    if (response.status === 401) unauthorizedListener?.()
-    throw new ApiError(response.status, detail)
-  }
+  const response = await apiFetch(path, { method, body: form })
+  if (!response.ok) throw await failure(response)
   return (await response.json()) as T
 }
 
@@ -917,15 +975,10 @@ export function getComplianceEvidence(processId: string, artifactId: string): Pr
 }
 
 export async function exportComplianceEvidence(processId: string, artifactId: string): Promise<string> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/compliance-evidence/export`,
-    { credentials: 'include' },
+  const response = await apiFetch(
+    `/api/processes/${processId}/blueprint/agent-artifacts/${artifactId}/compliance-evidence/export`,
   )
-  if (!response.ok) {
-    const detail = await readErrorDetail(response)
-    if (response.status === 401) unauthorizedListener?.()
-    throw new ApiError(response.status, detail)
-  }
+  if (!response.ok) throw await failure(response)
   return response.text()
 }
 

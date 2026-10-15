@@ -38,6 +38,18 @@ from app.main import app  # noqa: E402
 ALL_ROLES = ["analyst", "architect", "process_owner", "approver", "auditor", "admin"]
 
 
+def sign_in(test_client: TestClient, name: str, roles: list[str], business_unit_id: str | None = None):
+    """Local sign-in, keeping the CSRF token every write needs (Epic 37,
+    US37.12) as a default header -- what the frontend's API client does."""
+    body: dict = {"name": name, "roles": roles}
+    if business_unit_id:
+        body["business_unit_id"] = business_unit_id
+    response = test_client.post("/api/auth/login", json=body)
+    if response.status_code == 200:
+        test_client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
+    return response
+
+
 @pytest.fixture(autouse=True)
 def _clean_db():
     """Every test starts with empty Epic-2 tables. Truncation (not a
@@ -75,7 +87,7 @@ def client(fake_llm):
         # Segregation of duties still applies: this user can't approve what
         # it changed, which is what `approver_client` is for. Tests of
         # access control itself use a fresh TestClient (test_api_auth.py).
-        test_client.post("/api/auth/login", json={"name": "test-editor", "roles": ALL_ROLES})
+        sign_in(test_client, "test-editor", ALL_ROLES)
         yield test_client
     app.dependency_overrides.pop(get_llm_client, None)
 
@@ -87,7 +99,7 @@ def viewer_client(fake_llm):
     login-once pattern rather than each test wiring this up itself."""
     app.dependency_overrides[get_llm_client] = lambda: fake_llm
     with TestClient(app) as test_client:
-        test_client.post("/api/auth/login", json={"name": "test-viewer", "roles": []})
+        sign_in(test_client, "test-viewer", [])
         yield test_client
     app.dependency_overrides.pop(get_llm_client, None)
 
@@ -98,7 +110,7 @@ def approver_client(fake_llm):
     process owner for baselines and an approver for agent releases."""
     app.dependency_overrides[get_llm_client] = lambda: fake_llm
     with TestClient(app) as test_client:
-        test_client.post("/api/auth/login", json={"name": "test-approver", "roles": ["process_owner", "approver"]})
+        sign_in(test_client, "test-approver", ["process_owner", "approver"])
         yield test_client
     app.dependency_overrides.pop(get_llm_client, None)
 

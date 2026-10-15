@@ -113,9 +113,29 @@ class Settings(BaseSettings):
     auth_mode: Literal["local", "oidc", "saml"] = "local"
     # US37.8: only takes effect once SSO lands; refused as false in production.
     auth_require_mfa: bool = True
+    # US37.12: a sign-in lasts `auth_session_max_hours` at most, and ends
+    # sooner after `auth_idle_timeout_minutes` without a request. The
+    # session cookie itself is good for `auth_access_token_minutes`; the
+    # browser then swaps its refresh cookie for a new pair.
+    auth_access_token_minutes: int = Field(default=15, ge=1)
+    auth_idle_timeout_minutes: int = Field(default=30, ge=1)
+    auth_session_max_hours: int = Field(default=12, ge=1)
+    # Unset = Secure cookies in production only. Python clients (the demo
+    # seed, TestClient) don't send Secure cookies over plain http, even
+    # to localhost, which is what development, test and demo run on.
+    auth_cookie_secure: bool | None = None
+
+    @property
+    def cookie_secure(self) -> bool:
+        return self.environment == "production" if self.auth_cookie_secure is None else self.auth_cookie_secure
 
     @model_validator(mode="after")
     def _check_auth_safety(self) -> "Settings":
+        if self.environment == "production" and self.auth_cookie_secure is False:
+            raise ValueError(
+                "AUTH_COOKIE_SECURE=false is not allowed with ENVIRONMENT=production: session cookies would be "
+                "sent over plain http. Serve the API over https and leave AUTH_COOKIE_SECURE unset."
+            )
         if self.environment == "production" and self.auth_mode == "local":
             raise ValueError(
                 "AUTH_MODE=local is not allowed with ENVIRONMENT=production: local sign-in lets anyone sign in "

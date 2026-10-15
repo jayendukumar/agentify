@@ -1,16 +1,20 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import {
   ApiError,
   getGovernanceSettings,
   listContextEntities,
+  listUserSessions,
   listUsers,
+  revokeAllUserSessions,
+  revokeUserSession,
   setGovernanceSettings,
   setUserActive,
   setUserRoles,
 } from '../api/client'
-import type { ContextEntity, GovernanceSettings, Role, User } from '../api/types'
+import type { ContextEntity, GovernanceSettings, Role, SessionInfo, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { grantLabel, ROLE_INFO } from '../auth/roles'
+import SessionList from '../components/SessionList'
 
 function RoleEditor({ user, units, onSaved }: { user: User; units: ContextEntity[]; onSaved: (u: User) => void }) {
   const [roles, setRoles] = useState<Role[]>(() => [...new Set(user.roles.map((g) => g.role))])
@@ -57,6 +61,58 @@ function RoleEditor({ user, units, onSaved }: { user: User; units: ContextEntity
       </label>
       <button type="button" className="button-secondary" onClick={save}>Save roles</button>
       {message && <span className="meta" role="status">{message}</span>}
+    </div>
+  )
+}
+
+// Epic 37, US37.13: an admin ends a lost laptop's session, or all of a
+// user's sessions, without waiting for the IdP. Takes effect on the
+// browser's next request.
+function UserSessions({ user, onCountChange }: { user: User; onCountChange: (count: number) => void }) {
+  const [sessions, setSessions] = useState<SessionInfo[] | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    listUserSessions(user.id)
+      .then(setSessions)
+      .catch((err) => setMessage(err instanceof ApiError ? err.message : 'Failed to load sessions'))
+  }, [user.id])
+
+  function update(next: SessionInfo[]) {
+    setSessions(next)
+    onCountChange(next.length)
+  }
+
+  async function revoke(session: SessionInfo) {
+    setMessage(null)
+    try {
+      await revokeUserSession(user.id, session.id)
+      update((sessions ?? []).filter((s) => s.id !== session.id))
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'Could not revoke that session')
+    }
+  }
+
+  async function revokeAll() {
+    setMessage(null)
+    try {
+      const { revoked } = await revokeAllUserSessions(user.id)
+      update([])
+      setMessage(`Signed out of ${revoked} session${revoked === 1 ? '' : 's'}.`)
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'Could not sign this user out')
+    }
+  }
+
+  return (
+    <div>
+      {sessions === null ? <p className="meta" role="status">Loading sessions...</p> : <SessionList sessions={sessions} onEnd={revoke} />}
+      {sessions && sessions.some((s) => !s.current) && (
+        <button type="button" className="button-secondary" onClick={revokeAll}>
+          Sign out everywhere
+        </button>
+      )}
+      {message && <span className="meta" role="status"> {message}</span>}
     </div>
   )
 }
@@ -131,6 +187,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [units, setUnits] = useState<ContextEntity[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [openSessions, setOpenSessions] = useState<string | null>(null)
 
   useEffect(() => {
     if (!allowed) return
@@ -158,7 +215,8 @@ export default function UsersPage() {
   async function toggleActive(target: User) {
     setError(null)
     try {
-      replace(await setUserActive(target.id, !target.active))
+      const updated = await setUserActive(target.id, !target.active)
+      replace({ ...updated, active_sessions: updated.active ? target.active_sessions : 0 })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not change this account')
     }
@@ -176,25 +234,46 @@ export default function UsersPage() {
             <th>Current roles</th>
             <th>Change roles</th>
             <th>Status</th>
+            <th>Sessions</th>
           </tr>
         </thead>
         <tbody>
           {users.map((u) => (
-            <tr key={u.id}>
-              <td>{u.name}</td>
-              <td>{u.roles.length ? u.roles.map(grantLabel).join(', ') : <span className="meta">Read only</span>}</td>
-              <td>
-                <RoleEditor key={u.roles.map((g) => `${g.role}:${g.scope_id}`).join('|')} user={u} units={units} onSaved={replace} />
-              </td>
-              <td>
-                {u.active ? 'Active' : 'Deactivated'}{' '}
-                {u.id !== me?.id && (
-                  <button type="button" className="button-secondary" onClick={() => toggleActive(u)}>
-                    {u.active ? 'Deactivate' : 'Reactivate'}
+            <Fragment key={u.id}>
+              <tr>
+                <td>{u.name}</td>
+                <td>{u.roles.length ? u.roles.map(grantLabel).join(', ') : <span className="meta">Read only</span>}</td>
+                <td>
+                  <RoleEditor key={u.roles.map((g) => `${g.role}:${g.scope_id}`).join('|')} user={u} units={units} onSaved={replace} />
+                </td>
+                <td>
+                  {u.active ? 'Active' : 'Deactivated'}{' '}
+                  {u.id !== me?.id && (
+                    <button type="button" className="button-secondary" onClick={() => toggleActive(u)}>
+                      {u.active ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                  )}
+                </td>
+                <td>
+                  {u.active_sessions ?? 0}{' '}
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    aria-expanded={openSessions === u.id}
+                    onClick={() => setOpenSessions((current) => (current === u.id ? null : u.id))}
+                  >
+                    {openSessions === u.id ? 'Hide' : 'Show'}
                   </button>
-                )}
-              </td>
-            </tr>
+                </td>
+              </tr>
+              {openSessions === u.id && (
+                <tr>
+                  <td colSpan={5}>
+                    <UserSessions user={u} onCountChange={(count) => replace({ ...u, active_sessions: count })} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

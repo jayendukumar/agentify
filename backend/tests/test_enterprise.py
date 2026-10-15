@@ -25,6 +25,7 @@ from app.llm.types import ChatMessage
 from app.main import app
 from app.llm.client import get_llm_client
 from tests.test_api_blueprint import _finalize, _llm_json, _node_result
+from tests.conftest import sign_in
 
 CALLS: list[dict] = []
 
@@ -250,7 +251,7 @@ def test_mcp_connector_reads_via_tool_and_refuses_write_tools(monkeypatch):
 def unit_client(fake_llm):
     app.dependency_overrides[get_llm_client] = lambda: fake_llm
     with TestClient(app) as other:
-        other.post("/api/auth/login", json={"name": "banking-steward", "roles": ["analyst", "architect", "process_owner"]})
+        sign_in(other, "banking-steward", ["analyst", "architect", "process_owner"])
         yield other
     app.dependency_overrides.pop(get_llm_client, None)
 

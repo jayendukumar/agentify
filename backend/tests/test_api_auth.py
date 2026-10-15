@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 from app.llm.client import get_llm_client
 from app.main import app
 
+from .conftest import sign_in
+
 
 def _fresh_client() -> TestClient:
     """A TestClient with no login, for testing the unauthenticated/401
@@ -19,7 +21,7 @@ def test_me_without_login_returns_401():
 
 def test_login_creates_user_with_roles_and_permissions():
     with _fresh_client() as c:
-        r = c.post("/api/auth/login", json={"name": "alice", "roles": ["analyst"]})
+        r = sign_in(c, "alice", ["analyst"])
         assert r.status_code == 200
         body = r.json()
         assert body["name"] == "alice"
@@ -36,19 +38,19 @@ def test_login_creates_user_with_roles_and_permissions():
 
 def test_relogin_with_same_name_replaces_local_roles():
     with _fresh_client() as c:
-        first = c.post("/api/auth/login", json={"name": "bob", "roles": []})
+        first = sign_in(c, "bob", [])
         assert first.json()["roles"] == []
         assert c.post("/api/processes", json={"name": "Role check"}).status_code == 403
         assert c.post("/api/auth/logout").status_code == 204
 
-        second = c.post("/api/auth/login", json={"name": "bob", "roles": ["analyst"]})
+        second = sign_in(c, "bob", ["analyst"])
         assert second.json()["id"] == first.json()["id"]
         assert c.post("/api/processes", json={"name": "Role check"}).status_code == 201
 
 
 def test_logout_clears_session():
     with _fresh_client() as c:
-        c.post("/api/auth/login", json={"name": "carol", "roles": ["analyst"]})
+        sign_in(c, "carol", ["analyst"])
         assert c.get("/api/auth/me").status_code == 200
 
         r = c.post("/api/auth/logout")

@@ -70,7 +70,11 @@ def record(
     request: Request | None = None,
     detail: dict[str, Any] | None = None,
     actor_name: str | None = None,
+    outcome: str = "success",
 ) -> None:
+    """`outcome="refused"` is for a refusal the caller commits on purpose
+    (a reused refresh token revokes the session); `record_refusal` covers
+    the usual case, where the request rolls back."""
     session.add(
         _event(
             actor=actor,
@@ -78,7 +82,7 @@ def record(
             object_type=object_type,
             object_id=object_id,
             process_id=process_id,
-            outcome="success",
+            outcome=outcome,
             request=request,
             detail=detail,
             actor_name=actor_name,
