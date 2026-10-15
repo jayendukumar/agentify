@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import audit
 from app.auth.permissions import Role
-from app.config import Settings
+from app.tenancy.identity import IdentityConfig
 from app.db import repository
 from app.db.models import (
     AuditEventModel,
@@ -75,19 +75,20 @@ def validate(db: Session, mappings: list[Mapping]) -> list[Mapping]:
     return list(dict.fromkeys(Mapping(m.group.strip(), m.role, m.scope_type, m.scope_id) for m in mappings))
 
 
-def _bootstrap(db: Session, settings: Settings) -> None:
+def _bootstrap(db: Session, config: IdentityConfig) -> None:
     """OIDC_GROUP_ROLES seeds the table the first time mappings are needed,
-    so a new deployment's first admin can sign in. Only ever once: the
+    so a new deployment's first admin can sign in (the first tenant only:
+    Epic 38, other tenants' config carries no seed). Only ever once: the
     audit log records the seeding (and any later save), so an admin who
     deliberately clears every mapping doesn't get them back."""
-    if not settings.oidc_group_roles:
+    if not config.seed_group_roles:
         return
     if db.scalar(select(func.count()).select_from(GroupRoleMappingModel)):
         return
     if db.scalar(select(AuditEventModel.id).where(AuditEventModel.action.in_([_SEEDED, _CHANGED])).limit(1)):
         return
     seeded, problems = [], []
-    for group, specs in settings.oidc_group_roles.items():
+    for group, specs in config.seed_group_roles.items():
         for spec in specs:
             role, _, unit_name = spec.partition("@")
             scope_type, scope_id = "organization", ""
@@ -116,8 +117,8 @@ def _bootstrap(db: Session, settings: Settings) -> None:
     db.flush()
 
 
-def load(db: Session, settings: Settings) -> list[Mapping]:
-    _bootstrap(db, settings)
+def load(db: Session, config: IdentityConfig) -> list[Mapping]:
+    _bootstrap(db, config)
     rows = db.scalars(select(GroupRoleMappingModel).order_by(GroupRoleMappingModel.group, GroupRoleMappingModel.role))
     return [Mapping(r.group, r.role, r.scope_type, r.scope_id) for r in rows]
 
@@ -210,10 +211,10 @@ def replace(db: Session, proposed: list[Mapping], *, actor: UserModel, request=N
     return changes
 
 
-def reapply(db: Session, settings: Settings, users: list[UserModel], *, reason: str, actor_name: str) -> list[RoleChange]:
+def reapply(db: Session, config: IdentityConfig, users: list[UserModel], *, reason: str, actor_name: str) -> list[RoleChange]:
     """After group membership changed (SCIM): recompute these users, and
     audit any role that moved."""
-    mappings = load(db, settings)
+    mappings = load(db, config)
     changes = []
     for user in dict.fromkeys(users):
         change = apply(db, user, mappings)

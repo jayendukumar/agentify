@@ -34,10 +34,17 @@ class Tenant:
 
 
 _current_tenant_id: ContextVar[str | None] = ContextVar("tenant_id", default=None)
+# US38.6: the host the request came in on (without the port), which a
+# tenant's sign-in and SCIM URLs are derived from.
+_current_host: ContextVar[str | None] = ContextVar("tenant_host", default=None)
 
 
 def current_tenant_id() -> str | None:
     return _current_tenant_id.get()
+
+
+def current_host() -> str | None:
+    return _current_host.get()
 
 
 @contextmanager
@@ -51,11 +58,13 @@ def tenant_scope(tenant_id: str) -> Iterator[None]:
         _current_tenant_id.reset(token)
 
 
-def set_current_tenant(tenant_id: str | None):
+def set_current_tenant(tenant_id: str | None, host: str | None = None):
     """For edges that can't use a `with` block (the tenant middleware, test
     fixtures). Returns the token to reset with."""
-    return _current_tenant_id.set(tenant_id)
+    return _current_tenant_id.set(tenant_id), _current_host.set(host)
 
 
 def reset_current_tenant(token) -> None:
-    _current_tenant_id.reset(token)
+    tenant_token, host_token = token
+    _current_tenant_id.reset(tenant_token)
+    _current_host.reset(host_token)

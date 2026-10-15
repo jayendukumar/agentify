@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import audit, directory, sessions
-from app.config import get_settings
+from app.tenancy import identity
 from app.db.models import (
     DirectoryGroupMemberModel,
     DirectoryGroupModel,
@@ -45,8 +45,8 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat(timespec="seconds") + "Z" if value else None
 
 
-def _base() -> str:
-    return get_settings().api_public_url.rstrip("/") + "/scim/v2"
+def _base(db: Session) -> str:
+    return identity.resolve(db).scim_base_url
 
 
 class Client:
@@ -86,8 +86,8 @@ def user_resource(db: Session, user: UserModel) -> dict[str, Any]:
         "id": user.id,
         "userName": user.scim_user_name or get(profile, "userName"),
         "active": user.active,
-        "groups": [{"value": g.id, "display": g.display_name, "$ref": f"{_base()}/Groups/{g.id}"} for g in groups],
-        "meta": {"resourceType": "User", "created": _iso(user.created_at), "location": f"{_base()}/Users/{user.id}"},
+        "groups": [{"value": g.id, "display": g.display_name, "$ref": f"{_base(db)}/Groups/{g.id}"} for g in groups],
+        "meta": {"resourceType": "User", "created": _iso(user.created_at), "location": f"{_base(db)}/Users/{user.id}"},
     }
     if user.scim_external_id:
         resource["externalId"] = user.scim_external_id
@@ -182,15 +182,15 @@ def list_users(db: Session, filt: tuple[str, str] | None, start: int, count: int
 
 def create_user(db: Session, client: Client, body: dict[str, Any]) -> dict[str, Any]:
     profile = clean(body)
-    settings = get_settings()
+    config = identity.resolve(db)
     external_id = get(profile, "externalId")
     user = None
     # Someone who already signed in over SSO (JIT) and is now being
     # provisioned: adopt their account instead of creating a second one.
-    if external_id and settings.scim_link_claim == "sub" and settings.oidc_issuer:
-        identity = db.get(UserIdentityModel, (settings.oidc_issuer, str(external_id)))
-        if identity is not None:
-            user = db.get(UserModel, identity.user_id)
+    if external_id and config.scim_link_claim == "sub" and config.issuer:
+        linked = db.get(UserIdentityModel, (config.issuer, str(external_id)))
+        if linked is not None:
+            user = db.get(UserModel, linked.user_id)
     adopted = user is not None
     if user is None:
         user = UserModel(id=new_id("user"), name=new_id("pending"), provisioned_by="scim")
@@ -200,7 +200,7 @@ def create_user(db: Session, client: Client, body: dict[str, Any]) -> dict[str, 
         profile["active"] = True
     _write_user(db, client, user, profile)
     _audit(db, client, "user_provisioned", user, user_name=user.scim_user_name, adopted_sso_user=adopted)
-    directory.reapply(db, settings, [user], reason="provisioned", actor_name=client.name)
+    directory.reapply(db, identity.resolve(db), [user], reason="provisioned", actor_name=client.name)
     return user_resource(db, user)
 
 
@@ -237,7 +237,7 @@ def delete_user(db: Session, client: Client, user_id: str) -> None:
     user.scim_user_name = None
     db.flush()
     _audit(db, client, "user_deprovisioned", user, sessions_revoked=revoked)
-    directory.reapply(db, get_settings(), [user], reason="deprovisioned", actor_name=client.name)
+    directory.reapply(db, identity.resolve(db), [user], reason="deprovisioned", actor_name=client.name)
 
 
 # -- groups ---------------------------------------------------------------------------
@@ -249,14 +249,14 @@ def group_resource(group: DirectoryGroupModel, db: Session, *, members: bool = T
         "id": group.id,
         "displayName": group.display_name,
         "meta": {"resourceType": "Group", "created": _iso(group.created_at), "lastModified": _iso(group.updated_at),
-                 "location": f"{_base()}/Groups/{group.id}"},
+                 "location": f"{_base(db)}/Groups/{group.id}"},
     }
     if group.external_id:
         resource["externalId"] = group.external_id
     if members:
         users = {u.id: u for u in db.scalars(select(UserModel).where(UserModel.id.in_([m.user_id for m in group.members])))}
         resource["members"] = [
-            {"value": m.user_id, "display": users[m.user_id].name, "$ref": f"{_base()}/Users/{m.user_id}"}
+            {"value": m.user_id, "display": users[m.user_id].name, "$ref": f"{_base(db)}/Users/{m.user_id}"}
             for m in group.members if m.user_id in users
         ]
     return resource
@@ -314,7 +314,7 @@ def _check_group_name_free(db: Session, name: str, group_id: str | None) -> None
 
 def _reapply_members(db: Session, client: Client, group: DirectoryGroupModel, user_ids: set[str], reason: str) -> None:
     users = [u for u in (db.get(UserModel, uid) for uid in user_ids) if u is not None]
-    directory.reapply(db, get_settings(), users, reason=f"{reason}: {group.display_name}", actor_name=client.name)
+    directory.reapply(db, identity.resolve(db), users, reason=f"{reason}: {group.display_name}", actor_name=client.name)
 
 
 def create_group(db: Session, client: Client, body: dict[str, Any]) -> dict[str, Any]:
@@ -408,4 +408,4 @@ def delete_group(db: Session, client: Client, group_id: str) -> None:
     db.flush()
     _audit(db, client, "group_deprovisioned", object_type="group", object_id=group_id, name=group.display_name)
     users = [u for u in (db.get(UserModel, uid) for uid in members) if u is not None]
-    directory.reapply(db, get_settings(), users, reason=f"group deleted: {group.display_name}", actor_name=client.name)
+    directory.reapply(db, identity.resolve(db), users, reason=f"group deleted: {group.display_name}", actor_name=client.name)

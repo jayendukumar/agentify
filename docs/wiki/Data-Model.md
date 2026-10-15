@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-15 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**62 tables, 679 columns (90 JSON), 159 foreign keys, 34 Alembic migrations.**
+**63 tables, 697 columns (92 JSON), 160 foreign keys, 35 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -504,7 +504,7 @@ erDiagram
     processes ||--o{ process_twin_batches : "process_id"
 ```
 
-### Identity and access (Epics 9-10, 37)
+### Identity and access (Epics 9-10, 37, 38)
 
 ```mermaid
 erDiagram
@@ -550,6 +550,11 @@ erDiagram
     }
     group_role_mappings {
         string id PK
+    }
+    tenant_identity {
+        string id PK
+        json mfa_amr_values
+        json mfa_acr_values
     }
     contributions {
         bigint seq PK
@@ -1420,7 +1425,7 @@ Epic 36, US36.5: the whole process run as a digital twin over a dataset -- one o
 | `created_at` | datetime | no |  |
 | `finished_at` | datetime | yes |  |
 
-### Identity and access (Epics 9-10, 37)
+### Identity and access (Epics 9-10, 37, 38)
 
 #### `users` (UserModel)
 
@@ -1563,6 +1568,30 @@ Epic 37, US37.11: members of a group hold a role at a scope (the same scope_type
 | `scope_id` | string | no |  |
 | `created_at` | datetime | no |  |
 | `created_by` | string | yes |  |
+
+#### `tenant_identity` (TenantIdentityModel)
+
+Epic 38, US38.6: how this tenant's people sign in -- its own IdP, MFA rules and SCIM link claim, edited by its admins on the Directory page. One row per tenant. Without a row, the first tenant uses the OIDC_* / AUTH_MFA_* environment variables and any other tenant has no single sign-on (app/tenancy/identity.py). The client secret is held as a reference (`env:TENANT_<SLUG>_...`), never as a value.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `auth_mode` | string | no |  |
+| `issuer` | string | no |  |
+| `discovery_url` | string | no |  |
+| `client_id` | string | no |  |
+| `client_secret_ref` | string | no |  |
+| `display_name` | string | no |  |
+| `scopes` | string | no |  |
+| `acr_values` | string | no |  |
+| `groups_claim` | string | no |  |
+| `jit_provisioning` | bool | no |  |
+| `require_mfa` | bool | no |  |
+| `mfa_amr_values` | json | no |  |
+| `mfa_acr_values` | json | no |  |
+| `scim_link_claim` | string | no |  |
+| `updated_at` | datetime | no |  |
+| `updated_by` | string | yes |  |
 
 #### `contributions` (ContributionModel)
 

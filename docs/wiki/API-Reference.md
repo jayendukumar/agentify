@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**223 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**226 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -24,7 +24,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 
 | Method | Path | Access | What it does |
 |---|---|---|---|
-| GET | `/api/auth/config` | public | Epic 37: public -- the sign-in page needs it before anyone signs in. |
+| GET | `/api/auth/config` | public | Epic 37: public -- the sign-in page needs it before anyone signs in. Epic 38: this tenant's sign-in ("none": single sign-on isn't set up). |
 | POST | `/api/auth/login` | public | Local sign-in: a name and self-picked roles. Settings validation refuses AUTH_MODE=local in production (US37.14), so this endpoint never ser |
 | POST | `/api/auth/logout` | signed in | Ends this session. After an SSO sign-in it also returns the IdP's logout URL, so the IdP session ends too -- otherwise the next "Sign in" wo |
 | GET | `/api/auth/me` | signed in |  |
@@ -123,6 +123,9 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | PUT | `/api/directory/group-mappings` | `users.manage` | Replaces every mapping and applies them to everyone now. |
 | POST | `/api/directory/group-mappings/preview` | `users.manage` | US37.11: who would gain or lose which role. Changes nothing. |
 | GET | `/api/directory/groups` | `users.manage` |  |
+| GET | `/api/directory/identity` | `users.manage` |  |
+| PUT | `/api/directory/identity` | `users.manage` | Saves after testing the connection again: settings that can't reach the IdP would lock everyone out at their next sign-in. (An operator can  |
+| POST | `/api/directory/identity/test` | `users.manage` | Checks the IdP these settings name, without saving them. |
 | GET | `/api/directory/scim` | `users.manage` |  |
 | POST | `/api/directory/scim/tokens` | `users.manage` | The token is in this response only; afterwards just its hash exists. |
 | DELETE | `/api/directory/scim/tokens/{token_id}` | `users.manage` |  |

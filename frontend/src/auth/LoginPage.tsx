@@ -96,7 +96,14 @@ export default function LoginPage() {
             descriptor that appears in the header nav. */}
         <p className="login-tagline">From process to intelligent action.</p>
         <p className="login-subtagline meta">Agentic Solution Generator</p>
-        {config?.sso_login_url ? (
+        {config?.auth_mode === 'none' ? (
+          // Epic 38, US38.6: a new organization whose admins haven't
+          // connected their identity provider yet.
+          <p className="meta" role="status">
+            Sign-in isn't set up for this organization yet. Your administrator needs to connect your organization's
+            identity provider first.
+          </p>
+        ) : config?.sso_login_url ? (
           <>
             <p className="meta">
               Sign in with your organization account. What you can do here comes from your groups in your organization's

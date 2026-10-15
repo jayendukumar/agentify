@@ -23,6 +23,7 @@ from app.auth import audit, oidc, sessions
 from app.config import get_settings
 from app.db.models import OidcLoginRequestModel, SessionModel
 from app.ids import utcnow
+from app.tenancy.identity import IdentityConfig, get_identity
 
 from .deps import DbDep
 
@@ -31,13 +32,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth/oidc", tags=["auth"])
 
 OidcDep = Annotated[oidc.OidcProvider, Depends(oidc.get_oidc_provider)]
+# Epic 38, US38.6: this tenant's IdP, MFA rules and URLs.
+IdentityDep = Annotated[IdentityConfig, Depends(get_identity)]
 STATE_COOKIE = "asg_oidc_state"
 _STATE_PATH = "/api/auth/oidc"
 
 
-def _require_oidc() -> None:
-    if get_settings().auth_mode != "oidc":
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Single sign-on isn't enabled (AUTH_MODE is not oidc)")
+def _require_oidc(config: IdentityConfig) -> None:
+    if config.auth_mode != "oidc":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Single sign-on isn't set up for this organization")
 
 
 def _hash(value: str) -> str:
@@ -48,17 +51,17 @@ def _now():
     return utcnow().replace(tzinfo=None)
 
 
-def _to_frontend(path: str = "/", **query: str) -> str:
-    url = get_settings().frontend_url.rstrip("/") + path
+def _to_frontend(config: IdentityConfig, path: str = "/", **query: str) -> str:
+    url = config.frontend_url.rstrip("/") + path
     return f"{url}{'&' if '?' in url else '?'}{urlencode(query)}" if query else url
 
 
 @router.get("/login")
-def oidc_login(db: DbDep, provider: OidcDep, return_to: str = "/") -> Response:
+def oidc_login(db: DbDep, provider: OidcDep, config: IdentityDep, return_to: str = "/") -> Response:
     """Starts a sign-in: remembers a fresh state, nonce and PKCE verifier,
     binds the state to this browser with a short-lived cookie, and sends
     the browser to the IdP."""
-    _require_oidc()
+    _require_oidc(config)
     now = _now()
     db.execute(delete(OidcLoginRequestModel).where(OidcLoginRequestModel.created_at < now - timedelta(minutes=10)))
     state, nonce, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(32), secrets.token_urlsafe(64)
@@ -66,7 +69,7 @@ def oidc_login(db: DbDep, provider: OidcDep, return_to: str = "/") -> Response:
         url = provider.authorization_url(state=state, nonce=nonce, code_verifier=verifier)
     except (oidc.OidcError, oidc.IdpUnavailable) as exc:
         logger.error("OIDC sign-in can't start: %s", exc)
-        return RedirectResponse(_to_frontend(auth_error="idp_unavailable"), status.HTTP_302_FOUND)
+        return RedirectResponse(_to_frontend(config, auth_error="idp_unavailable"), status.HTTP_302_FOUND)
     db.add(OidcLoginRequestModel(
         state_hash=_hash(state), nonce=nonce, code_verifier=verifier, return_to=oidc.safe_return_to(return_to),
         created_at=now,
@@ -84,6 +87,7 @@ def oidc_callback(
     request: Request,
     db: DbDep,
     provider: OidcDep,
+    config: IdentityDep,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -92,15 +96,14 @@ def oidc_callback(
 ) -> Response:
     """Finishes a sign-in. Every refusal is returned (not raised) so its
     audit event commits."""
-    _require_oidc()
-    settings = get_settings()
+    _require_oidc(config)
 
     def refuse(code_: str, reason: str, *, who: str | None = None, detail: dict | None = None) -> Response:
         audit.record(
             db, actor=None, actor_name=who or "unknown (SSO)", action="sign_in", outcome="refused", request=request,
             detail={"mode": "oidc", "error": code_, "reason": reason, **(detail or {})},
         )
-        response = RedirectResponse(_to_frontend(auth_error=code_), status.HTTP_302_FOUND)
+        response = RedirectResponse(_to_frontend(config, auth_error=code_), status.HTTP_302_FOUND)
         response.delete_cookie(STATE_COOKIE, path=_STATE_PATH)
         return response
 
@@ -126,13 +129,13 @@ def oidc_callback(
         return refuse("idp_unavailable", str(exc))
 
     who = claims.get("email") or claims.get("preferred_username") or claims["sub"]
-    if settings.auth_require_mfa and not provider.mfa_satisfied(claims):
+    if config.require_mfa and not provider.mfa_satisfied(claims):
         return refuse(
             "mfa_required", "The IdP didn't report multi-factor authentication for this sign-in", who=who,
             detail={"amr": claims.get("amr"), "acr": claims.get("acr")},
         )
     try:
-        result = oidc.sign_in(db, settings, claims)
+        result = oidc.sign_in(db, config, claims)
     except oidc.OidcError as exc:
         return refuse(exc.code, str(exc), who=who)
 
@@ -140,25 +143,27 @@ def oidc_callback(
     issued = sessions.start(
         db, result.user, request, auth_method="oidc",
         idp_issuer=claims["iss"], idp_subject=claims["sub"], idp_sid=claims.get("sid"),
-        idp_id_token=tokens["id_token"], idp_refresh_token=oidc.seal(settings, refresh_token) if refresh_token else None,
+        idp_id_token=tokens["id_token"], idp_refresh_token=oidc.seal(config, refresh_token) if refresh_token else None,
     )
     audit.record(
         db, actor=result.user, action="sign_in", object_type="user", object_id=result.user.id, request=request,
         detail={"mode": "oidc", "new_user": result.created, "session_id": issued.session.id,
                 "amr": claims.get("amr"), "acr": claims.get("acr"), **result.detail},
     )
-    response = RedirectResponse(_to_frontend(pending.return_to), status.HTTP_302_FOUND)
+    response = RedirectResponse(_to_frontend(config, pending.return_to), status.HTTP_302_FOUND)
     sessions.set_cookies(response, issued)
     response.delete_cookie(STATE_COOKIE, path=_STATE_PATH)
     return response
 
 
 @router.post("/backchannel-logout")
-def backchannel_logout(db: DbDep, provider: OidcDep, request: Request, logout_token: Annotated[str, Form()]) -> Response:
+def backchannel_logout(
+    db: DbDep, provider: OidcDep, config: IdentityDep, request: Request, logout_token: Annotated[str, Form()]
+) -> Response:
     """US37.13: the IdP says a user signed out there (or an admin ended
     their IdP session). Authenticated by the logout token's signature, not
     by a cookie -- the IdP calls this server to server."""
-    _require_oidc()
+    _require_oidc(config)
     try:
         claims = provider.validate_logout_token(logout_token)
     except (oidc.OidcError, oidc.IdpUnavailable) as exc:

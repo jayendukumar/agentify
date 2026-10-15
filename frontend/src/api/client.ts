@@ -96,6 +96,9 @@ import type {
   GovernanceSettings,
   RunComparison,
   GroupMapping,
+  IdentitySettings,
+  IdentitySettingsInput,
+  ConnectionTest,
   KnownGroup,
   RoleChange,
   ScimSetup,
@@ -291,6 +294,18 @@ export function setUserActive(userId: string, active: boolean): Promise<User> {
 }
 
 // Epic 37, US37.10-37.11: SCIM tokens and group-to-role mappings.
+export function getIdentitySettings(): Promise<IdentitySettings> {
+  return request('/api/directory/identity')
+}
+
+export function testIdentitySettings(settings: IdentitySettingsInput): Promise<ConnectionTest> {
+  return request('/api/directory/identity/test', { method: 'POST', body: JSON.stringify(settings) })
+}
+
+export function saveIdentitySettings(settings: IdentitySettingsInput): Promise<IdentitySettings> {
+  return request('/api/directory/identity', { method: 'PUT', body: JSON.stringify(settings) })
+}
+
 export function getScimSetup(): Promise<ScimSetup> {
   return request('/api/directory/scim')
 }

@@ -11,11 +11,25 @@ const api = vi.hoisted(() => ({
   listContextEntities: vi.fn(),
   previewGroupMappings: vi.fn(),
   saveGroupMappings: vi.fn(),
+  getIdentitySettings: vi.fn(),
+  testIdentitySettings: vi.fn(),
+  saveIdentitySettings: vi.fn(),
 }))
 
 vi.mock('../api/client', async (importOriginal) => ({ ...(await importOriginal<object>()), ...api }))
 
 const setup = { base_url: 'http://localhost:8000/scim/v2', link_claim: 'sub', tokens: [] }
+
+const identity = {
+  auth_mode: 'local', source: 'unset', issuer: '', discovery_url: '', client_id: '', client_secret_ref: '',
+  display_name: 'single sign-on', scopes: 'openid profile email', acr_values: '', groups_claim: 'groups',
+  jit_provisioning: true, require_mfa: true, mfa_amr_values: ['mfa', 'otp'], mfa_acr_values: [], scim_link_claim: 'sub',
+  secret_configured: false, secret_prefix: 'TENANT_NORTHWIND_',
+  redirect_uri: 'http://northwind.localhost:8000/api/auth/oidc/callback',
+  post_logout_redirect_uri: 'http://northwind.localhost:3000/',
+  backchannel_logout_url: 'http://northwind.localhost:8000/api/auth/oidc/backchannel-logout',
+  scim_base_url: 'http://northwind.localhost:8000/scim/v2', updated_at: null, updated_by: null,
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -23,6 +37,7 @@ beforeEach(() => {
   api.listGroupMappings.mockResolvedValue([{ group: 'axyntro-approvers', role: 'approver', scope_type: 'organization', scope_id: '' }])
   api.listKnownGroups.mockResolvedValue([{ name: 'axyntro-approvers', external_id: null, source: 'scim', members: 2 }])
   api.listContextEntities.mockResolvedValue([])
+  api.getIdentitySettings.mockResolvedValue(identity)
 })
 
 describe('Directory page (Epic 37, US37.10-37.11)', () => {
@@ -63,5 +78,46 @@ describe('Directory page (Epic 37, US37.10-37.11)', () => {
     await waitFor(() => expect(api.saveGroupMappings).toHaveBeenCalledWith([
       { group: 'axyntro-approvers', role: 'auditor', scope_type: 'organization', scope_id: '' },
     ]))
+  })
+})
+
+describe('Sign-in settings (Epic 38, US38.6)', () => {
+  it('shows what to register at the IdP and saves only settings that just passed a connection test', async () => {
+    api.testIdentitySettings.mockResolvedValue({ ok: true, issuer: 'http://localhost:8180/realms/northwind', signing_keys: 1,
+      authorization_endpoint: 'a', token_endpoint: 't', end_session_endpoint: null, secret_configured: true, problems: [] })
+    api.saveIdentitySettings.mockResolvedValue({ ...identity, auth_mode: 'oidc', source: 'tenant', updated_by: 'Nora' })
+    render(<DirectoryPage />)
+    expect(await screen.findByText('http://northwind.localhost:8000/api/auth/oidc/callback')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Client secret reference/)).toHaveValue('env:TENANT_NORTHWIND_OIDC_CLIENT_SECRET')
+
+    const save = screen.getByRole('button', { name: 'Save sign-in settings' })
+    fireEvent.change(screen.getByLabelText('Issuer'), { target: { value: 'http://localhost:8180/realms/northwind' } })
+    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: 'axyntro' } })
+    expect(save).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    expect(await screen.findByText(/Connected: http:\/\/localhost:8180\/realms\/northwind, 1 signing key/)).toBeInTheDocument()
+    expect(save).toBeEnabled()
+
+    // Changing anything after the test needs a new test.
+    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: 'axyntro-2' } })
+    expect(save).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: 'axyntro' } })
+    expect(save).toBeEnabled()
+
+    fireEvent.click(save)
+    await waitFor(() => expect(api.saveIdentitySettings).toHaveBeenCalledWith(expect.objectContaining({
+      auth_mode: 'oidc', issuer: 'http://localhost:8180/realms/northwind', client_id: 'axyntro',
+    })))
+    expect(await screen.findByText(/Saved here \(by Nora/)).toBeInTheDocument()
+  })
+
+  it('explains a failed connection test and keeps saving off', async () => {
+    api.testIdentitySettings.mockResolvedValue({ ok: false, issuer: null, signing_keys: 0, authorization_endpoint: null,
+      token_endpoint: null, end_session_endpoint: null, secret_configured: false,
+      problems: ["Couldn't reach the IdP: connection refused"] })
+    render(<DirectoryPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }))
+    expect(await screen.findByText(/connection test failed: Couldn't reach the IdP/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save sign-in settings' })).toBeDisabled()
   })
 })

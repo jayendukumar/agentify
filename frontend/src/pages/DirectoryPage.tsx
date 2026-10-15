@@ -9,8 +9,22 @@ import {
   revokeScimToken,
   saveGroupMappings,
   getScimSetup,
+  getIdentitySettings,
+  saveIdentitySettings,
+  testIdentitySettings,
 } from '../api/client'
-import type { ContextEntity, GroupMapping, KnownGroup, RoleChange, RoleGrantChange, ScimSetup, ScimTokenIssued } from '../api/types'
+import type {
+  ConnectionTest,
+  ContextEntity,
+  GroupMapping,
+  IdentitySettings,
+  IdentitySettingsInput,
+  KnownGroup,
+  RoleChange,
+  RoleGrantChange,
+  ScimSetup,
+  ScimTokenIssued,
+} from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { ROLE_INFO, roleLabel } from '../auth/roles'
 
@@ -21,6 +35,154 @@ function when(iso: string | null): string {
 
 function errorText(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback
+}
+
+function toInput(s: IdentitySettings): IdentitySettingsInput {
+  return {
+    auth_mode: 'oidc', // the form sets up single sign-on; local sign-in is a development default only
+    issuer: s.issuer,
+    discovery_url: s.discovery_url,
+    client_id: s.client_id,
+    client_secret_ref: s.client_secret_ref || `env:${s.secret_prefix}OIDC_CLIENT_SECRET`,
+    display_name: s.display_name,
+    scopes: s.scopes,
+    acr_values: s.acr_values,
+    groups_claim: s.groups_claim,
+    jit_provisioning: s.jit_provisioning,
+    require_mfa: s.require_mfa,
+    mfa_amr_values: s.mfa_amr_values,
+    mfa_acr_values: s.mfa_acr_values,
+    scim_link_claim: s.scim_link_claim,
+  }
+}
+
+const list = (value: string) => value.split(',').map((v) => v.trim()).filter(Boolean)
+
+const SOURCE_TEXT: Record<IdentitySettings['source'], string> = {
+  tenant: 'Saved here',
+  environment: "The deployment's defaults (environment variables) -- saving here replaces them for this organization",
+  unset: 'Not set up yet',
+}
+
+// Epic 38, US38.6: which identity provider this organization signs in with.
+// Saving needs a passing connection test of exactly what's being saved:
+// settings that can't reach the IdP would lock everyone out.
+function IdentitySection() {
+  const [current, setCurrent] = useState<IdentitySettings | null>(null)
+  const [form, setForm] = useState<IdentitySettingsInput | null>(null)
+  const [tested, setTested] = useState<{ input: string; result: ConnectionTest } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    getIdentitySettings()
+      .then((s) => {
+        setCurrent(s)
+        setForm(toInput(s))
+      })
+      .catch((err) => setError(errorText(err, 'Failed to load the sign-in settings')))
+  }, [])
+
+  if (!current || !form) return error ? <p className="error" role="alert">{error}</p> : null
+
+  const key = JSON.stringify(form)
+  const passed = tested?.input === key && tested.result.ok
+  const update = (patch: Partial<IdentitySettingsInput>) => {
+    setForm({ ...form, ...patch })
+    setSaved(false)
+  }
+
+  async function test() {
+    setBusy(true)
+    setError(null)
+    try {
+      setTested({ input: key, result: await testIdentitySettings(form!) })
+    } catch (err) {
+      setError(errorText(err, 'Could not test the connection'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function save() {
+    setBusy(true)
+    setError(null)
+    try {
+      const next = await saveIdentitySettings(form!)
+      setCurrent(next)
+      setForm(toInput(next))
+      setSaved(true)
+    } catch (err) {
+      setError(errorText(err, 'Could not save the sign-in settings'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section>
+      <h2>Sign-in (identity provider)</h2>
+      <p className="meta">
+        People in this organization sign in with your identity provider (Entra ID, Okta, Keycloak) over OpenID Connect,
+        with multi-factor authentication. Only this organization uses these settings.
+      </p>
+      <dl className="directory-facts">
+        <dt>Currently</dt>
+        <dd>
+          {current.auth_mode === 'oidc' ? `Single sign-on (${current.display_name})` : current.auth_mode === 'local' ? 'Local sign-in (not for production)' : 'Nobody can sign in yet'}
+          {' -- '}
+          {SOURCE_TEXT[current.source]}
+          {current.updated_by && ` (by ${current.updated_by}, ${when(current.updated_at)})`}
+        </dd>
+        <dt>Redirect URI</dt>
+        <dd><code>{current.redirect_uri}</code></dd>
+        <dt>Sign-out redirect</dt>
+        <dd><code>{current.post_logout_redirect_uri}</code></dd>
+        <dt>Back-channel logout</dt>
+        <dd><code>{current.backchannel_logout_url}</code></dd>
+      </dl>
+      <p className="meta">Register these in your identity provider's app registration for Axyntro.</p>
+      <div className="identity-form">
+        <label>Issuer<input value={form.issuer} onChange={(e) => update({ issuer: e.target.value })} placeholder="https://login.example.com/tenant-id/v2.0" /></label>
+        <label>Discovery URL (optional)<input value={form.discovery_url} onChange={(e) => update({ discovery_url: e.target.value })} placeholder="defaults to <issuer>/.well-known/openid-configuration" /></label>
+        <label>Client ID<input value={form.client_id} onChange={(e) => update({ client_id: e.target.value })} /></label>
+        <label>
+          Client secret reference
+          <input value={form.client_secret_ref} onChange={(e) => update({ client_secret_ref: e.target.value })} />
+          <span className="meta">
+            Not the secret itself: the name it's stored under on the server, starting with <code>env:{current.secret_prefix}</code>.
+            {current.secret_configured ? ' The current one is set.' : ''}
+          </span>
+        </label>
+        <label>Button name<input value={form.display_name} onChange={(e) => update({ display_name: e.target.value })} /></label>
+        <label>Ask the IdP for (acr_values)<input value={form.acr_values} onChange={(e) => update({ acr_values: e.target.value })} placeholder="e.g. mfa" /></label>
+        <label>MFA when amr includes<input value={form.mfa_amr_values.join(', ')} onChange={(e) => update({ mfa_amr_values: list(e.target.value) })} /></label>
+        <label>... or acr is<input value={form.mfa_acr_values.join(', ')} onChange={(e) => update({ mfa_acr_values: list(e.target.value) })} /></label>
+        <label>Groups claim<input value={form.groups_claim} onChange={(e) => update({ groups_claim: e.target.value })} /></label>
+        <label>SCIM link claim<input value={form.scim_link_claim} onChange={(e) => update({ scim_link_claim: e.target.value })} /></label>
+        <label className="login-role-option">
+          <input type="checkbox" checked={form.jit_provisioning} onChange={(e) => update({ jit_provisioning: e.target.checked })} />
+          <span>Create people at their first sign-in (otherwise only people provisioned over SCIM)</span>
+        </label>
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+      {tested && tested.input === key && (
+        <div role="status" className={tested.result.ok ? 'directory-test-ok' : 'error'}>
+          {tested.result.ok
+            ? `Connected: ${tested.result.issuer}, ${tested.result.signing_keys} signing key(s).`
+            : `The connection test failed: ${tested.result.problems.join('; ')}`}
+        </div>
+      )}
+      {saved && <p role="status">Saved. The next sign-in uses these settings.</p>}
+      <div className="registry-entry-actions">
+        <button type="button" className="button-secondary" disabled={busy} onClick={test}>Test connection</button>{' '}
+        <button type="button" disabled={busy || !passed} onClick={save} title={passed ? undefined : 'Test these settings first'}>
+          Save sign-in settings
+        </button>
+      </div>
+    </section>
+  )
 }
 
 // Epic 37, US37.10: the IdP's provisioning connection. A token is shown
@@ -293,6 +455,7 @@ export default function DirectoryPage() {
   return (
     <div className="page">
       <h1>Directory</h1>
+      <IdentitySection />
       <ScimSection />
       <MappingsSection />
     </div>

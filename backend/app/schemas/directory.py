@@ -4,6 +4,7 @@ mappings."""
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -70,3 +71,53 @@ class KnownGroup(BaseModel):
     external_id: str | None = None
     source: str  # scim | sign-in
     members: int
+
+
+# ---- Epic 38, US38.6: this tenant's identity provider ------------------------------
+
+
+class IdentitySettingsIn(BaseModel):
+    """What an admin edits. The client secret is a reference
+    (`env:TENANT_<SLUG>_...`), never the secret itself."""
+
+    auth_mode: Literal["local", "oidc"]
+    issuer: str = ""
+    discovery_url: str = ""
+    client_id: str = ""
+    client_secret_ref: str = ""
+    display_name: str = Field(default="single sign-on", max_length=80)
+    scopes: str = "openid profile email"
+    acr_values: str = ""
+    groups_claim: str = "groups"
+    jit_provisioning: bool = True
+    require_mfa: bool = True
+    mfa_amr_values: list[str] = Field(default_factory=lambda: ["mfa", "otp", "hwk", "swk"])
+    mfa_acr_values: list[str] = Field(default_factory=list)
+    scim_link_claim: str = "sub"
+
+
+class IdentitySettingsOut(IdentitySettingsIn):
+    auth_mode: Literal["local", "oidc", "none"]  # type: ignore[assignment]
+    # tenant (saved here) | environment (the first tenant's defaults) | unset
+    source: str
+    secret_configured: bool
+    # Secret references must start with this (one tenant can't use another's).
+    secret_prefix: str
+    # What to register at the IdP: derived from this organization's host.
+    redirect_uri: str
+    post_logout_redirect_uri: str
+    backchannel_logout_url: str
+    scim_base_url: str
+    updated_at: datetime | None = None
+    updated_by: str | None = None
+
+
+class ConnectionTestOut(BaseModel):
+    ok: bool
+    issuer: str | None = None
+    authorization_endpoint: str | None = None
+    token_endpoint: str | None = None
+    end_session_endpoint: str | None = None
+    signing_keys: int = 0
+    secret_configured: bool = False
+    problems: list[str] = Field(default_factory=list)

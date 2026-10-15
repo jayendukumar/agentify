@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.db import repository
 from app.db.models import ContextEntityModel, SessionModel, UserModel
 from app.schemas.auth import AuthConfig, LoginRequest, LogoutResult, RoleOption, SessionOut, SignedInUser
+from app.tenancy.identity import IdentityConfig, get_identity
 
 from .deps import CurrentSessionDep, DbDep
 
@@ -20,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 OidcDep = Annotated[oidc.OidcProvider, Depends(oidc.get_oidc_provider)]
+# Epic 38, US38.6: how this tenant signs in.
+IdentityDep = Annotated[IdentityConfig, Depends(get_identity)]
 
 
 def signed_in_user(db: Session, user: UserModel, record: SessionModel) -> SignedInUser:
@@ -40,27 +43,28 @@ def session_out(record: SessionModel, current_id: str | None = None) -> SessionO
 
 
 @router.get("/config", response_model=AuthConfig)
-def auth_config() -> AuthConfig:
-    """Epic 37: public -- the sign-in page needs it before anyone signs in."""
+def auth_config(config: IdentityDep) -> AuthConfig:
+    """Epic 37: public -- the sign-in page needs it before anyone signs in.
+    Epic 38: this tenant's sign-in ("none": single sign-on isn't set up)."""
     settings = get_settings()
     return AuthConfig(
-        auth_mode=settings.auth_mode,
+        auth_mode=config.auth_mode,
         environment=settings.environment,
         roles=[
             RoleOption(value=role.value, label=ROLE_LABELS[role], permissions=sorted(p.value for p in ROLE_PERMISSIONS[role]))
             for role in Role
         ],
-        sso_name=settings.oidc_display_name if settings.auth_mode == "oidc" else None,
-        sso_login_url="/api/auth/oidc/login" if settings.auth_mode == "oidc" else None,
+        sso_name=config.display_name if config.auth_mode == "oidc" else None,
+        sso_login_url="/api/auth/oidc/login" if config.auth_mode == "oidc" else None,
     )
 
 
 @router.post("/login", response_model=SignedInUser)
-def login(body: LoginRequest, db: DbDep, request: Request, response: Response) -> SignedInUser:
+def login(body: LoginRequest, db: DbDep, request: Request, response: Response, config: IdentityDep) -> SignedInUser:
     """Local sign-in: a name and self-picked roles. Settings validation
     refuses AUTH_MODE=local in production (US37.14), so this endpoint never
     serves one."""
-    if get_settings().auth_mode != "local":
+    if config.auth_mode != "local":
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Local sign-in is disabled")
     scope_type, scope_id = "organization", ""
     if body.business_unit_id:
@@ -87,7 +91,7 @@ def login(body: LoginRequest, db: DbDep, request: Request, response: Response) -
 
 @router.post("/refresh", response_model=SignedInUser)
 def refresh(
-    db: DbDep, request: Request, response: Response, provider: OidcDep,
+    db: DbDep, request: Request, response: Response, provider: OidcDep, config: IdentityDep,
     asg_refresh: Annotated[str | None, Cookie()] = None,
 ) -> SignedInUser | JSONResponse:
     """US37.12: swaps the refresh cookie for a new pair. No CSRF header:
@@ -103,7 +107,7 @@ def refresh(
         there or their IdP session ends."""
         if not record.idp_refresh_token:
             return True
-        token = oidc.unseal(get_settings(), record.idp_refresh_token)
+        token = oidc.unseal(config, record.idp_refresh_token)
         if token is None:  # sealed under a since-rotated client secret
             return False
         try:
@@ -116,12 +120,12 @@ def refresh(
         if tokens is None:
             return False
         if tokens.get("refresh_token"):
-            record.idp_refresh_token = oidc.seal(get_settings(), tokens["refresh_token"])
+            record.idp_refresh_token = oidc.seal(config, tokens["refresh_token"])
         if tokens.get("id_token"):
             record.idp_id_token = tokens["id_token"]
         return True
 
-    confirm = confirm_with_idp if get_settings().auth_mode == "oidc" else None
+    confirm = confirm_with_idp if config.auth_mode == "oidc" else None
     result = sessions.refresh(db, asg_refresh, confirm) if asg_refresh else None
     outcome = result.outcome if result else sessions.RefreshOutcome.INVALID
     if outcome is sessions.RefreshOutcome.ISSUED:
@@ -142,14 +146,14 @@ def refresh(
 
 @router.post("/logout", response_model=LogoutResult)
 def logout(
-    db: DbDep, request: Request, response: Response, record: CurrentSessionDep, provider: OidcDep
+    db: DbDep, request: Request, response: Response, record: CurrentSessionDep, provider: OidcDep, config: IdentityDep
 ) -> LogoutResult:
     """Ends this session. After an SSO sign-in it also returns the IdP's
     logout URL, so the IdP session ends too -- otherwise the next "Sign in"
     would go straight back in without asking."""
     logout_url = None
     if record.auth_method == "oidc":
-        logout_url = provider.end_session_url(record.idp_id_token, get_settings().frontend_url.rstrip("/") + "/")
+        logout_url = provider.end_session_url(record.idp_id_token, config.frontend_url.rstrip("/") + "/")
     sessions.revoke(db, record, "signed_out")
     audit.record(
         db, actor=record.user, action="sign_out", object_type="user", object_id=record.user_id, request=request,

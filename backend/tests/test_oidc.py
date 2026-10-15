@@ -26,6 +26,7 @@ from app.config import get_settings
 from app.db.models import AuditEventModel, SessionModel, UserIdentityModel
 from app.db.session import get_session_factory
 from app.main import app
+from app.tenancy.identity import from_settings
 
 from .conftest import ALL_ROLES, sign_in
 
@@ -135,7 +136,7 @@ def idp(monkeypatch):
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     get_settings.cache_clear()
-    provider = oidc.OidcProvider(get_settings(), http=httpx.Client(transport=httpx.MockTransport(fake.handle)))
+    provider = oidc.OidcProvider(from_settings(get_settings()), http=httpx.Client(transport=httpx.MockTransport(fake.handle)))
     app.dependency_overrides[oidc.get_oidc_provider] = lambda: provider
     yield fake
     app.dependency_overrides.pop(oidc.get_oidc_provider, None)

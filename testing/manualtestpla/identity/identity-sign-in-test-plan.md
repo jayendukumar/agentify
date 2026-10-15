@@ -174,6 +174,40 @@ Invoke-RestMethod -Method Patch http://localhost:8000/scim/v2/Users/<id> -Header
 
 ---
 
+## Part 4 -- One identity provider per organization (Epic 38, US38.6)
+
+### Setup
+
+```powershell
+.\start.ps1 -Sso
+```
+
+Two organizations run side by side: Meridian at http://localhost:3000 (or
+http://meridian.localhost:3000), signing in through realm `axyntro`, and
+Northwind at http://northwind.localhost:3000, through realm `northwind`.
+Browsers open `*.localhost` addresses without any setup.
+
+Northwind's people: `nora` (Admin) and `nils` (no role until mapped), both
+with password `Axyntro!2026`. Their authenticator secrets are in
+`testing/keycloak/README.md`.
+
+### Test cases
+
+| ID | Steps | Expected |
+|---|---|---|
+| T-01 | Open http://northwind.localhost:3000 | The button reads **Sign in with Northwind SSO**; on localhost:3000 it reads **Meridian SSO** |
+| T-02 | Sign in to Northwind as `nora` | Keycloak's page says realm *Northwind*. After the code, you're back on northwind.localhost as Nora Lund, Admin |
+| T-03 | On Northwind, try to sign in as `sam` | Keycloak: invalid username or password. Meridian's people don't exist there |
+| T-04 | As Nora, open **Directory** | **Sign-in (identity provider)** shows "Saved here", and redirect URIs on northwind.localhost |
+| T-05 | Change the client ID, then try to save | Save stays disabled until **Test connection** passes for exactly these values |
+| T-06 | Set the client secret reference to `env:OIDC_CLIENT_SECRET` and test | Refused: Northwind's secrets must be named `TENANT_NORTHWIND_...` |
+| T-07 | Click **Test connection** with the original values | "Connected: http://localhost:8180/realms/northwind, 1 signing key(s)" (or more) |
+| T-08 | As Nora, sign out | Keycloak's northwind realm signs out and returns to northwind.localhost |
+| T-09 | Run `python testing/tenancy/smoke_tenant_sso.py` | `10/10 passed` |
+
+If a save ever locks an organization out:
+`docker compose exec api python -m app.tenancy identity reset northwind`.
+
 ## Automated coverage behind this plan
 
 - Backend: `tests/test_identity_and_sod.py`, `test_sessions.py`,

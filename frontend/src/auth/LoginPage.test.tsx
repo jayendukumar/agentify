@@ -55,3 +55,17 @@ describe('Single sign-on (Epic 37, US37.7)', () => {
     expect(window.location.search).toBe('')
   })
 })
+
+describe('An organization without sign-in yet (Epic 38, US38.6)', () => {
+  it('says so instead of offering a sign-in that cannot work', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      auth_mode: 'none', environment: 'production', roles: [], sso_name: null, sso_login_url: null,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    render(<LoginPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Skip introduction' }))
+    expect(await screen.findByText(/Sign-in isn't set up for this organization yet/)).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Sign in with/ })).not.toBeInTheDocument()
+  })
+})

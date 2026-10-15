@@ -1,7 +1,8 @@
 # Epic 38 -- Multi-Tenancy: Many Organizations on One Deployment
 
 **Status: build step 1 implemented (2026-10-15): US38.1-38.5, the tenant
-boundary. Open: steps 2-5 (US38.6-38.15). Decisions confirmed 2026-10-15
+boundary. Step 2 in progress: US38.6 (each tenant's own IdP) implemented
+2026-10-15; open: US38.7-38.15. Decisions confirmed 2026-10-15
 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
@@ -130,11 +131,10 @@ Deviations from the stories below, decided while building:
   invisible process first (`api/deps.py` `ProcessScope`). Composite
   tenant foreign keys would close this in the database; they're a
   candidate for step 3.
-- **US38.1, local tenants:** the second Keycloak realm (one per tenant)
-  needs per-tenant IdP configuration, so it moves to step 2 (US38.6). On
-  `-Sso`, single sign-on works for meridian only.
-- **US38.3, caches:** the OIDC provider cache stays global until the IdP
-  is per tenant (US38.6).
+- **US38.1, local tenants:** the second Keycloak realm came with US38.6
+  (`testing/keycloak/northwind-realm.json`).
+- **US38.3, caches:** the OIDC provider cache became per tenant with
+  US38.6.
 - **US38.4, hosts of an upgraded deployment:** the migration registers
   `TENANT_DEFAULT_HOSTS` plus the hosts of `FRONTEND_URL`,
   `API_PUBLIC_URL` and `OIDC_REDIRECT_URI`, so an existing deployment
@@ -146,6 +146,50 @@ Deviations from the stories below, decided while building:
   ids) aren't probed. The test asserts that over 80% of probes use real
   ids of the other tenant and over 60% reach a handler; on 2026-10-15 it
   sent 253 requests, 239 with real ids, 211 answered 404 by a handler.
+
+## US38.6 as built
+
+- **Code.** `tenant_identity` (one row per tenant, under row-level
+  security; migration `a3b4c5d6e7f8`), `app/tenancy/identity.py`
+  (resolving a tenant's configuration, validation, secret references),
+  `app/auth/oidc.py` (providers per tenant configuration,
+  `check_connection`), `GET/PUT /api/directory/identity` and
+  `POST /api/directory/identity/test`, a "Sign-in" section on the
+  Directory page, and `python -m app.tenancy identity show|set|reset`.
+- **Tests.** `tests/test_tenant_identity.py` (a second tenant saves its
+  IdP and signs in through it, with real signed tokens; refusals; the
+  production rules). Live: `testing/tenancy/smoke_tenant_sso.py` (10/10)
+  against two Keycloak realms, and Epic 37's smoke tests (15/15, 11/11)
+  still pass for Meridian.
+
+Deviations and decisions:
+
+- **Environment variables are the first tenant's *fallback*, not a copy.**
+  Without a saved row, the first tenant (`TENANT_DEFAULT_SLUG`) reads the
+  `OIDC_*` variables at request time, so `start.ps1 -Sso` still switches
+  it on and off. Its URLs stay as configured. Saving on the Directory
+  page replaces them for that tenant. Any other tenant without a row has
+  no single sign-on: local sign-in outside production, and nobody can
+  sign in in production (the sign-in page says so) until an operator or
+  US38.12's invitation sets it up.
+- **The client secret reference is `env:TENANT_<SLUG>_...`** until the
+  secrets store (US38.10). The prefix is enforced: an admin controls the
+  IdP URL, and the secret is sent to its token endpoint, so a free choice
+  of variable would let them collect the platform's model-provider key or
+  another tenant's secret. The first tenant may also name the variable
+  the operator configured (`OIDC_CLIENT_SECRET_ENV`).
+- **In production, a tenant's IdP must be public https.** The connection
+  test fetches it from inside the platform, so an internal address would
+  be a way to probe the network (SSRF). Addresses that resolve to
+  private, loopback or link-local ranges are refused.
+- **Saving tests the connection again, server side,** and the page only
+  enables Save after a passing test of exactly the values being saved: a
+  bad save would lock everyone out at their next sign-in. If it happens
+  anyway, `python -m app.tenancy identity reset <slug>` undoes it.
+- **Back-channel logout** for a tenant other than the first still needs
+  US38.7 (the tenant from the logout token's issuer): Keycloak calls the
+  API on its internal host, which reaches the first tenant. The northwind
+  realm doesn't configure it; front-channel logout works.
 
 ## User Stories
 

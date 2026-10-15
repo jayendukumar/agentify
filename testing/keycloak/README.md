@@ -29,6 +29,19 @@ already set up, so Keycloak asks for a one-time code after the password.
 | `avery` | axyntro-approvers | Approver |
 | `nina` | axyntro-analysts | Analyst. Has no authenticator yet: Keycloak walks her through setting one up |
 
+Epic 38: a second realm, `northwind`, is the identity provider of the
+second tenant (http://northwind.localhost:3000). `start.ps1 -Sso` saves
+Northwind's settings to use it; Meridian keeps realm `axyntro` through
+the environment variables.
+
+| Username | Groups (realm northwind) | Roles in Northwind | Authenticator secret (base32) |
+|---|---|---|---|
+| `nora` | northwind-admins | Admin | `MF4HS3TUOJXS2ZDFOYWW65DQFVXG64TB` |
+| `nils` | northwind-analysts | None until an admin maps the group | `MF4HS3TUOJXS2ZDFOYWW65DQFVXGS3DT` |
+
+The two realms don't know each other's people: Sam can't sign in to
+Northwind, and Nora can't sign in to Meridian.
+
 To get a one-time code, add the person's secret to an authenticator app
 (Google Authenticator, Microsoft Authenticator, 1Password). The secret is
 `axyntro-dev-otp-<username>`, cut or zero-padded to exactly 20 characters and then
@@ -89,6 +102,7 @@ does exactly that for `olivia`.
 ```powershell
 python testing/keycloak/smoke_sso.py    # sign-in, MFA, logout, sessions
 python testing/keycloak/smoke_scim.py   # SCIM provisioning and group mappings
+python testing/tenancy/smoke_tenant_sso.py   # Epic 38: Northwind through its own realm
 ```
 
 `smoke_sso.py` signs in through Keycloak's real pages (a password, then a

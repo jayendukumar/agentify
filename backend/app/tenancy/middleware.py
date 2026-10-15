@@ -20,7 +20,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .context import reset_current_tenant, set_current_tenant
-from .hosts import resolve_host
+from .hosts import normalize_host, resolve_host
 
 # Paths that serve no tenant data: load balancers probe by IP address.
 UNSCOPED_PATHS = frozenset({"/healthz"})
@@ -34,7 +34,8 @@ class TenantMiddleware:
         if scope["type"] not in ("http", "websocket") or scope["path"] in UNSCOPED_PATHS:
             await self.app(scope, receive, send)
             return
-        tenant = await run_in_threadpool(resolve_host, Headers(scope=scope).get("host", ""))
+        host = Headers(scope=scope).get("host", "")
+        tenant = await run_in_threadpool(resolve_host, host)
         if tenant is None:
             await JSONResponse({"detail": "Not found"}, status_code=404)(scope, receive, send)
             return
@@ -45,7 +46,7 @@ class TenantMiddleware:
             await response(scope, receive, send)
             return
         scope.setdefault("state", {})["tenant"] = tenant
-        token = set_current_tenant(tenant.id)
+        token = set_current_tenant(tenant.id, normalize_host(host))
         try:
             await self.app(scope, receive, send)
         finally:

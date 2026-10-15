@@ -3478,3 +3478,51 @@ transaction RLS shows one tenant, so `db.get(UserIdentityModel, (issuer,
 subject))` stays correct and unchanged. User names, connector names,
 context-pack hashes and group mappings became unique per tenant the same
 way.
+
+## 2026-10-15 -- Epic 38, US38.6: each tenant brings its own IdP
+
+### A tenant's client secret is a prefixed reference, because the admin chooses where it's sent
+
+Moving the IdP settings into the tenant hands its admin two things that
+used to be the operator's: the IdP's URL and the name of the variable
+holding the client secret. The API sends that secret to the token
+endpoint the discovery document names. With a free choice of variable,
+a tenant admin could point discovery at a server they control and
+reference `env:OPENROUTER_API_KEY`, or another tenant's secret, and
+receive it. So references must be `env:TENANT_<SLUG>_...` (the first
+tenant may also name the variable the operator configured for it), and
+US38.10's secrets store will keep the same shape. For the same reason,
+in production the IdP must be public https: the connection test fetches
+it from inside the platform, and an internal address would turn it into
+a network probe (SSRF).
+
+### The environment is the first tenant's fallback, read at request time
+
+US38.6 says the `OIDC_*` variables "remain only as the defaults for the
+first tenant". Copying them into a row at migration time was the obvious
+reading, but then `start.ps1 -Sso`, which switches the variables, would
+no longer switch sign-in. So nothing is copied: without a saved row, the
+first tenant resolves from the environment on each request (cached per
+request in `session.info`), with its URLs exactly as configured; other
+tenants without a row get no single sign-on. Saving on the Directory page
+then takes over. Tests use this too: the test tenant is the first tenant,
+so Epic 37's tests, which set environment variables, ran unchanged.
+
+### Redirect URIs come from the tenant's host, for saved settings
+
+A sign-in must come back to the host it started on: the state cookie is
+host-only. So a saved tenant's redirect, post-logout and SCIM URLs are
+`API_PUBLIC_URL` / `FRONTEND_URL` with the host replaced by the request's
+(already an allow-listed tenant domain, so the Host header can't steer
+it). The first tenant's environment fallback keeps its configured URLs,
+so existing IdP registrations keep working.
+
+### Save only what just passed a connection test
+
+A tenant admin can lock their whole organization out with one typo in
+the issuer. The page enables Save only after a passing test of exactly
+the values in the form, and the API re-runs the test before saving. The
+test checks discovery (whose issuer must match), the endpoints and the
+signing keys, and that the secret reference resolves; it can't prove the
+secret is right without a real sign-in. `python -m app.tenancy identity
+reset <slug>` is the way back if it happens anyway.

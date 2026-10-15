@@ -90,8 +90,8 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | Package | Files | Lines | Purpose (from its docstring) |
 |---|---|---|---|
 | `app/agents` | 3 | 241 | Epic 12, US12.1/US12.2: deterministic mapping from a blueprint node's AgentSpec (Epic 7) to a portable AgentDefinition. No LLM call here -- the blueprint evalua |
-| `app/api` | 30 | 3,533 |  |
-| `app/auth` | 8 | 1,428 | Epic 37, US37.6: the append-only audit trail. |
+| `app/api` | 30 | 3,628 |  |
+| `app/auth` | 8 | 1,479 | Epic 37, US37.6: the append-only audit trail. |
 | `app/batches` | 3 | 843 | Epic 34: batch execution at volume. |
 | `app/blueprint` | 3 | 219 | Epic 7 / agentic-blueprint-evaluator skill: the system instructions + JSON response contract for per-node automation feasibility evaluation. Same prompt-with-ex |
 | `app/bpmn` | 7 | 983 | US3.1/US3.3: turn a process's already-extracted ProcessSchema into valid BPMN 2.0 XML with Diagram Interchange. |
@@ -100,7 +100,7 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | `app/connectors` | 7 | 647 | Epic 31, US31.2: read-only connectors to systems of record. |
 | `app/context` | 13 | 2,388 | Epics 27-28: the organization context layer -- see planning/enterprise-context-strategy.md. |
 | `app/datasets` | 3 | 548 | Epic 32: labelled datasets and ground truth. |
-| `app/db` | 4 | 3,569 | SQLAlchemy ORM models for Epic 2 (Business Process Knowledge Store) -- processes, documents, the extracted process schema (actors/elements/ source_refs/flows),  |
+| `app/db` | 4 | 3,595 | SQLAlchemy ORM models for Epic 2 (Business Process Knowledge Store) -- processes, documents, the extracted process schema (actors/elements/ source_refs/flows),  |
 | `app/gap_analysis` | 3 | 282 | Epic 11: the system instructions + JSON response contract for gap analysis. Same prompt-with-explicit-schema-contract pattern as app/chat/prompts.py/app/bluepri |
 | `app/ingestion` | 7 | 814 | US2.3: local embedding generation for extracted document content. |
 | `app/jobs` | 3 | 276 | Epic 31, US31.1: the durable job queue. |
@@ -108,9 +108,9 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | `app/oracles` | 5 | 818 | Epic 33: scalable oracles -- rules, label-first generation, metamorphic relations, calibrated judges. |
 | `app/process_twin` | 4 | 599 | Epic 36: the process digital twin -- the whole process run over many cases, measured against today. |
 | `app/registry` | 4 | 201 | Epic 13, US13.1: the registry connector interface every registry backend implements identically -- the local reference connector (app/registry/local.py) today,  |
-| `app/schemas` | 25 | 2,164 |  |
+| `app/schemas` | 25 | 2,206 |  |
 | `app/scim` | 3 | 491 | Epic 37, US37.10: the inbound SCIM 2.0 server (RFC 7643/7644) the customer's IdP provisions users and groups through. Not Epic 31's outbound ScimConnector, whic |
-| `app/tenancy` | 5 | 198 | Epic 38: many organizations ("tenants") on one deployment, kept apart by Postgres row-level security. See planning/epics/38-multi-tenancy.md. |
+| `app/tenancy` | 6 | 494 | Epic 38: many organizations ("tenants") on one deployment, kept apart by Postgres row-level security. See planning/epics/38-multi-tenancy.md. |
 | `app/twin` | 14 | 2,654 | Epic 19, US19.4: a plain-English behavioral diff between two runs -- typically two versions of the same agent (US19.5's `AgentArtifact.version`), but works for  |
 <!-- END GENERATED: module-inventory -->
 
@@ -140,9 +140,11 @@ flowchart LR
     api --> registry
     api --> schemas
     api --> scim
+    api --> tenancy
     api --> twin
     auth --> db
     auth --> schemas
+    auth --> tenancy
     batches -.-> context
     batches --> datasets
     batches --> db
@@ -225,6 +227,7 @@ flowchart LR
     schemas --> batches
     scim --> auth
     scim --> db
+    scim --> tenancy
     tenancy --> db
     twin --> bpmn
     twin -.-> catalog
@@ -400,7 +403,7 @@ stateDiagram-v2
 | Concern | How it's done today | Where |
 |---|---|---|
 | Authentication | `AUTH_MODE=oidc`: the API runs the OIDC code flow with PKCE against the customer's IdP, verifies the ID token and MFA (`amr`/`acr`), and matches people by issuer and subject. `AUTH_MODE=local` (a name and self-picked roles) is for development and demos only. Sessions: a 15-minute session cookie renewed from a rotating refresh cookie (hashed tokens, reuse detection), a 30-minute idle timeout and a 12-hour cap, a CSRF header on writes, and revocation by the user, an admin or the IdP. SCIM provisioning (`/scim/v2`) and group-to-role mappings keep people and roles in step with the directory. SAML is still to come (see the [Glossary](Glossary.md)) | `auth/oidc.py`, `api/oidc.py`, `scim/`, `api/scim.py`, `auth/directory.py`, `auth/sessions.py`, `api/auth.py`, `api/deps.py` |
-| Tenancy | Each customer is a tenant, reached at its own host names. A middleware resolves the host before routing (unknown host: 404; suspended: 403). Every transaction sets `app.tenant_id`, and Postgres row-level security on every table does the rest; the API connects as a role that can't bypass it. Jobs run as their tenant. Identity, secrets, files and quotas aren't per tenant yet (Epic 38, steps 2-3) | `tenancy/`, `db/session.py`, `jobs/worker.py`, migration `f2a3b4c5d6e7` |
+| Tenancy | Each customer is a tenant, reached at its own host names. A middleware resolves the host before routing (unknown host: 404; suspended: 403). Every transaction sets `app.tenant_id`, and Postgres row-level security on every table does the rest; the API connects as a role that can't bypass it. Jobs run as their tenant. Each tenant has its own IdP (`tenant_identity`, the Directory page), with providers cached per tenant. Secrets, files and quotas aren't per tenant yet (Epic 38, steps 2-3) | `tenancy/`, `db/session.py`, `jobs/worker.py`, `auth/oidc.py`, migrations `f2a3b4c5d6e7`, `a3b4c5d6e7f8` |
 | Authorization | Six roles mapped to permissions, scoped to the organization or a business unit. Every write route declares the permission it needs. Segregation of duties is enforced on the change history, and every privileged action goes to an append-only audit log. Organization-context visibility is separate (Epic 31 memberships) | `auth/permissions.py`, `auth/sod.py`, `auth/audit.py`, `api/deps.py`, `context/access.py` |
 | LLM governance | Per-business-unit policy: provider allow-list, residency, self-hosted endpoint, PII redaction; usage and cost logged per operation | `llm/routing.py`, `llm/client.py`, `llm/usage.py` |
 | Background work | Postgres job queue (`jobs` table, SKIP LOCKED, leases, retries with backoff), worker in the API process by default | `jobs/` |
@@ -479,5 +482,5 @@ header on writes, and on a 401 it refreshes the session once and retries
 | [Epic 35 -- Results at Volume & Statistical Release Gate](../../planning/epics/35-results-at-volume-and-statistical-gate.md) | 9 | implemented (2026-10-11) |
 | [Epic 36 -- Process Digital Twin at Volume: Efficiency & Readiness](../../planning/epics/36-process-twin-efficiency.md) | 9 | implemented (2026-10-13), except US36.9 (still open) |
 | [Epic 37 -- Enterprise Identity, Roles & Segregation of Duties](../../planning/epics/37-enterprise-identity-and-access.md) | 15 | build steps 1-4 implemented. Step 1 (2026-10-14): US37.1-37.6, US37.14, US37.15. Step... |
-| [Epic 38 -- Multi-Tenancy: Many Organizations on One Deployment](../../planning/epics/38-multi-tenancy.md) | 15 | build step 1 implemented (2026-10-15): US38.1-38.5, the tenant boundary. Open: steps... |
+| [Epic 38 -- Multi-Tenancy: Many Organizations on One Deployment](../../planning/epics/38-multi-tenancy.md) | 15 | build step 1 implemented (2026-10-15): US38.1-38.5, the tenant boundary. Step 2 in... |
 <!-- END GENERATED: epic-index -->

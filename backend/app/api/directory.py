@@ -1,18 +1,25 @@
 """Epic 37, US37.10-37.11: what an admin manages about the IdP connection
 -- the SCIM tokens the IdP provisions with, and which groups grant which
-roles (previewed before they're saved)."""
+roles (previewed before they're saved). Epic 38, US38.6: and which IdP
+this organization signs in with."""
 
 import hashlib
 import secrets
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 
-from app.auth import audit, directory
+from app.auth import audit, directory, oidc
 from app.config import get_settings
-from app.db.models import ContextEntityModel, ScimTokenModel
+from app.db.models import ContextEntityModel, ScimTokenModel, TenantIdentityModel
 from app.ids import new_id, utcnow
+from app.tenancy import identity
 from app.schemas.directory import (
+    ConnectionTestOut,
+    IdentitySettingsIn,
+    IdentitySettingsOut,
     GrantOut,
     GroupMapping,
     GroupMappings,
@@ -28,6 +35,99 @@ from app.schemas.directory import (
 from .deps import DbDep, UsersManageDep
 
 router = APIRouter(prefix="/api/directory", tags=["directory"])
+IdpHttpDep = Annotated[httpx.Client | None, Depends(oidc.get_idp_http)]
+
+
+# ---- Epic 38, US38.6: the organization's identity provider ---------------------
+
+
+def _identity_out(db, config: identity.IdentityConfig) -> IdentitySettingsOut:
+    row = db.scalar(select(TenantIdentityModel))
+    slug = identity.tenant_slug(db, config.tenant_id) if config.tenant_id else ""
+    return IdentitySettingsOut(
+        auth_mode=config.auth_mode, source=config.source, issuer=config.issuer, discovery_url=config.discovery_url,
+        client_id=config.client_id, client_secret_ref=config.client_secret_ref, display_name=config.display_name,
+        scopes=config.scopes, acr_values=config.acr_values, groups_claim=config.groups_claim,
+        jit_provisioning=config.jit_provisioning, require_mfa=config.require_mfa,
+        mfa_amr_values=list(config.mfa_amr_values), mfa_acr_values=list(config.mfa_acr_values),
+        scim_link_claim=config.scim_link_claim, secret_configured=bool(config.client_secret),
+        secret_prefix=identity.secret_prefix(slug or ""), redirect_uri=config.redirect_uri,
+        post_logout_redirect_uri=config.frontend_url.rstrip("/") + "/",
+        backchannel_logout_url=config.backchannel_logout_url, scim_base_url=config.scim_base_url,
+        updated_at=row.updated_at if row else None, updated_by=row.updated_by if row else None,
+    )
+
+
+def _candidate(db, body: IdentitySettingsIn) -> identity.IdentityConfig:
+    """The configuration the body would give, refused if it can't be saved."""
+    current = identity.resolve(db)
+    values = body.model_dump()
+    try:
+        identity.validate(values, identity.tenant_slug(db, current.tenant_id) or "", get_settings())
+    except identity.IdentityError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    host = identity.current_host() or "localhost"
+    return identity.candidate(values, current.tenant_id, get_settings(), host)
+
+
+def _test_out(check: oidc.ConnectionCheck, config: identity.IdentityConfig) -> ConnectionTestOut:
+    doc = check.discovery
+    return ConnectionTestOut(
+        ok=check.ok, issuer=doc.get("issuer"), authorization_endpoint=doc.get("authorization_endpoint"),
+        token_endpoint=doc.get("token_endpoint"), end_session_endpoint=doc.get("end_session_endpoint"),
+        signing_keys=check.signing_keys, secret_configured=bool(config.client_secret), problems=check.problems,
+    )
+
+
+@router.get("/identity", response_model=IdentitySettingsOut)
+def get_identity_settings(db: DbDep, user: UsersManageDep) -> IdentitySettingsOut:
+    del user
+    return _identity_out(db, identity.resolve(db))
+
+
+@router.post("/identity/test", response_model=ConnectionTestOut)
+def test_identity_settings(body: IdentitySettingsIn, db: DbDep, http: IdpHttpDep, user: UsersManageDep) -> ConnectionTestOut:
+    """Checks the IdP these settings name, without saving them."""
+    del user
+    if body.auth_mode != "oidc":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Only single sign-on settings can be tested")
+    config = _candidate(db, body)
+    return _test_out(oidc.check_connection(config, http=http), config)
+
+
+@router.put("/identity", response_model=IdentitySettingsOut)
+def save_identity_settings(
+    body: IdentitySettingsIn, db: DbDep, http: IdpHttpDep, request: Request, user: UsersManageDep
+) -> IdentitySettingsOut:
+    """Saves after testing the connection again: settings that can't reach
+    the IdP would lock everyone out at their next sign-in. (An operator can
+    undo a bad save: `python -m app.tenancy identity reset <slug>`.)"""
+    config = _candidate(db, body)
+    if body.auth_mode == "oidc":
+        check = oidc.check_connection(config, http=http)
+        if not check.ok:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, detail="The connection test failed: " + "; ".join(check.problems)
+            )
+    before = identity.resolve(db)
+    row = db.scalar(select(TenantIdentityModel))
+    if row is None:
+        row = TenantIdentityModel(id=new_id("tidp"))
+        db.add(row)
+    for key, value in body.model_dump().items():
+        setattr(row, key, value)
+    row.updated_at = utcnow().replace(tzinfo=None)
+    row.updated_by = user.name
+    db.flush()
+    identity.forget(db)
+    after = identity.resolve(db)
+    changed = {
+        key: {"from": getattr(before, key), "to": getattr(after, key)}
+        for key in identity.EDITABLE if getattr(before, key) != getattr(after, key)
+    }
+    audit.record(db, actor=user, action="identity_settings_changed", object_type="tenant_identity", object_id=row.id,
+                 request=request, detail={"previous_source": before.source, "changed": changed})
+    return _identity_out(db, after)
 
 
 def _token_out(row: ScimTokenModel) -> ScimTokenOut:
@@ -38,9 +138,9 @@ def _token_out(row: ScimTokenModel) -> ScimTokenOut:
 @router.get("/scim", response_model=ScimSetup)
 def scim_setup(db: DbDep, user: UsersManageDep) -> ScimSetup:
     del user
-    settings = get_settings()
+    config = identity.resolve(db)
     rows = db.scalars(select(ScimTokenModel).order_by(ScimTokenModel.created_at.desc()))
-    return ScimSetup(base_url=settings.api_public_url.rstrip("/") + "/scim/v2", link_claim=settings.scim_link_claim,
+    return ScimSetup(base_url=config.scim_base_url, link_claim=config.scim_link_claim,
                      tokens=[_token_out(r) for r in rows])
 
 
@@ -103,7 +203,7 @@ def _proposed(db, body: GroupMappings) -> list[directory.Mapping]:
 @router.get("/group-mappings", response_model=list[GroupMapping])
 def list_group_mappings(db: DbDep, user: UsersManageDep) -> list[GroupMapping]:
     del user
-    return [_mapping_out(db, m) for m in directory.load(db, get_settings())]
+    return [_mapping_out(db, m) for m in directory.load(db, identity.resolve(db))]
 
 
 @router.post("/group-mappings/preview", response_model=list[RoleChangeOut])
@@ -117,6 +217,6 @@ def preview_group_mappings(body: GroupMappings, db: DbDep, user: UsersManageDep)
 def save_group_mappings(body: GroupMappings, db: DbDep, request: Request, user: UsersManageDep) -> MappingsSaved:
     """Replaces every mapping and applies them to everyone now."""
     proposed = _proposed(db, body)
-    directory.load(db, get_settings())  # seed first, so saving counts as the deliberate change it is
+    directory.load(db, identity.resolve(db))  # seed first, so saving counts as the deliberate change it is
     changes = directory.replace(db, proposed, actor=user, request=request)
     return MappingsSaved(mappings=[_mapping_out(db, m) for m in proposed], changes=_changes_out(db, changes))

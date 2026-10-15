@@ -140,9 +140,21 @@ while ($true) {
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "Couldn't create the northwind tenant -- check: docker compose logs api"
 }
+# Epic 38, US38.6: with -Sso, Northwind signs in through its own Keycloak
+# realm; without it, it goes back to local sign-in.
+if ($Sso) {
+    & docker compose exec -T api python -m app.tenancy identity set northwind `
+        --issuer 'http://localhost:8180/realms/northwind' `
+        --discovery-url 'http://keycloak:8080/realms/northwind/.well-known/openid-configuration' `
+        --client-id axyntro --secret-ref 'env:TENANT_NORTHWIND_OIDC_CLIENT_SECRET' --display-name 'Northwind SSO' `
+        --acr-values mfa --mfa-acr mfa --admin-group northwind-admins | Out-Null
+}
+else {
+    & docker compose exec -T api python -m app.tenancy identity reset northwind | Out-Null
+}
 Write-Host 'Tenants:  http://meridian.localhost:3000 (same as localhost) and http://northwind.localhost:3000'
 if ($Sso) {
-    Write-Host '          Single sign-on is set up for Meridian only until each tenant has its own IdP (Epic 38, US38.6).'
+    Write-Host '          Each signs in through its own Keycloak realm (testing\keycloak\README.md).'
 }
 
 if ($Seed -or $SeedProcessTwin) {

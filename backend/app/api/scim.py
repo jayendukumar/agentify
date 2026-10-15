@@ -15,7 +15,7 @@ from fastapi import APIRouter, Body, Depends, Header, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
-from app.config import get_settings
+from app.tenancy import identity
 from app.db.models import ScimTokenModel
 from app.ids import utcnow
 from app.scim import service
@@ -75,11 +75,11 @@ def _excludes_members(excluded: str | None) -> bool:
 
 
 @router.get("/ServiceProviderConfig")
-def service_provider_config(client: ClientDep) -> JSONResponse:
+def service_provider_config(client: ClientDep, db: DbDep) -> JSONResponse:
     del client
     return scim_response({
         "schemas": ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],
-        "documentationUri": f"{get_settings().api_public_url.rstrip('/')}/docs",
+        "documentationUri": f"{identity.resolve(db).api_url}/docs",
         "patch": {"supported": True},
         "bulk": {"supported": False, "maxOperations": 0, "maxPayloadSize": 0},
         "filter": {"supported": True, "maxResults": service.MAX_PAGE},

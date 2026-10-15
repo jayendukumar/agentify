@@ -22,6 +22,9 @@ os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault(
     "DATABASE_URL", "postgresql+psycopg://axyntro_app:axyntro_app@127.0.0.1:5432/agentic_solution_generator_test"
 )
+# Epic 38, US38.6: the test tenant is the first tenant, so the OIDC_*
+# environment variables tests set are its sign-in defaults.
+os.environ.setdefault("TENANT_DEFAULT_SLUG", "test")
 os.environ.setdefault(
     "DATABASE_OWNER_URL", "postgresql+psycopg://agentic:agentic@127.0.0.1:5432/agentic_solution_generator_test"
 )

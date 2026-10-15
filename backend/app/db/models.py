@@ -665,6 +665,37 @@ class GroupRoleMappingModel(TenantScoped, Base):
     )
 
 
+class TenantIdentityModel(TenantScoped, Base):
+    """Epic 38, US38.6: how this tenant's people sign in -- its own IdP,
+    MFA rules and SCIM link claim, edited by its admins on the Directory
+    page. One row per tenant. Without a row, the first tenant uses the
+    OIDC_* / AUTH_MFA_* environment variables and any other tenant has no
+    single sign-on (app/tenancy/identity.py). The client secret is held as
+    a reference (`env:TENANT_<SLUG>_...`), never as a value."""
+
+    __tablename__ = "tenant_identity"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    auth_mode: Mapped[str] = mapped_column(String, nullable=False)  # local | oidc
+    issuer: Mapped[str] = mapped_column(String, nullable=False, default="")
+    discovery_url: Mapped[str] = mapped_column(String, nullable=False, default="")
+    client_id: Mapped[str] = mapped_column(String, nullable=False, default="")
+    client_secret_ref: Mapped[str] = mapped_column(String, nullable=False, default="")
+    display_name: Mapped[str] = mapped_column(String, nullable=False, default="single sign-on")
+    scopes: Mapped[str] = mapped_column(String, nullable=False, default="openid profile email")
+    acr_values: Mapped[str] = mapped_column(String, nullable=False, default="")
+    groups_claim: Mapped[str] = mapped_column(String, nullable=False, default="groups")
+    jit_provisioning: Mapped[bool] = mapped_column(nullable=False, default=True)
+    require_mfa: Mapped[bool] = mapped_column(nullable=False, default=True)
+    mfa_amr_values: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    mfa_acr_values: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    scim_link_claim: Mapped[str] = mapped_column(String, nullable=False, default="sub")
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    __table_args__ = (UniqueConstraint("tenant_id", name="uq_tenant_identity_tenant"),)
+
+
 class OidcLoginRequestModel(TenantScoped, Base):
     """Epic 37, US37.7: one sign-in in flight, between sending the browser
     to the IdP and its return to the callback. Keyed by the hash of

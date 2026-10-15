@@ -15,6 +15,10 @@ the nonce from this sign-in. A user is matched by (issuer, `sub`) only.
 Also here, for US37.12/US37.13: confirming at each session refresh that
 the account is still active at the IdP, building the IdP logout URL, and
 validating back-channel logout tokens.
+
+Epic 38, US38.6: everything here works on one tenant's IdentityConfig
+(app/tenancy/identity.py) -- its own IdP, client, MFA rules and SCIM link
+claim -- and providers are cached per tenant configuration.
 """
 
 from __future__ import annotations
@@ -28,11 +32,12 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 import httpx
 import jwt
+from fastapi import Depends
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -40,9 +45,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import directory
-from app.config import Settings, get_settings
 from app.db.models import UserIdentityModel, UserModel
 from app.ids import new_id, utcnow
+from app.tenancy.identity import IdentityConfig, get_identity
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +76,8 @@ class IdpUnavailable(Exception):
 
 
 class OidcProvider:
-    def __init__(self, settings: Settings, http: httpx.Client | None = None):
-        self.settings = settings
+    def __init__(self, config: IdentityConfig, http: httpx.Client | None = None):
+        self.config = config
         self.http = http or httpx.Client(timeout=10.0)
         self._lock = threading.Lock()
         self._discovery: dict[str, Any] | None = None
@@ -96,15 +101,15 @@ class OidcProvider:
     def discovery(self) -> dict[str, Any]:
         with self._lock:
             if self._discovery is None or time.monotonic() - self._discovery_at > _CACHE_SECONDS:
-                issuer = self.settings.oidc_issuer.rstrip("/")
-                url = self.settings.oidc_discovery_url or f"{issuer}/.well-known/openid-configuration"
+                issuer = self.config.issuer.rstrip("/")
+                url = self.config.discovery_url or f"{issuer}/.well-known/openid-configuration"
                 doc = self._get_json(url)
                 # The discovery document must describe the issuer we were told
                 # to trust, or every later check is against the wrong party.
-                if doc.get("issuer") != self.settings.oidc_issuer:
+                if doc.get("issuer") != self.config.issuer:
                     raise OidcError(
                         "idp_misconfigured",
-                        f"Discovery at {url} names issuer {doc.get('issuer')!r}, not OIDC_ISSUER {self.settings.oidc_issuer!r}",
+                        f"Discovery at {url} names issuer {doc.get('issuer')!r}, not the configured issuer {self.config.issuer!r}",
                     )
                 self._discovery, self._discovery_at = doc, time.monotonic()
             return self._discovery
@@ -149,15 +154,15 @@ class OidcProvider:
                 token,
                 key,
                 algorithms=[algorithm],
-                audience=self.settings.oidc_client_id,
-                issuer=self.settings.oidc_issuer,
+                audience=self.config.client_id,
+                issuer=self.config.issuer,
                 leeway=CLOCK_SKEW_SECONDS,
                 options={"require": require},
             )
         except jwt.PyJWTError as exc:
             raise OidcError("invalid_token", f"Token rejected: {exc}") from exc
         audience = claims.get("aud")
-        if isinstance(audience, list) and len(audience) > 1 and claims.get("azp") != self.settings.oidc_client_id:
+        if isinstance(audience, list) and len(audience) > 1 and claims.get("azp") != self.config.client_id:
             raise OidcError("invalid_token", "Token has several audiences and wasn't issued to this client (azp)")
         return claims
 
@@ -167,16 +172,16 @@ class OidcProvider:
         challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest()).rstrip(b"=").decode()
         params = {
             "response_type": "code",
-            "client_id": self.settings.oidc_client_id,
-            "redirect_uri": self.settings.oidc_redirect_uri,
-            "scope": self.settings.oidc_scopes,
+            "client_id": self.config.client_id,
+            "redirect_uri": self.config.redirect_uri,
+            "scope": self.config.scopes,
             "state": state,
             "nonce": nonce,
             "code_challenge": challenge,
             "code_challenge_method": "S256",
         }
-        if self.settings.oidc_acr_values:
-            params["acr_values"] = self.settings.oidc_acr_values
+        if self.config.acr_values:
+            params["acr_values"] = self.config.acr_values
         return f"{self.discovery()['authorization_endpoint']}?{urlencode(params)}"
 
     def _token_request(self, data: dict[str, str]) -> httpx.Response:
@@ -184,7 +189,7 @@ class OidcProvider:
             return self.http.post(
                 self.discovery()["token_endpoint"],
                 data=data,
-                auth=(self.settings.oidc_client_id, self.settings.oidc_client_secret),
+                auth=(self.config.client_id, self.config.client_secret),
                 headers={"Accept": "application/json"},
             )
         except httpx.HTTPError as exc:
@@ -194,7 +199,7 @@ class OidcProvider:
         response = self._token_request({
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": self.settings.oidc_redirect_uri,
+            "redirect_uri": self.config.redirect_uri,
             "code_verifier": code_verifier,
         })
         if response.status_code != 200:
@@ -216,9 +221,9 @@ class OidcProvider:
         amr = claims.get("amr") or []
         if isinstance(amr, str):
             amr = [amr]
-        if set(amr) & set(self.settings.auth_mfa_amr_values):
+        if set(amr) & set(self.config.mfa_amr_values):
             return True
-        return bool(claims.get("acr")) and claims.get("acr") in self.settings.auth_mfa_acr_values
+        return bool(claims.get("acr")) and claims.get("acr") in self.config.mfa_acr_values
 
     # -- afterwards: refresh, logout --
 
@@ -237,7 +242,7 @@ class OidcProvider:
             return None
         if not endpoint:
             return None
-        params = {"client_id": self.settings.oidc_client_id, "post_logout_redirect_uri": post_logout_redirect_uri}
+        params = {"client_id": self.config.client_id, "post_logout_redirect_uri": post_logout_redirect_uri}
         if id_token_hint:
             params["id_token_hint"] = id_token_hint
         return f"{endpoint}?{urlencode(params)}"
@@ -254,40 +259,94 @@ class OidcProvider:
         return claims
 
 
-_provider: OidcProvider | None = None
+_providers: dict[tuple, OidcProvider] = {}
 _provider_lock = threading.Lock()
+_MAX_PROVIDERS = 512
 
 
-def get_oidc_provider() -> OidcProvider:
-    """FastAPI dependency (tests override it with a fake IdP). Built lazily:
-    nothing is fetched until a sign-in needs it."""
-    global _provider
+def provider_for(config: IdentityConfig) -> OidcProvider:
+    """One provider (with its discovery and key caches) per tenant
+    configuration: a changed client or issuer gets a fresh one. Built
+    lazily: nothing is fetched until a sign-in needs it."""
+    key = config.provider_key()
     with _provider_lock:
-        if _provider is None or _provider.settings is not get_settings():
-            _provider = OidcProvider(get_settings())
-        return _provider
+        provider = _providers.get(key)
+        if provider is None:
+            if len(_providers) >= _MAX_PROVIDERS:
+                _providers.pop(next(iter(_providers)))
+            provider = _providers[key] = OidcProvider(config)
+        return provider
+
+
+def get_oidc_provider(config: Annotated[IdentityConfig, Depends(get_identity)]) -> OidcProvider:
+    """FastAPI dependency: the request's tenant's IdP (tests override it
+    with a fake one)."""
+    return provider_for(config)
+
+
+@dataclass
+class ConnectionCheck:
+    ok: bool
+    discovery: dict[str, Any] = field(default_factory=dict)
+    signing_keys: int = 0
+    problems: list[str] = field(default_factory=list)
+
+
+def check_connection(config: IdentityConfig, http: httpx.Client | None = None) -> ConnectionCheck:
+    """Epic 38, US38.6: "Test connection" before saving -- fetches discovery
+    (whose issuer must be the configured one) and the signing keys, with a
+    fresh provider so nothing cached hides a problem. The client secret is
+    only checked for being set: proving it needs a real sign-in."""
+    provider = OidcProvider(config, http=http)
+    check = ConnectionCheck(ok=False)
+    try:
+        check.discovery = provider.discovery()
+        for endpoint in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
+            if not check.discovery.get(endpoint):
+                check.problems.append(f"The discovery document has no {endpoint}")
+        if check.discovery.get("jwks_uri"):
+            provider._load_jwks()
+            check.signing_keys = len(provider._jwks)
+            if not check.signing_keys:
+                check.problems.append("The IdP publishes no signing keys")
+    except OidcError as exc:
+        check.problems.append(str(exc))
+    except IdpUnavailable as exc:
+        check.problems.append(f"Couldn't reach the IdP: {exc}")
+    except ValueError as exc:  # not JSON
+        check.problems.append(f"The IdP didn't answer with JSON: {exc}")
+    if not config.client_secret:
+        check.problems.append(f"The client secret reference {config.client_secret_ref} has no value on the server")
+    check.ok = not check.problems
+    return check
+
+
+def get_idp_http() -> httpx.Client | None:
+    """FastAPI dependency for the connection test's HTTP client (tests
+    override it with a fake IdP); None means a real one."""
+    return None
 
 
 # -- the IdP refresh token, kept encrypted ------------------------------------------
 
 
-def _fernet(settings: Settings) -> Fernet:
+def _fernet(config: IdentityConfig) -> Fernet:
     # Derived from the client secret: no extra key to configure, and a
     # rotated secret simply makes old sessions unable to confirm, so they
     # end at their next refresh.
     key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b"axyntro idp refresh token").derive(
-        settings.oidc_client_secret.encode()
+        config.client_secret.encode()
     )
     return Fernet(base64.urlsafe_b64encode(key))
 
 
-def seal(settings: Settings, token: str) -> str:
-    return _fernet(settings).encrypt(token.encode()).decode()
+def seal(config: IdentityConfig, token: str) -> str:
+    return _fernet(config).encrypt(token.encode()).decode()
 
 
-def unseal(settings: Settings, sealed: str) -> str | None:
+def unseal(config: IdentityConfig, sealed: str) -> str | None:
     try:
-        return _fernet(settings).decrypt(sealed.encode()).decode()
+        return _fernet(config).decrypt(sealed.encode()).decode()
     except InvalidToken:
         return None
 
@@ -325,11 +384,11 @@ class SignedIn:
     detail: dict[str, Any] = field(default_factory=dict)
 
 
-def _scim_user_for(db: Session, settings: Settings, claims: dict[str, Any]) -> UserModel | None:
+def _scim_user_for(db: Session, config: IdentityConfig, claims: dict[str, Any]) -> UserModel | None:
     """US37.10: a user the IdP provisioned over SCIM who hasn't signed in
     yet, found by the claim that carries their SCIM externalId -- an
     immutable IdP id, never an email or a name."""
-    value = claims.get(settings.scim_link_claim)
+    value = claims.get(config.scim_link_claim)
     if not value:
         return None
     candidates = db.scalars(
@@ -349,7 +408,7 @@ def _scim_user_for(db: Session, settings: Settings, claims: dict[str, Any]) -> U
     return None
 
 
-def sign_in(db: Session, settings: Settings, claims: dict[str, Any]) -> SignedIn:
+def sign_in(db: Session, config: IdentityConfig, claims: dict[str, Any]) -> SignedIn:
     """Finds the user for verified claims -- an earlier sign-in, a user
     provisioned over SCIM, or (with JIT provisioning) a new one -- and
     brings their group roles up to date. Raises OidcError to refuse."""
@@ -358,10 +417,10 @@ def sign_in(db: Session, settings: Settings, claims: dict[str, Any]) -> SignedIn
     created = False
     detail: dict[str, Any] = {"issuer": issuer, "subject": subject}
     if identity is None:
-        user = _scim_user_for(db, settings, claims)
+        user = _scim_user_for(db, config, claims)
         if user is not None:
             detail["linked_scim_user"] = True
-        elif not settings.oidc_jit_provisioning:
+        elif not config.jit_provisioning:
             raise OidcError("not_provisioned", f"No account here for {claims.get('email') or subject}, and JIT provisioning is off")
         else:
             user = UserModel(id=new_id("user"), name=_unique_name(db, claims), provisioned_by="sso")
@@ -377,7 +436,7 @@ def sign_in(db: Session, settings: Settings, claims: dict[str, Any]) -> SignedIn
     identity.username = claims.get("preferred_username")
     identity.last_sign_in_at = utcnow().replace(tzinfo=None)
 
-    claim = settings.oidc_groups_claim
+    claim = config.groups_claim
     if user.provisioned_by == "scim":
         # The IdP's SCIM pushes own this user's groups; the claim may lag.
         detail["groups_from"] = "scim"
@@ -389,7 +448,7 @@ def sign_in(db: Session, settings: Settings, claims: dict[str, Any]) -> SignedIn
         user.idp_groups = group_names(claims, claim)
         detail["groups"] = user.idp_groups
     if not detail.get("groups_overage"):
-        mappings = directory.load(db, settings)
+        mappings = directory.load(db, config)
         change = directory.apply(db, user, mappings)
         granted = directory.grants_for(directory.user_groups(db, user), mappings)
         detail["roles"] = [f"{r}@{t}:{i}".rstrip(":") for r, t, i in granted]

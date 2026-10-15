@@ -59,8 +59,8 @@ fixable without rethinking the product.
 2. **Tenants are kept apart, but only half-separate.** Every row has a
    tenant, and Postgres row-level security, not the application, keeps
    each tenant's rows invisible to the others; a test probes every route
-   with another tenant's ids. Still shared per deployment: the IdP and
-   SCIM settings, registries, the model provider's key, connector
+   with another tenant's ids. Each tenant signs in through its own IdP.
+   Still shared per deployment: back-channel logout routing, registries, the model provider's key, connector
    secrets, uploaded files and the logs. The job queue walks tenants in
    turn but has no quotas. Foreign keys aren't tenant-aware: Postgres
    checks them without row-level security, so a route that doesn't look

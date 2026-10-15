@@ -1030,6 +1030,48 @@ export interface ScimTokenIssued extends ScimToken {
   token: string
 }
 
+// Epic 38, US38.6: this organization's identity provider.
+export interface IdentitySettingsInput {
+  auth_mode: 'local' | 'oidc'
+  issuer: string
+  discovery_url: string
+  client_id: string
+  client_secret_ref: string
+  display_name: string
+  scopes: string
+  acr_values: string
+  groups_claim: string
+  jit_provisioning: boolean
+  require_mfa: boolean
+  mfa_amr_values: string[]
+  mfa_acr_values: string[]
+  scim_link_claim: string
+}
+
+export interface IdentitySettings extends Omit<IdentitySettingsInput, 'auth_mode'> {
+  auth_mode: 'local' | 'oidc' | 'none'
+  source: 'tenant' | 'environment' | 'unset'
+  secret_configured: boolean
+  secret_prefix: string
+  redirect_uri: string
+  post_logout_redirect_uri: string
+  backchannel_logout_url: string
+  scim_base_url: string
+  updated_at: string | null
+  updated_by: string | null
+}
+
+export interface ConnectionTest {
+  ok: boolean
+  issuer: string | null
+  authorization_endpoint: string | null
+  token_endpoint: string | null
+  end_session_endpoint: string | null
+  signing_keys: number
+  secret_configured: boolean
+  problems: string[]
+}
+
 export interface ScimSetup {
   base_url: string
   link_claim: string
