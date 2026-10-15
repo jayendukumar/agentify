@@ -19,6 +19,11 @@ dependencies = [
     "pgvector>=0.3",
     "sentence-transformers>=3.0",
     "openpyxl>=3.1",
+    # Epic 37, US37.7: OIDC sign-in -- ID token signatures, the IdP's HTTP
+    # endpoints, and encrypting the IdP refresh token at rest.
+    "pyjwt[crypto]>=2.8",
+    "httpx>=0.27",
+    "cryptography>=42",
 ]
 
 [project.optional-dependencies]

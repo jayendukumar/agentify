@@ -159,7 +159,7 @@ def test_refresh_refused_once_the_user_is_deactivated(client):
 def test_logout_revokes_the_session_and_its_refresh_token():
     c = _login("mia")
     refresh = c.cookies.get("asg_refresh")
-    assert c.post("/api/auth/logout").status_code == 204
+    assert c.post("/api/auth/logout").status_code == 200
     assert c.get("/api/auth/me").status_code == 401
     assert _with_cookies(asg_refresh=refresh).post("/api/auth/refresh").status_code == 401
 

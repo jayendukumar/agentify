@@ -49,6 +49,7 @@ export default function SessionList({
           <tr key={session.id}>
             <td title={session.user_agent ?? undefined}>
               {describeBrowser(session.user_agent)}
+              {session.auth_method === 'oidc' && <span className="meta"> (single sign-on)</span>}
               {session.current && <span className="badge role-badge"> This browser</span>}
             </td>
             <td>{session.ip ?? '-'}</td>

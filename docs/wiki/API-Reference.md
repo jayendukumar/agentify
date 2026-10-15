@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**196 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *public* needs none.
+**199 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *public* needs none.
 
 ### agents
 
@@ -26,8 +26,11 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 |---|---|---|---|
 | GET | `/api/auth/config` | public | Epic 37: public -- the sign-in page needs it before anyone signs in. |
 | POST | `/api/auth/login` | public | Local sign-in: a name and self-picked roles. Settings validation refuses AUTH_MODE=local in production (US37.14), so this endpoint never ser |
-| POST | `/api/auth/logout` | signed in |  |
+| POST | `/api/auth/logout` | signed in | Ends this session. After an SSO sign-in it also returns the IdP's logout URL, so the IdP session ends too -- otherwise the next "Sign in" wo |
 | GET | `/api/auth/me` | signed in |  |
+| POST | `/api/auth/oidc/backchannel-logout` | public | US37.13: the IdP says a user signed out there (or an admin ended their IdP session). Authenticated by the logout token's signature, not by a |
+| GET | `/api/auth/oidc/callback` | public | Finishes a sign-in. Every refusal is returned (not raised) so its audit event commits. |
+| GET | `/api/auth/oidc/login` | public | Starts a sign-in: remembers a fresh state, nonce and PKCE verifier, binds the state to this browser with a short-lived cookie, and sends the |
 | POST | `/api/auth/refresh` | public | US37.12: swaps the refresh cookie for a new pair. No CSRF header: after a page reload the frontend doesn't have the token yet -- this is how |
 | GET | `/api/auth/sessions` | signed in | US37.13: a user sees where they're signed in. |
 | DELETE | `/api/auth/sessions/{session_id}` | signed in | US37.13: a user ends one of their own sessions -- this one included, which signs them out here. |

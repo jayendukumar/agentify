@@ -1,20 +1,25 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
+import logging
+
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.auth import audit, sessions
+from app.auth import audit, oidc, sessions
 from app.auth.permissions import ROLE_LABELS, ROLE_PERMISSIONS, Role
 from app.auth.views import user_out
 from app.config import get_settings
 from app.db import repository
 from app.db.models import ContextEntityModel, SessionModel, UserModel
-from app.schemas.auth import AuthConfig, LoginRequest, RoleOption, SessionOut, SignedInUser
+from app.schemas.auth import AuthConfig, LoginRequest, LogoutResult, RoleOption, SessionOut, SignedInUser
 
 from .deps import CurrentSessionDep, DbDep
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+OidcDep = Annotated[oidc.OidcProvider, Depends(oidc.get_oidc_provider)]
 
 
 def signed_in_user(db: Session, user: UserModel, record: SessionModel) -> SignedInUser:
@@ -30,7 +35,7 @@ def signed_in_user(db: Session, user: UserModel, record: SessionModel) -> Signed
 def session_out(record: SessionModel, current_id: str | None = None) -> SessionOut:
     return SessionOut(
         id=record.id, created_at=record.created_at, last_used_at=record.last_used_at, expires_at=record.expires_at,
-        ip=record.ip, user_agent=record.user_agent, current=record.id == current_id,
+        ip=record.ip, user_agent=record.user_agent, current=record.id == current_id, auth_method=record.auth_method,
     )
 
 
@@ -45,6 +50,8 @@ def auth_config() -> AuthConfig:
             RoleOption(value=role.value, label=ROLE_LABELS[role], permissions=sorted(p.value for p in ROLE_PERMISSIONS[role]))
             for role in Role
         ],
+        sso_name=settings.oidc_display_name if settings.auth_mode == "oidc" else None,
+        sso_login_url="/api/auth/oidc/login" if settings.auth_mode == "oidc" else None,
     )
 
 
@@ -80,7 +87,8 @@ def login(body: LoginRequest, db: DbDep, request: Request, response: Response) -
 
 @router.post("/refresh", response_model=SignedInUser)
 def refresh(
-    db: DbDep, request: Request, response: Response, asg_refresh: Annotated[str | None, Cookie()] = None
+    db: DbDep, request: Request, response: Response, provider: OidcDep,
+    asg_refresh: Annotated[str | None, Cookie()] = None,
 ) -> SignedInUser | JSONResponse:
     """US37.12: swaps the refresh cookie for a new pair. No CSRF header:
     after a page reload the frontend doesn't have the token yet -- this
@@ -89,7 +97,32 @@ def refresh(
 
     Refusals are returned rather than raised so the transaction commits:
     a reused refresh token revokes the session, and that must stick."""
-    result = sessions.refresh(db, asg_refresh) if asg_refresh else None
+    def confirm_with_idp(db_, record: SessionModel) -> bool:
+        """US37.12: an SSO session lives only as long as the account does at
+        the IdP. Its refresh token is refused once the user is disabled
+        there or their IdP session ends."""
+        if not record.idp_refresh_token:
+            return True
+        token = oidc.unseal(get_settings(), record.idp_refresh_token)
+        if token is None:  # sealed under a since-rotated client secret
+            return False
+        try:
+            tokens = provider.refresh(token)
+        except oidc.IdpUnavailable as exc:
+            # Availability over strictness: an IdP outage shouldn't sign
+            # everyone out. Idle and absolute limits still apply.
+            logger.warning("IdP unreachable while refreshing session %s; keeping it: %s", record.id, exc)
+            return True
+        if tokens is None:
+            return False
+        if tokens.get("refresh_token"):
+            record.idp_refresh_token = oidc.seal(get_settings(), tokens["refresh_token"])
+        if tokens.get("id_token"):
+            record.idp_id_token = tokens["id_token"]
+        return True
+
+    confirm = confirm_with_idp if get_settings().auth_mode == "oidc" else None
+    result = sessions.refresh(db, asg_refresh, confirm) if asg_refresh else None
     outcome = result.outcome if result else sessions.RefreshOutcome.INVALID
     if outcome is sessions.RefreshOutcome.ISSUED:
         sessions.set_cookies(response, result.issued)
@@ -107,14 +140,23 @@ def refresh(
     return refused
 
 
-@router.post("/logout", status_code=204)
-def logout(db: DbDep, request: Request, response: Response, record: CurrentSessionDep) -> None:
+@router.post("/logout", response_model=LogoutResult)
+def logout(
+    db: DbDep, request: Request, response: Response, record: CurrentSessionDep, provider: OidcDep
+) -> LogoutResult:
+    """Ends this session. After an SSO sign-in it also returns the IdP's
+    logout URL, so the IdP session ends too -- otherwise the next "Sign in"
+    would go straight back in without asking."""
+    logout_url = None
+    if record.auth_method == "oidc":
+        logout_url = provider.end_session_url(record.idp_id_token, get_settings().frontend_url.rstrip("/") + "/")
     sessions.revoke(db, record, "signed_out")
     audit.record(
         db, actor=record.user, action="sign_out", object_type="user", object_id=record.user_id, request=request,
-        detail={"session_id": record.id},
+        detail={"session_id": record.id, "idp_logout": logout_url is not None},
     )
     sessions.clear_cookies(response)
+    return LogoutResult(logout_url=logout_url)
 
 
 @router.get("/me", response_model=SignedInUser)

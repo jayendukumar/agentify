@@ -21,3 +21,6 @@
   bottom: var(--axyntro-space-5);
   right: var(--axyntro-space-5);
 }
+
+/* Epic 37, US37.7: single sign-on replaces the name and role picker. */
+.login-sso-button { display: block; margin-top: var(--axyntro-space-4); text-align: center; text-decoration: none; }

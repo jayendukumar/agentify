@@ -1,0 +1,54 @@
+# Epic 37, US37.7-37.8: sign in through a local Keycloak instead of the
+# name picker -- the stand-in for a customer's IdP.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.sso.yml up -d --build
+#   (or: .\start.ps1 -Sso)
+#
+# Keycloak: http://localhost:8180 (admin console: admin / admin). The
+# realm, its users, groups and the MFA flow are in testing/keycloak/; see
+# its README for the people you can sign in as. Every value here is for
+# local use only.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Browsers reach Keycloak at localhost:8180, and that's the issuer in
+      # every token. The API reaches it at keycloak:8080; "backchannel
+      # dynamic" makes the token and key endpoints it discovers there use
+      # that address too, while the issuer stays the same.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./testing/keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  api:
+    environment:
+      AUTH_MODE: oidc
+      OIDC_ISSUER: http://localhost:8180/realms/axyntro
+      OIDC_DISCOVERY_URL: http://keycloak:8080/realms/axyntro/.well-known/openid-configuration
+      OIDC_CLIENT_ID: axyntro
+      OIDC_CLIENT_SECRET: axyntro-dev-only-secret
+      OIDC_DISPLAY_NAME: Meridian SSO
+      # Ask Keycloak for level 2 (password + one-time code) and accept only
+      # that as MFA: the realm maps level 2 to acr "mfa".
+      OIDC_ACR_VALUES: mfa
+      AUTH_MFA_ACR_VALUES: '["mfa"]'
+      OIDC_GROUP_ROLES: >-
+        {"axyntro-admins": ["admin"], "axyntro-process-owners": ["process_owner"],
+        "axyntro-auditors": ["auditor"], "axyntro-architects": ["architect"],
+        "axyntro-analysts": ["analyst"], "axyntro-approvers": ["approver"]}
+    depends_on:
+      keycloak:
+        condition: service_healthy

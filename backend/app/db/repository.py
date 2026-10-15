@@ -2474,12 +2474,18 @@ def _replace_roles(
     session.flush()
 
 
+def replace_group_roles(session: Session, user: UserModel, roles: list[tuple[str, str, str]]) -> None:
+    """Epic 37, US37.7: the grants a user's IdP groups give them, replaced
+    at each SSO sign-in."""
+    _replace_roles(session, user, roles, source="group")
+
+
 def set_admin_roles(
     session: Session, user: UserModel, roles: list[tuple[str, str, str]], *, granted_by: str
 ) -> UserModel:
-    """Epic 37, US37.1: an admin replaces every grant a user holds. Grants
-    an IdP group mapping will own (US37.11) are out of scope here."""
-    for row in list(user.roles):
+    """Epic 37, US37.1: an admin replaces every grant a user holds, except
+    those from IdP groups: those change in the directory (US37.11)."""
+    for row in [r for r in user.roles if r.source != "group"]:
         user.roles.remove(row)
     session.flush()
     _replace_roles(session, user, roles, source="admin", granted_by=granted_by)

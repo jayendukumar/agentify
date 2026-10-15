@@ -3246,3 +3246,80 @@ so it passed while checking none of the ~190 routes in routers. Walking
 and every write route was in fact guarded. The test now also fails if it
 checks fewer than 100 write routes, so a future FastAPI change can't
 quietly empty it again.
+
+## 2026-10-15 -- Epic 37, OIDC sign-in and MFA with Keycloak (build step 3)
+
+### MFA is checked by the API, and Keycloak alone can be talked out of it
+
+Found by the live smoke test (`testing/keycloak/smoke_sso.py`). The
+realm asks for a one-time code only when the client requests level 2
+(`acr_values=mfa`). A user who deletes `acr_values` from the sign-in URL
+in the address bar gets a password-only sign-in, and Keycloak issues a
+token with `acr` "pwd". The API refuses it because it checks `amr`/`acr`
+itself (US37.8), and audits the refusal. That's the misconfigured-IdP case
+the story describes, and it shows up with an ordinary realm, not only a
+broken one. The shipped realm keeps this gap open on purpose so the
+refusal can be demonstrated. The README says to also set the IdP's
+minimum ACR in a real deployment.
+
+### Defect: the API image couldn't start in SSO mode
+
+Found by running the container: `ModuleNotFoundError: No module named
+'jwt'`. PyJWT, httpx and cryptography were installed in the local
+Python, so all 36 OIDC tests passed, but they weren't in
+`backend/pyproject.toml`, so the image didn't have them. They're now
+declared. Tests run against a developer's environment can't show a
+missing dependency; only a fresh image can.
+
+### Discovery from an internal address, issuer from the public one
+
+Browsers reach Keycloak at `localhost:8180`; the API container reaches it
+at `keycloak:8080`. Every token's `iss` must be one fixed value, so
+Keycloak's hostname is pinned to the public address. The API fetches
+discovery from the internal one (`OIDC_DISCOVERY_URL`), and
+`KC_HOSTNAME_BACKCHANNEL_DYNAMIC` makes the token and key endpoints it
+finds there use the internal address too. The API still requires the
+discovered `issuer` to equal `OIDC_ISSUER` exactly. The alternative,
+rewriting endpoint URLs in the API, would be Keycloak-specific code. A
+cloud IdP needs neither: its one address works everywhere.
+
+### Group roles from configuration until US37.11
+
+The epic puts IdP group mappings in an admin-managed table (US37.11, step
+4). Without some mapping, every SSO user would arrive with no roles and
+nobody could grant the first admin. For now, `OIDC_GROUP_ROLES` maps
+group to roles (`role` or `role@<business unit name>`), reapplied at
+every sign-in. Roles granted this way have `source="group"`. An admin's
+role edits leave them alone, and the Users page shows them read-only.
+Bad mappings (an unknown role or business unit) don't block sign-in;
+they're listed in the sign-in audit event. Entra ID's groups overage
+(`_claim_names`) keeps the user's previous group roles rather than
+removing them.
+
+### The IdP refresh token decides whether an SSO session lives on
+
+At each of our refreshes, the API redeems the IdP refresh token. If the
+IdP refuses it (user disabled, or IdP session ended), our session ends.
+That's checked live by disabling a user in Keycloak. If the IdP can't be
+reached, the session continues: an IdP outage shouldn't sign everyone
+out, and the idle and absolute limits still apply. The token is stored
+encrypted (Fernet), with a key derived from the client secret by HKDF,
+so there's no extra key to manage. Rotating the secret ends existing SSO
+sessions at their next refresh, which is acceptable.
+
+### Refused sign-ins go back to the sign-in page, with a reason code
+
+The callback never shows an error page or raises. It redirects to the
+frontend with `?auth_error=<code>`, the sign-in page explains it, and the
+refused audit event commits because nothing rolled back. The state is
+bound to the browser by a short-lived cookie and is single-use, so a
+callback carrying someone else's code (login CSRF) is refused.
+Back-channel logout tokens aren't checked for `jti` replay: replaying one
+only revokes sessions that are already revoked.
+
+### Logout returns the IdP's logout URL
+
+`POST /api/auth/logout` now returns 200 with `logout_url` (null for local
+sign-in) instead of 204. Without RP-initiated logout, the next "Sign in"
+would go straight back in on the IdP's session cookie, and signing out
+would look broken.

@@ -475,6 +475,17 @@ class SessionModel(Base):
     csrf_token: Mapped[str] = mapped_column(String, nullable=False)
     ip: Mapped[str | None] = mapped_column(String, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    # US37.7/US37.13: how this session began, and for an SSO sign-in, the
+    # IdP's session (`sid`, for back-channel logout), the ID token (the
+    # hint RP-initiated logout needs) and the IdP refresh token, encrypted
+    # (app/auth/oidc.py), used on each refresh to confirm the account is
+    # still active at the IdP.
+    auth_method: Mapped[str] = mapped_column(String, nullable=False, default="local", server_default="local")
+    idp_issuer: Mapped[str | None] = mapped_column(String, nullable=True)
+    idp_subject: Mapped[str | None] = mapped_column(String, nullable=True)
+    idp_sid: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    idp_id_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    idp_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped[UserModel] = relationship()
 
@@ -494,6 +505,38 @@ class SessionTokenModel(Base):
     issued_at: Mapped[datetime] = mapped_column(nullable=False)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     rotated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class UserIdentityModel(Base):
+    """Epic 37, US37.7: a user's account at an identity provider. A user is
+    matched by (issuer, subject) -- the IdP's stable, never-reassigned id
+    -- never by email or name, which change and get reused. `email` and
+    `username` are kept for display and the audit trail only."""
+
+    __tablename__ = "user_identities"
+
+    issuer: Mapped[str] = mapped_column(String, primary_key=True)
+    subject: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
+    username: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_sign_in_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class OidcLoginRequestModel(Base):
+    """Epic 37, US37.7: one sign-in in flight, between sending the browser
+    to the IdP and its return to the callback. Keyed by the hash of
+    `state`; holds the PKCE verifier and nonce the callback must check.
+    Used once, then deleted; abandoned ones expire after ten minutes."""
+
+    __tablename__ = "oidc_login_requests"
+
+    state_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    nonce: Mapped[str] = mapped_column(String, nullable=False)
+    code_verifier: Mapped[str] = mapped_column(String, nullable=False)
+    return_to: Mapped[str] = mapped_column(String, nullable=False, default="/")
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
 
 
 class AgentArtifactModel(Base):

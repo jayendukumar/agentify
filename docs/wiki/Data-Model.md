@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-15 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**54 tables, 564 columns (88 JSON), 94 foreign keys, 31 Alembic migrations.**
+**56 tables, 582 columns (88 JSON), 95 foreign keys, 32 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -510,6 +510,11 @@ erDiagram
         string scope_type PK
         string scope_id PK
     }
+    user_identities {
+        string issuer PK
+        string subject PK
+        string user_id FK
+    }
     sessions {
         string id PK
         string user_id FK
@@ -518,6 +523,9 @@ erDiagram
         string token_hash PK
         string session_id FK
         string kind
+    }
+    oidc_login_requests {
+        string state_hash PK
     }
     contributions {
         bigint seq PK
@@ -1406,6 +1414,20 @@ Epic 37, US37.1: one role grant at one scope. `scope_type` is `organization` (sc
 | `granted_at` | datetime | no |  |
 | `granted_by` | string | yes |  |
 
+#### `user_identities` (UserIdentityModel)
+
+Epic 37, US37.7: a user's account at an identity provider. A user is matched by (issuer, subject) -- the IdP's stable, never-reassigned id -- never by email or name, which change and get reused. `email` and `username` are kept for display and the audit trail only.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `issuer` | string | no | primary key |
+| `subject` | string | no | primary key |
+| `user_id` | string | no | -> `users.id` (cascade); indexed |
+| `email` | string | yes |  |
+| `username` | string | yes |  |
+| `created_at` | datetime | no |  |
+| `last_sign_in_at` | datetime | yes |  |
+
 #### `sessions` (SessionModel)
 
 Epic 37, US37.12: one sign-in on one browser. `id` isn't a secret -- it's what the Sessions lists show and revoke by. The browser holds tokens for it instead (SessionTokenModel), stored only as hashes.
@@ -1422,6 +1444,12 @@ Epic 37, US37.12: one sign-in on one browser. `id` isn't a secret -- it's what t
 | `csrf_token` | string | no |  |
 | `ip` | string | yes |  |
 | `user_agent` | string | yes |  |
+| `auth_method` | string | no |  |
+| `idp_issuer` | string | yes |  |
+| `idp_subject` | string | yes |  |
+| `idp_sid` | string | yes | indexed |
+| `idp_id_token` | text | yes |  |
+| `idp_refresh_token` | text | yes |  |
 
 #### `session_tokens` (SessionTokenModel)
 
@@ -1435,6 +1463,18 @@ Epic 37, US37.12: a token the browser holds for a session -- a short-lived `acce
 | `issued_at` | datetime | no |  |
 | `expires_at` | datetime | no |  |
 | `rotated_at` | datetime | yes |  |
+
+#### `oidc_login_requests` (OidcLoginRequestModel)
+
+Epic 37, US37.7: one sign-in in flight, between sending the browser to the IdP and its return to the callback. Keyed by the hash of `state`; holds the PKCE verifier and nonce the callback must check. Used once, then deleted; abandoned ones expire after ten minutes.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `state_hash` | string | no | primary key |
+| `nonce` | string | no |  |
+| `code_verifier` | string | no |  |
+| `return_to` | string | no |  |
+| `created_at` | datetime | no |  |
 
 #### `contributions` (ContributionModel)
 

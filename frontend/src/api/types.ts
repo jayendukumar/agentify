@@ -1029,6 +1029,7 @@ export interface SessionInfo {
   ip: string | null
   user_agent: string | null
   current: boolean
+  auth_method: string
 }
 
 export interface RoleOption {
@@ -1041,6 +1042,14 @@ export interface AuthConfig {
   auth_mode: string
   environment: string
   roles: RoleOption[]
+  // AUTH_MODE=oidc (Epic 37, US37.7): "Sign in with <sso_name>".
+  sso_name?: string | null
+  sso_login_url?: string | null
+}
+
+// After an SSO session, where to send the browser so the IdP signs out too.
+export interface LogoutResult {
+  logout_url: string | null
 }
 
 // Epic 37, US37.3-US37.5

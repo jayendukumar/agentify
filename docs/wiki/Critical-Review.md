@@ -15,8 +15,8 @@ this space. Process capture, explainable blueprints, governed agent
 definitions, a reproducible twin, ground truth at volume, statistical
 release gates, and now the whole-process twin form one coherent line from
 document to evidence. The *platform* under it is a well-tested single-tenant
-prototype: one process with roles and segregation of duties but no
-single sign-on yet, a database used as a
+prototype: one process with SSO, roles and segregation of duties but
+no provisioning yet, a database used as a
 document store, a 2,400-line repository module doing orchestration, an
 in-process job worker, one LLM provider, and nothing that runs an agent in
 production. Most weaknesses below are platform weaknesses, which are
@@ -43,18 +43,18 @@ fixable without rethinking the product.
 
 ### Critical: blocks any enterprise deployment
 
-1. **There is still no real authentication.** `POST /api/auth/login`
-   accepts a name and *self-chosen* roles, so anyone who can reach the API
-   can become an Approver or Admin. Epic 37 has built everything around
-   sign-in, but not sign-in itself:
-   - roles and permissions, scoped by business unit;
-   - segregation of duties and an append-only audit log;
-   - short, rotating, revocable sessions with CSRF protection;
-   - a startup refusal of local sign-in in production.
+1. **Sign-in is real, provisioning isn't yet.** With `AUTH_MODE=oidc` the
+   customer's IdP signs people in. The API verifies the ID token and MFA
+   itself, matches people by issuer and subject, and the IdP can end
+   sessions. That's tested live against Keycloak. Still missing:
+   - **SCIM provisioning (US37.10).** Without it, a leaver keeps their
+     account here until their next sign-in or session refresh is refused.
+   - **Group mappings in the database (US37.11).** They're in a
+     configuration variable, with no preview or UI.
+   - **SAML (US37.9),** for IdPs that only speak SAML.
 
-   SSO (OIDC/SAML), MFA verification and SCIM provisioning are steps 3-5.
-   Until they land, the product can't be deployed for real users.
-   (`api/auth.py`, `auth/`, Epic 37)
+   The local name picker still exists for development and demos and is
+   refused in production. (`auth/oidc.py`, `api/oidc.py`, Epic 37)
 2. **It's single-tenant by construction.** The organization is a
    singleton, and no table carries a tenant id. Serving two customers
    means two deployments, and nothing stops cross-customer data mixing if
@@ -191,9 +191,10 @@ fixable without rethinking the product.
 
 The order is in the enterprise-readiness deck. In short:
 
-1. **Identity and tenancy:** OIDC SSO with MFA, SCIM provisioning (roles,
-   segregation of duties, audit and session hardening are done), tenant id
-   everywhere, row-level security. *(Weaknesses 1, 2)*
+1. **Identity and tenancy:** SCIM provisioning and database-backed group
+   mappings (OIDC SSO with MFA, roles, segregation of duties, audit and
+   session hardening are done), tenant id everywhere, row-level security.
+   *(Weaknesses 1, 2)*
 2. **Separate the worker, and make runs append-only:** a worker deployment
    on the same queue, a `run_steps` table appended per step, and summary
    columns maintained on write. *(5, 6, 7)*

@@ -90,7 +90,7 @@ describe('AuthContext', () => {
 
   it('logout() clears the current user', async () => {
     getCurrentUser.mockResolvedValue(editor)
-    logout.mockResolvedValue(undefined)
+    logout.mockResolvedValue({ logout_url: null })
 
     function LogoutButton() {
       const { logout: doLogout } = useAuth()

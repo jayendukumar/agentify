@@ -24,8 +24,10 @@ import enum
 import hashlib
 import hmac
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from fastapi import Request, Response
 from sqlalchemy import delete, select, update
@@ -95,9 +97,12 @@ def _client(request: Request | None) -> tuple[str | None, str | None]:
     return (request.client.host if request.client else None), request.headers.get("user-agent")
 
 
-def start(db: Session, user: UserModel, request: Request | None = None) -> Issued:
+def start(
+    db: Session, user: UserModel, request: Request | None = None, *, auth_method: str = "local", **idp: Any
+) -> Issued:
     """A new sign-in. Also clears out this user's dead sessions, so the
-    table holds roughly one row per live browser."""
+    table holds roughly one row per live browser. `idp` sets the
+    SessionModel `idp_*` columns of an SSO sign-in."""
     now = _now()
     for old in db.scalars(select(SessionModel).where(SessionModel.user_id == user.id)):
         if not is_alive(old, now):
@@ -112,6 +117,8 @@ def start(db: Session, user: UserModel, request: Request | None = None) -> Issue
         csrf_token=secrets.token_urlsafe(32),
         ip=ip,
         user_agent=user_agent,
+        auth_method=auth_method,
+        **idp,
     )
     db.add(record)
     db.flush()
@@ -155,7 +162,11 @@ class RefreshResult:
     issued: Issued | None = None
 
 
-def refresh(db: Session, refresh_token: str) -> RefreshResult:
+def refresh(
+    db: Session, refresh_token: str, confirm: Callable[[Session, SessionModel], bool] | None = None
+) -> RefreshResult:
+    """`confirm` (SSO sessions): asked before new tokens are issued whether
+    the account still exists at the IdP; False ends the session."""
     now = _now()
     token = db.get(SessionTokenModel, _hash(refresh_token))
     if token is None or token.kind != "refresh":
@@ -171,6 +182,9 @@ def refresh(db: Session, refresh_token: str) -> RefreshResult:
         return RefreshResult(RefreshOutcome.REUSED, session=record, user=user)
     if user is None or not user.active:
         return RefreshResult(RefreshOutcome.INVALID, session=record)
+    if confirm is not None and not confirm(db, record):
+        revoke(db, record, "idp_session_ended")
+        return RefreshResult(RefreshOutcome.INVALID, session=record, user=user)
     # The old pair stops working the moment the new one exists.
     db.execute(
         update(SessionTokenModel)

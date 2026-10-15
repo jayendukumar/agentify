@@ -1,11 +1,11 @@
 # Glossary: identity, access and sessions
 
-Last reviewed: 2026-10-15 · Sources: `backend/app/auth`, `backend/app/api/auth.py`, `backend/app/api/deps.py`, `backend/app/config.py`, `frontend/src/api/client.ts`, `planning/epics/37-enterprise-identity-and-access.md`
+Last reviewed: 2026-10-15 · Sources: `backend/app/auth`, `backend/app/api/auth.py`, `backend/app/api/oidc.py`, `backend/app/api/deps.py`, `testing/keycloak`, `backend/app/config.py`, `frontend/src/api/client.ts`, `planning/epics/37-enterprise-identity-and-access.md`
 
 These are the security and governance concepts behind Epic 37. Each entry
 gives the general meaning and how Axyntro applies it, with the code that
-does it. Concepts marked *(planned)* belong to steps not built yet (SSO,
-MFA, SCIM). The reasons behind the choices are in the
+does it. Concepts marked *(planned)* belong to steps not built yet (SAML,
+SCIM). The reasons behind the choices are in the
 [decision log](../../planning/decision-log.md), and the
 [epic](../../planning/epics/37-enterprise-identity-and-access.md) has the
 full stories.
@@ -14,17 +14,27 @@ full stories.
 
 | Term | What it means | In Axyntro |
 |---|---|---|
-| **Authentication** | Proving who someone is. | Today only `AUTH_MODE=local`: type a name, pick roles. It's a stand-in for development and demos and is refused in production. SSO replaces it in step 3. |
+| **Authentication** | Proving who someone is. | `AUTH_MODE=oidc`: the customer's IdP signs people in. `AUTH_MODE=local` (type a name, pick roles) remains for development and demos and is refused in production. |
 | **Authorization** | Deciding what an authenticated person may do. | Roles grant permissions, which are checked on every write route against the target's scope (see below). Separate from authentication, so SSO only changes how people get in. |
-| **Identity provider (IdP)** | The customer's directory that authenticates people: Entra ID, Okta, Ping, Keycloak, ADFS. | *(planned)* Steps 3-5. Locally, Keycloak in Docker Compose will stand in for it. |
-| **Single sign-on (SSO)** | Signing in once with the company identity instead of a per-app password. | *(planned)* US37.7 (OIDC) and US37.9 (SAML). |
-| **OpenID Connect (OIDC)** | An identity layer on OAuth 2.0. The IdP returns a signed **ID token** describing the user. | *(planned)* US37.7. Users are matched by issuer plus `sub` (the IdP's stable user id), never by email or name. |
-| **Authorization Code flow with PKCE** | The OIDC flow where the browser receives only a short code, which the server exchanges for tokens. PKCE binds the exchange to the party that started it, `state` stops forged callbacks, and `nonce` stops a replayed ID token. | *(planned)* Run by the API (`/api/auth/oidc/login`, `/callback`), not the browser. |
-| **JWKS** | The IdP's published public keys, used to check ID token signatures. | *(planned)* Fetched from the discovery document and cached. |
+| **Identity provider (IdP)** | The customer's directory that authenticates people: Entra ID, Okta, Ping, Keycloak, ADFS. | Any OIDC IdP. Locally, Keycloak runs in Docker Compose (`start.ps1 -Sso`, `testing/keycloak/`). |
+| **Single sign-on (SSO)** | Signing in once with the company identity instead of a per-app password. | OIDC is built (US37.7). SAML is *(planned)* (US37.9). |
+| **OpenID Connect (OIDC)** | An identity layer on OAuth 2.0. The IdP returns a signed **ID token** describing the user. | `app/auth/oidc.py`. Users are matched by issuer plus `sub` (the IdP's stable user id, in `user_identities`), never by email or name. |
+| **Discovery document** | `/.well-known/openid-configuration`: the IdP's endpoints and where its keys are. | Cached for an hour. Its `issuer` must equal `OIDC_ISSUER` exactly. `OIDC_DISCOVERY_URL` lets the API fetch it from an internal address. |
+| **Authorization Code flow with PKCE** | The OIDC flow where the browser receives only a short code, which the server exchanges for tokens. PKCE binds the exchange to the party that started it, `state` stops forged callbacks, and `nonce` stops a replayed ID token. | Run by the API (`/api/auth/oidc/login`, `/callback`), not the browser. State, nonce and verifier are held server-side for ten minutes and used once (`oidc_login_requests`). |
+| **Login CSRF** | Tricking a browser into finishing a sign-in the attacker started, so the victim works in the attacker's account. | The state is also set in a short-lived cookie at `/login`, and the callback must present both. |
+| **JWKS** | The IdP's published public keys, used to check ID token signatures. | Fetched from the discovery document and cached. An unknown key id triggers one refetch (key rotation), at most every 30 seconds. |
+| **ID token validation** | The checks that make a token trustworthy. | Signature against the JWKS; an asymmetric algorithm only (never `none` or HMAC); issuer; audience (and `azp` when there are several); expiry and issue time, with 60 seconds of clock skew; the nonce. |
+| **Claims** | The facts in a token: `sub`, `email`, `name`, `groups`, `amr`, `acr`, `sid`. | `sub` identifies, `groups` grant roles, `amr`/`acr` prove MFA, and `sid` links back-channel logout to sessions. |
 | **SAML 2.0** | An older XML-based SSO standard, common with ADFS. The IdP sends a signed **assertion**. | *(planned)* US37.9: signed assertions required, replay protection on assertion ids. |
-| **Multi-factor authentication (MFA)** | A second proof besides a password: an authenticator app, a hardware key. | *(planned)* US37.8. Enforced at the IdP, then *verified* here from the `amr` / `acr` claims, so a misconfigured IdP app can't quietly drop it. |
+| **Multi-factor authentication (MFA)** | A second proof besides a password: an authenticator app, a hardware key. | US37.8. Enforced at the IdP, then *verified* here: the ID token must carry an accepted `amr` method or `acr` value, or the sign-in is refused and audited. The live test shows why: removing `acr_values` from the sign-in URL gets a password-only token from Keycloak, and the API refuses it. |
+| **amr / acr** | `amr`: how the user authenticated (`pwd`, `otp`, `mfa`, `hwk`). `acr`: the assurance level reached. | `AUTH_MFA_AMR_VALUES` (default `mfa`, `otp`, `hwk`, `swk`) and `AUTH_MFA_ACR_VALUES`. The local Keycloak maps its level 2 (password + code) to `acr` "mfa". |
+| **Level of authentication (LoA)** | Keycloak's step-up: flows gated by level, mapped to `acr` names. | The `browser-mfa` flow in the realm. Level 2 asks for the one-time code on every sign-in. |
 | **SCIM** | A standard API the IdP uses to create, update and deactivate users and groups in an app. | *(planned)* US37.10 inbound. Unrelated to Epic 31's outbound `ScimConnector`, which reads groups into *context* roles. |
-| **Just-in-time (JIT) provisioning** | Creating the user on first sign-in instead of in advance. | *(planned)* Configurable, for customers not using SCIM. |
+| **Just-in-time (JIT) provisioning** | Creating the user on first sign-in instead of in advance. | On by default (`OIDC_JIT_PROVISIONING`). Off: only people already known by issuer and subject may sign in. |
+| **Group-to-role mapping** | Turning directory groups into product roles. | Until US37.11, `OIDC_GROUP_ROLES` maps groups to roles, optionally scoped `role@<business unit>`. It's reapplied at every sign-in; these grants are `source="group"`, read-only on the Users page. |
+| **Groups overage** | Entra ID replaces the `groups` claim with a Graph link once a user is in too many groups. | Detected from `_claim_names`. The user keeps their previous group roles instead of losing them, and the sign-in audit event says so. |
+| **RP-initiated logout** | The app sends the browser to the IdP to end the IdP session too. | Logout returns the IdP's `logout_url`, with the ID token as a hint. Without it, "Sign in" would go straight back in. |
+| **Back-channel logout** | The IdP calls the app server to server when a user's IdP session ends. | `POST /api/auth/oidc/backchannel-logout` validates the signed logout token and revokes the sessions with that `sid` (or all of that `sub`'s). |
 | **Backend-for-frontend (BFF)** | The server does the token exchange and keeps IdP tokens; the browser only holds the app's own session cookies. | The chosen design: no tokens in browser storage, and revocation is immediate because the server checks every session. |
 | **Fail closed** | When configuration is missing or unsafe, refuse to run rather than run open. | US37.14: the API and job worker exit at startup if `AUTH_MODE=local` with `ENVIRONMENT=production`, if MFA is disabled in production, or if `AUTH_COOKIE_SECURE=false` in production. The Docker image defaults to `production`. `config.py` `_check_auth_safety`. |
 
@@ -42,7 +52,8 @@ full stories.
 | **Grace window** | A short tolerance for a benign race. | Two tabs refreshing at once both present the same token. A reuse within 10 seconds gets 200 but **no new cookies**, so a thief gains nothing. `sessions.REUSE_GRACE`. |
 | **Idle timeout** | The session ends after a period with no requests. | 30 minutes (`AUTH_IDLE_TIMEOUT_MINUTES`), measured from `last_used_at`, which is updated at most once a minute. |
 | **Absolute lifetime** | A hard cap, however active the session is. | 12 hours (`AUTH_SESSION_MAX_HOURS`), so a session can't outlive a working day. |
-| **Revocation** | Ending a session before it expires. | By signing out, by the user (the Sessions page, `SessionsPage.tsx`), by an admin (one session, or "Sign out everywhere"), or by deactivating the user. It takes effect on the next request. |
+| **Revocation** | Ending a session before it expires. | By signing out, by the user (the Sessions page, `SessionsPage.tsx`), by an admin (one session, or "Sign out everywhere"), by deactivating the user, or by the IdP (back-channel logout, or a refused IdP refresh). It takes effect on the next request. |
+| **IdP-confirmed refresh** | Checking with the IdP that the account still exists before extending a session. | Each refresh of an SSO session redeems the IdP refresh token, stored encrypted with a key derived from the client secret. A refusal ends the session. An unreachable IdP doesn't: availability over strictness. |
 | **Single-flight refresh** | When many requests fail at once, run one refresh and let the rest wait on it. | `refreshSession()` in `frontend/src/api/client.ts`, so a busy page doesn't trip reuse detection by itself. |
 | **httpOnly cookie** | A cookie that page script can't read. | Both session cookies, so cross-site scripting can't steal them. |
 | **Secure cookie** | A cookie sent only over HTTPS. | Defaults on in production only, because Python's and httpx's cookie jars won't send it over http even to localhost. `Settings.cookie_secure`. |

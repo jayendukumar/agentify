@@ -62,6 +62,14 @@ class SessionOut(BaseModel):
     ip: str | None = None
     user_agent: str | None = None
     current: bool = False
+    auth_method: str = "local"
+
+
+class LogoutResult(BaseModel):
+    """US37.7: after an SSO session, where to send the browser so the IdP
+    ends its own session too (RP-initiated logout); null otherwise."""
+
+    logout_url: str | None = None
 
 
 class RoleOption(BaseModel):
@@ -76,6 +84,9 @@ class AuthConfig(BaseModel):
     auth_mode: str
     environment: str
     roles: list[RoleOption]
+    # AUTH_MODE=oidc (US37.7): the button label and where it goes.
+    sso_name: str | None = None
+    sso_login_url: str | None = None
 
 
 class UserRolesUpdate(BaseModel):

@@ -1,8 +1,10 @@
 # Epic 37 -- Enterprise Identity, Roles & Segregation of Duties
 
-**Status: build steps 1-2 implemented. Step 1 (2026-10-14): US37.1-37.6,
-US37.14, US37.15. Step 2 (2026-10-15): US37.12-37.13, sessions. Open:
-US37.7-37.11 (SSO, MFA, SCIM, group mappings).** Groomed from the
+**Status: build steps 1-3 implemented. Step 1 (2026-10-14): US37.1-37.6,
+US37.14, US37.15. Step 2 (2026-10-15): US37.12-37.13, sessions. Step 3
+(2026-10-15): US37.7-37.8, OIDC sign-in and MFA, plus the IdP parts of
+US37.12-37.13. Open: US37.9 (SAML), US37.10-37.11 (SCIM, group mappings
+in the database).** Groomed from the
 enterprise-readiness ask: SSO with the customer's IdP, SCIM provisioning,
 roles that match the work, segregation of duties, and short, revocable
 sessions. Built in `app/auth/` (permissions, sod, audit, views),
@@ -17,6 +19,13 @@ detection, revocation), `app/api/auth.py` (`/refresh`, own sessions),
 `app/api/governance.py` (admin session endpoints) and migration
 `c8d9e0f1a2b3`. Frontend: refresh-on-401 and the CSRF header in
 `api/client.ts`, a Sessions page, and a sessions panel on Users.
+
+Step 3 is built in `app/auth/oidc.py` (discovery, JWKS, token and logout
+token validation, MFA, groups to roles) and `app/api/oidc.py` (`/login`,
+`/callback`, `/backchannel-logout`), with migration `d9e0f1a2b3c4`
+(`user_identities`, `oidc_login_requests`, IdP details on sessions).
+Keycloak runs locally via `docker-compose.sso.yml` / `start.ps1 -Sso`.
+The realm, its people and a live smoke test are in `testing/keycloak/`.
 
 Deviations from the stories below, decided while building:
 - US37.5's trigger is a per-organization / per-business-unit approval
@@ -38,10 +47,19 @@ Deviations from the stories below, decided while building:
 - `Secure` cookies default on only in production (`AUTH_COOKIE_SECURE`),
   because Python's and httpx's cookie jars won't send them over http,
   even to localhost.
-- Deferred to step 3, because they need an IdP: confirming the account
-  with the IdP refresh token on refresh, OIDC back-channel logout and
-  SAML Single Logout (US37.12/US37.13). The Users page shows each user's
-  roles, but the IdP groups they came from wait for US37.11.
+- Step 3 built the IdP parts of US37.12/US37.13 too: each refresh of an
+  SSO session redeems the IdP refresh token (stored encrypted), and the
+  session ends if the IdP refuses it. If the IdP is unreachable, the
+  session continues. OIDC back-channel logout revokes the matching
+  sessions. SAML Single Logout waits for US37.9.
+- Group-to-role mappings come from configuration (`OIDC_GROUP_ROLES`)
+  until US37.11 moves them into a table with an admin UI and preview.
+  Group-granted roles are read-only on the Users page and survive an
+  admin's role edits, as US37.11 asks.
+- MFA is verified from `acr` as well as `amr`. Keycloak signals it with
+  a level of authentication mapped to `acr` "mfa" (`AUTH_MFA_ACR_VALUES`).
+- `POST /api/auth/logout` returns 200 with the IdP's `logout_url`
+  (RP-initiated logout) instead of 204.
 - The frontend shows or hides actions by permissions held at *any*
   scope. A business-unit-scoped user sees enabled buttons on another
   unit's process and gets the server's 403 with a plain reason.

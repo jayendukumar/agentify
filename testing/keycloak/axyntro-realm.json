@@ -1,0 +1,373 @@
+{
+  "realm": "axyntro",
+  "displayName": "Meridian (local Keycloak)",
+  "enabled": true,
+  "sslRequired": "none",
+  "loginWithEmailAllowed": true,
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyLookAheadWindow": 1,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 43200,
+  "accessTokenLifespan": 300,
+  "browserFlow": "browser-mfa",
+  "groups": [
+    {
+      "name": "axyntro-admins",
+      "path": "/axyntro-admins"
+    },
+    {
+      "name": "axyntro-process-owners",
+      "path": "/axyntro-process-owners"
+    },
+    {
+      "name": "axyntro-auditors",
+      "path": "/axyntro-auditors"
+    },
+    {
+      "name": "axyntro-architects",
+      "path": "/axyntro-architects"
+    },
+    {
+      "name": "axyntro-analysts",
+      "path": "/axyntro-analysts"
+    },
+    {
+      "name": "axyntro-approvers",
+      "path": "/axyntro-approvers"
+    }
+  ],
+  "users": [
+    {
+      "username": "sam",
+      "email": "sam@meridian.example",
+      "emailVerified": true,
+      "firstName": "Sam",
+      "lastName": "Okafor",
+      "enabled": true,
+      "groups": [
+        "/axyntro-admins"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Axyntro!2026",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Authenticator app (seeded)",
+          "secretData": "{\"value\": \"axyntro-dev-otp-sam0\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "olivia",
+      "email": "olivia@meridian.example",
+      "emailVerified": true,
+      "firstName": "Olivia",
+      "lastName": "Brandt",
+      "enabled": true,
+      "groups": [
+        "/axyntro-process-owners"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Axyntro!2026",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Authenticator app (seeded)",
+          "secretData": "{\"value\": \"axyntro-dev-otp-oliv\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "morgan",
+      "email": "morgan@meridian.example",
+      "emailVerified": true,
+      "firstName": "Morgan",
+      "lastName": "Reyes",
+      "enabled": true,
+      "groups": [
+        "/axyntro-auditors"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Axyntro!2026",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Authenticator app (seeded)",
+          "secretData": "{\"value\": \"axyntro-dev-otp-morg\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "arjun",
+      "email": "arjun@meridian.example",
+      "emailVerified": true,
+      "firstName": "Arjun",
+      "lastName": "Mehta",
+      "enabled": true,
+      "groups": [
+        "/axyntro-architects",
+        "/axyntro-analysts",
+        "/axyntro-approvers"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Axyntro!2026",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Authenticator app (seeded)",
+          "secretData": "{\"value\": \"axyntro-dev-otp-arju\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "ana",
+      "email": "ana@meridian.example",
+      "emailVerified": true,
+      "firstName": "Ana",
+      "lastName": "Costa",
+      "enabled": true,
+      "groups": [
+        "/axyntro-analysts"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Axyntro!2026",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Authenticator app (seeded)",
+          "secretData": "{\"value\": \"axyntro-dev-otp-ana0\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "avery",
+      "email": "avery@meridian.example",
+      "emailVerified": true,
+      "firstName": "Avery",
+      "lastName": "Lindqvist",
+      "enabled": true,
+      "groups": [
+        "/axyntro-approvers"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Axyntro!2026",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "Authenticator app (seeded)",
+          "secretData": "{\"value\": \"axyntro-dev-otp-aver\"}",
+          "credentialData": "{\"subType\": \"totp\", \"digits\": 6, \"counter\": 0, \"period\": 30, \"algorithm\": \"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "nina",
+      "email": "nina@meridian.example",
+      "emailVerified": true,
+      "firstName": "Nina",
+      "lastName": "Patel",
+      "enabled": true,
+      "groups": [
+        "/axyntro-analysts"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Axyntro!2026",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "axyntro",
+      "name": "Axyntro",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "axyntro-dev-only-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "redirectUris": [
+        "http://localhost:8000/api/auth/oidc/callback",
+        "http://127.0.0.1:8000/api/auth/oidc/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://127.0.0.1:3000/*",
+        "backchannel.logout.url": "http://api:8000/api/auth/oidc/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "acr.loa.map": "{\"pwd\": 1, \"mfa\": 2}"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "browser-mfa",
+      "description": "SSO cookie, or the forms below",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false,
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "userSetupAllowed": false,
+          "flowAlias": "browser-mfa forms",
+          "requirement": "ALTERNATIVE",
+          "priority": 20
+        }
+      ]
+    },
+    {
+      "alias": "browser-mfa forms",
+      "description": "Level 1: password. Level 2 (acr mfa): one-time code",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "userSetupAllowed": false,
+          "flowAlias": "browser-mfa level 1",
+          "requirement": "CONDITIONAL",
+          "priority": 10
+        },
+        {
+          "authenticatorFlow": true,
+          "autheticatorFlow": true,
+          "userSetupAllowed": false,
+          "flowAlias": "browser-mfa level 2",
+          "requirement": "CONDITIONAL",
+          "priority": 20
+        }
+      ]
+    },
+    {
+      "alias": "browser-mfa level 1",
+      "description": "Password",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false,
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "level-1",
+          "requirement": "REQUIRED",
+          "priority": 10
+        },
+        {
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false,
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 20
+        }
+      ]
+    },
+    {
+      "alias": "browser-mfa level 2",
+      "description": "One-time code",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false,
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "level-2",
+          "requirement": "REQUIRED",
+          "priority": 10
+        },
+        {
+          "authenticatorFlow": false,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false,
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "level-1",
+      "config": {
+        "loa-condition-level": "1",
+        "loa-max-age": "36000"
+      }
+    },
+    {
+      "alias": "level-2",
+      "config": {
+        "loa-condition-level": "2",
+        "loa-max-age": "0"
+      }
+    }
+  ]
+}

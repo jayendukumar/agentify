@@ -92,6 +92,7 @@ import type {
   AuditEvent,
   AuditFilters,
   AuthConfig,
+  LogoutResult,
   GovernanceSettings,
   RunComparison,
   SessionInfo,
@@ -328,9 +329,16 @@ export function setGovernanceSettings(settings: GovernanceSettings): Promise<Gov
   return request('/api/organization/governance', { method: 'PUT', body: JSON.stringify(settings) })
 }
 
-export async function logout(): Promise<void> {
-  await request('/api/auth/logout', { method: 'POST' })
+export async function logout(): Promise<LogoutResult> {
+  const result = await request<LogoutResult>('/api/auth/logout', { method: 'POST' })
   csrfToken = null
+  return result
+}
+
+// Epic 37, US37.7: a full-page navigation, not a fetch -- the API sends the
+// browser on to the IdP, which sends it back to the API's callback.
+export function ssoLoginUrl(loginPath: string, returnTo: string): string {
+  return `${API_BASE_URL}${loginPath}?${new URLSearchParams({ return_to: returnTo })}`
 }
 
 export async function getCurrentUser(): Promise<SignedInUser | null> {

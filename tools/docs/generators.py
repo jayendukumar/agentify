@@ -56,7 +56,8 @@ DOMAINS: dict[str, list[str]] = {
     ],
     "Process twin (Epic 36)": ["process_operating_models", "process_twin_batches"],
     "Identity and access (Epics 9-10, 37)": [
-        "users", "user_roles", "sessions", "session_tokens", "contributions", "approvals", "audit_events",
+        "users", "user_roles", "user_identities", "sessions", "session_tokens", "oidc_login_requests",
+        "contributions", "approvals", "audit_events",
     ],
     "Platform (Epic 31)": ["jobs"],
 }

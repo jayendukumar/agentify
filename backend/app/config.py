@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -111,8 +112,46 @@ class Settings(BaseSettings):
     # without auth configuration fails closed.
     environment: Literal["development", "test", "demo", "production"] = "development"
     auth_mode: Literal["local", "oidc", "saml"] = "local"
-    # US37.8: only takes effect once SSO lands; refused as false in production.
+    # US37.8: SSO sign-ins must show MFA was used; refused as false in production.
     auth_require_mfa: bool = True
+    # What counts as MFA: any of these `amr` values in the ID token, or an
+    # `acr` in auth_mfa_acr_values (e.g. a Keycloak level of authentication
+    # mapped to "mfa").
+    auth_mfa_amr_values: list[str] = Field(default_factory=lambda: ["mfa", "otp", "hwk", "swk"])
+    auth_mfa_acr_values: list[str] = Field(default_factory=list)
+
+    # US37.7: OpenID Connect sign-in (AUTH_MODE=oidc). The API runs the
+    # whole exchange; the browser only ever sees our own session cookies.
+    # `oidc_issuer` must equal the ID token's `iss` exactly.
+    oidc_issuer: str = ""
+    # Where the API fetches the discovery document. Defaults to the
+    # issuer's; set it when the API reaches the IdP by another address
+    # than browsers do (Keycloak in docker compose: http://keycloak:8080).
+    oidc_discovery_url: str = ""
+    oidc_client_id: str = ""
+    # The *name* of the environment variable holding the client secret --
+    # the same convention as connectors' `token_env`.
+    oidc_client_secret_env: str = "OIDC_CLIENT_SECRET"
+    oidc_redirect_uri: str = "http://localhost:8000/api/auth/oidc/callback"
+    oidc_scopes: str = "openid profile email"
+    # Shown on the sign-in button: "Sign in with <oidc_display_name>".
+    oidc_display_name: str = "single sign-on"
+    # Sent as `acr_values` on every sign-in, to ask the IdP for MFA.
+    oidc_acr_values: str = ""
+    oidc_groups_claim: str = "groups"
+    # Create the user at first sign-in. Off: only users already known (by
+    # issuer + subject) may sign in.
+    oidc_jit_provisioning: bool = True
+    # Until US37.11's admin-managed mappings: IdP group -> roles, each
+    # "role" (organization-wide) or "role@<business unit name>". JSON, e.g.
+    # '{"axyntro-approvers": ["approver"], "retail-analysts": ["analyst@Retail Banking"]}'.
+    oidc_group_roles: dict[str, list[str]] = Field(default_factory=dict)
+    # Where the browser lands after signing in or out.
+    frontend_url: str = "http://localhost:3000"
+
+    @property
+    def oidc_client_secret(self) -> str:
+        return os.environ.get(self.oidc_client_secret_env, "")
     # US37.12: a sign-in lasts `auth_session_max_hours` at most, and ends
     # sooner after `auth_idle_timeout_minutes` without a request. The
     # session cookie itself is good for `auth_access_token_minutes`; the
@@ -142,12 +181,19 @@ class Settings(BaseSettings):
                 "as anyone with any role. Configure single sign-on (AUTH_MODE=oidc or saml), or set ENVIRONMENT "
                 "to development, test or demo if this is not a production deployment."
             )
-        if self.auth_mode in ("oidc", "saml"):
-            # Epic 37 build order: SSO (US37.7-37.9) isn't built yet. Refusing
+        if self.auth_mode == "saml":
+            # Epic 37 build order: SAML (US37.9) isn't built yet. Refusing
             # here beats starting up with a sign-in page that can't work.
-            raise ValueError(
-                f"AUTH_MODE={self.auth_mode} is not available in this build yet -- use AUTH_MODE=local outside production"
-            )
+            raise ValueError("AUTH_MODE=saml is not available in this build yet -- use AUTH_MODE=oidc")
+        if self.auth_mode == "oidc":
+            missing = [name for name, value in (("OIDC_ISSUER", self.oidc_issuer), ("OIDC_CLIENT_ID", self.oidc_client_id))
+                       if not value]
+            if not self.oidc_client_secret:
+                missing.append(f"{self.oidc_client_secret_env} (named by OIDC_CLIENT_SECRET_ENV)")
+            if missing:
+                raise ValueError(f"AUTH_MODE=oidc needs {', '.join(missing)}")
+            if self.auth_require_mfa and not (self.auth_mfa_amr_values or self.auth_mfa_acr_values):
+                raise ValueError("AUTH_REQUIRE_MFA is on but AUTH_MFA_AMR_VALUES and AUTH_MFA_ACR_VALUES are both empty")
         if self.environment == "production" and not self.auth_require_mfa:
             raise ValueError("AUTH_REQUIRE_MFA=false is not allowed with ENVIRONMENT=production")
         return self

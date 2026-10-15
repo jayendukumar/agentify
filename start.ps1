@@ -10,7 +10,11 @@ param(
     # With -Demo: seed the Epics 27-35 demo story once the API is up.
     [switch]$Seed,
     # With -Demo: seed the Epic 36 "Invoice to Pay" process twin demo.
-    [switch]$SeedProcessTwin
+    [switch]$SeedProcessTwin,
+    # Epic 37: sign in through a local Keycloak (OIDC + MFA) instead of the
+    # name picker. See testing/keycloak/README.md. Run again without -Sso
+    # to switch back (that also stops Keycloak).
+    [switch]$Sso
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,6 +39,11 @@ if (-not (Test-Path -LiteralPath 'docker-compose.yml')) {
 
 if (-not (Test-Path -LiteralPath 'backend\.env')) {
     throw "backend\.env is missing. Copy backend\.env.example to backend\.env and add your OPENROUTER_API_KEY."
+}
+
+if ($Sso -and ($Seed -or $SeedProcessTwin)) {
+    # The seed scripts sign in with the local name picker, which SSO turns off.
+    throw 'Seed without -Sso first, then restart with -Sso.'
 }
 
 if (($ResetDemo -or $Seed -or $SeedProcessTwin) -and -not $Demo) {
@@ -75,7 +84,11 @@ if ($Demo) {
     }
 }
 
-$composeArgs = @('compose', 'up', '-d')
+$composeFiles = @('-f', 'docker-compose.yml')
+if ($Sso) {
+    $composeFiles += @('-f', 'docker-compose.sso.yml')
+}
+$composeArgs = @('compose') + $composeFiles + @('up', '-d', '--remove-orphans')
 if (-not $NoBuild) {
     $composeArgs += '--build'
 }
@@ -98,8 +111,11 @@ if ($Demo) {
 }
 Write-Host 'Frontend: http://localhost:3000'
 Write-Host 'API:      http://localhost:8000'
+if ($Sso) {
+    Write-Host 'Keycloak: http://localhost:8180 (sign-in people and their one-time codes: testing\keycloak\README.md)'
+}
 Write-Host ''
-Write-Host 'To stop it later, run: docker compose down'
+Write-Host "To stop it later, run: docker compose $($composeFiles -join ' ') down"
 
 if ($Seed -or $SeedProcessTwin) {
     # Migrations and the embedding model load before the API answers.

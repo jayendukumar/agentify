@@ -62,8 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
-    await apiLogout()
+    const { logout_url: idpLogout } = await apiLogout()
     setUser(null)
+    // Epic 37, US37.7: end the IdP session too, or "Sign in" would go
+    // straight back in without asking. The IdP returns the browser here.
+    if (idpLogout) window.location.assign(idpLogout)
   }
 
   const can = (permission: Permission) => userCan(user, permission)

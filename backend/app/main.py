@@ -22,6 +22,7 @@ from app.api import (
     evaluation,
     gap_analysis,
     governance,
+    oidc,
     orchestration,
     organization,
     process_twin,
@@ -123,6 +124,7 @@ app.add_middleware(
 app.middleware("http")(request_id_middleware)
 
 app.include_router(auth.router)
+app.include_router(oidc.router)
 app.include_router(governance.router)
 app.include_router(processes.router)
 app.include_router(documents.router)

@@ -41,7 +41,7 @@ def test_relogin_with_same_name_replaces_local_roles():
         first = sign_in(c, "bob", [])
         assert first.json()["roles"] == []
         assert c.post("/api/processes", json={"name": "Role check"}).status_code == 403
-        assert c.post("/api/auth/logout").status_code == 204
+        assert c.post("/api/auth/logout").status_code == 200
 
         second = sign_in(c, "bob", ["analyst"])
         assert second.json()["id"] == first.json()["id"]
@@ -54,7 +54,8 @@ def test_logout_clears_session():
         assert c.get("/api/auth/me").status_code == 200
 
         r = c.post("/api/auth/logout")
-        assert r.status_code == 204
+        assert r.status_code == 200
+        assert r.json() == {"logout_url": None}  # local sign-in: no IdP to sign out of
 
         assert c.get("/api/auth/me").status_code == 401
 

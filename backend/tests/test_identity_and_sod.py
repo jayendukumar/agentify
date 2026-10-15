@@ -248,9 +248,23 @@ def test_local_sign_in_is_refused_in_production():
         _settings(environment="production", auth_mode="local")
 
 
-def test_sso_modes_are_refused_until_built():
+def test_saml_is_refused_until_built():
     with pytest.raises(ValidationError, match="not available in this build"):
+        _settings(auth_mode="saml")
+
+
+def test_oidc_without_idp_configuration_is_refused(monkeypatch):
+    monkeypatch.delenv("OIDC_CLIENT_SECRET", raising=False)
+    with pytest.raises(ValidationError, match="OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET"):
         _settings(auth_mode="oidc")
+
+
+def test_oidc_with_idp_configuration_runs_in_production(monkeypatch):
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "s3cret")
+    settings = _settings(
+        environment="production", auth_mode="oidc", oidc_issuer="https://idp.example/realms/x", oidc_client_id="axyntro"
+    )
+    assert settings.oidc_client_secret == "s3cret"
 
 
 def test_unknown_environment_is_refused():

@@ -16,9 +16,13 @@ import { useAuth } from '../auth/AuthContext'
 import { grantLabel, ROLE_INFO } from '../auth/roles'
 import SessionList from '../components/SessionList'
 
+// Roles from IdP groups (Epic 37, US37.7) change in the directory, not
+// here: they're listed but not editable, and saving leaves them alone.
 function RoleEditor({ user, units, onSaved }: { user: User; units: ContextEntity[]; onSaved: (u: User) => void }) {
-  const [roles, setRoles] = useState<Role[]>(() => [...new Set(user.roles.map((g) => g.role))])
-  const [scope, setScope] = useState(() => user.roles.find((g) => g.scope_type === 'business_unit')?.scope_id ?? '')
+  const editable = user.roles.filter((g) => g.source !== 'group')
+  const fromGroups = user.roles.filter((g) => g.source === 'group')
+  const [roles, setRoles] = useState<Role[]>(() => [...new Set(editable.map((g) => g.role))])
+  const [scope, setScope] = useState(() => editable.find((g) => g.scope_type === 'business_unit')?.scope_id ?? '')
   const [message, setMessage] = useState<string | null>(null)
 
   async function save() {
@@ -38,6 +42,9 @@ function RoleEditor({ user, units, onSaved }: { user: User; units: ContextEntity
 
   return (
     <div className="registry-entry-actions">
+      {fromGroups.length > 0 && (
+        <span className="meta">From directory groups: {fromGroups.map(grantLabel).join(', ')}.</span>
+      )}
       {ROLE_INFO.map((info) => (
         <label key={info.value} className="check-row" title={info.description}>
           <input
