@@ -101,6 +101,20 @@ function AppHeader() {
   )
 }
 
+// Epic 38, US38.8: the hosting company's support is in, under a grant.
+function SupportBanner() {
+  const { user } = useAuth()
+  if (!user?.support) return null
+  const expires = user.support.expires_at
+  const until = new Date(expires.endsWith('Z') ? expires : `${expires}Z`).toLocaleString()
+  return (
+    <p className="support-banner" role="note">
+      Support session ({user.support.access === 'read' ? 'read-only' : 'can edit'}), granted by {user.support.granted_by},
+      until {until}. Everything you do here is in this organization's audit log.
+    </p>
+  )
+}
+
 // Epic 37, US37.14: local sign-in lets anyone be anyone, so every page says so.
 function LocalAuthBanner() {
   const [mode, setMode] = useState<string | null>(null)
@@ -145,6 +159,7 @@ export default function App() {
       <div className="app-shell">
         <a href="#main-content" className="skip-link">Skip to main content</a>
         <AppHeader />
+        <SupportBanner />
         <LocalAuthBanner />
         <div className="app">
           <main id="main-content" tabIndex={-1}>

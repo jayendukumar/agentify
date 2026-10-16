@@ -13,6 +13,10 @@
 # uses realm "axyntro" through the OIDC_* variables below; Northwind uses
 # realm "northwind" through its own settings, which start.ps1 -Sso saves
 # (python -m app.tenancy identity set northwind ...).
+#
+# US38.8: a third realm, "platform", is the hosting company's own IdP for
+# the operator console (http://ops.localhost:3000); only members of
+# platform-operators get in.
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0.7
@@ -53,6 +57,13 @@ services:
       # Northwind's client secret, referenced from its settings as
       # env:TENANT_NORTHWIND_OIDC_CLIENT_SECRET (a tenant may only name its own).
       TENANT_NORTHWIND_OIDC_CLIENT_SECRET: northwind-dev-only-secret
+      OPERATOR_AUTH_MODE: oidc
+      OPERATOR_OIDC_ISSUER: http://localhost:8180/realms/platform
+      OPERATOR_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/platform/.well-known/openid-configuration
+      OPERATOR_OIDC_CLIENT_ID: axyntro-ops
+      OPERATOR_OIDC_CLIENT_SECRET: platform-dev-only-secret
+      OPERATOR_OIDC_ACR_VALUES: mfa
+      OPERATOR_MFA_ACR_VALUES: '["mfa"]'
       OIDC_GROUP_ROLES: >-
         {"axyntro-admins": ["admin"], "axyntro-process-owners": ["process_owner"],
         "axyntro-auditors": ["auditor"], "axyntro-architects": ["architect"],

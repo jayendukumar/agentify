@@ -529,6 +529,16 @@ button:disabled {
   text-align: center;
 }
 
+.support-banner {
+  margin: 0;
+  padding: 0.4rem 1rem;
+  background: var(--axyntro-warning-bg);
+  border-bottom: 2px solid var(--axyntro-warning, #c58a00);
+  color: var(--ink);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
 .local-auth-banner {
   padding: 0.2rem 1rem;
   background: var(--axyntro-warning-bg);

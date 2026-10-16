@@ -3,16 +3,24 @@ from typing import Annotated
 import logging
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.auth import audit, oidc, sessions
+from app.auth import audit, oidc, sessions, support
 from app.auth.permissions import ROLE_LABELS, ROLE_PERMISSIONS, Role
 from app.auth.views import user_out
 from app.config import get_settings
 from app.db import repository
-from app.db.models import ContextEntityModel, SessionModel, UserModel
-from app.schemas.auth import AuthConfig, LoginRequest, LogoutResult, RoleOption, SessionOut, SignedInUser
+from app.db.models import ContextEntityModel, SessionModel, SupportGrantModel, UserModel
+from app.schemas.auth import (
+    AuthConfig,
+    LoginRequest,
+    LogoutResult,
+    RoleOption,
+    SessionOut,
+    SignedInUser,
+    SupportSessionInfo,
+)
 from app.tenancy.identity import IdentityConfig, get_identity
 
 from .deps import CurrentSessionDep, DbDep
@@ -26,12 +34,15 @@ IdentityDep = Annotated[IdentityConfig, Depends(get_identity)]
 
 
 def signed_in_user(db: Session, user: UserModel, record: SessionModel) -> SignedInUser:
+    grant = db.get(SupportGrantModel, record.support_grant_id) if record.support_grant_id else None
     return SignedInUser(
         **user_out(db, user).model_dump(),
         csrf_token=record.csrf_token,
         session_id=record.id,
         session_expires_at=record.expires_at,
         idle_timeout_minutes=get_settings().auth_idle_timeout_minutes,
+        support=SupportSessionInfo(access=grant.access, expires_at=grant.expires_at, granted_by=grant.granted_by_name)
+        if grant else None,
     )
 
 
@@ -161,6 +172,24 @@ def logout(
     )
     sessions.clear_cookies(response)
     return LogoutResult(logout_url=logout_url)
+
+
+@router.get("/support/enter")
+def support_enter(token: str, db: DbDep, request: Request, config: IdentityDep) -> Response:
+    """Epic 38, US38.8: an operator arrives from the console with a one-time
+    link (valid for a minute) and gets a support session in this tenant,
+    under the grant the link was made for. Refusals redirect to the sign-in
+    page and are audited here."""
+    frontend = config.frontend_url.rstrip("/")
+    try:
+        entered = support.enter(db, token, request)
+    except support.SupportRefused as exc:
+        audit.record(db, actor=None, actor_name="operator (support)", action="support_session_started",
+                     outcome="refused", request=request, detail={"reason": str(exc)})
+        return RedirectResponse(f"{frontend}/?auth_error=support_refused", status.HTTP_302_FOUND)
+    response = RedirectResponse(f"{frontend}/", status.HTTP_302_FOUND)
+    sessions.set_cookies(response, entered.issued)
+    return response
 
 
 @router.get("/me", response_model=SignedInUser)

@@ -79,7 +79,7 @@ def _broken_links() -> list[str]:
 
 def _undocumented() -> list[str]:
     problems = [f"table '{t}' isn't in a domain in tools/docs/generators.py DOMAINS" for t in unmapped_tables()]
-    problems += [f"table '{t}' has no tenant_id: add TenantScoped (Epic 38) or list it in PLATFORM_TABLES"
+    problems += [f"table '{t}' has no tenant_id: add TenantScoped (Epic 38) or list it in PLATFORM_TABLES/OPERATOR_TABLES"
                  for t in unisolated_tables()]
     from .generators import _PURPOSE
 

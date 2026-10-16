@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**226 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**243 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -34,6 +34,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | POST | `/api/auth/refresh` | public | US37.12: swaps the refresh cookie for a new pair. No CSRF header: after a page reload the frontend doesn't have the token yet -- this is how |
 | GET | `/api/auth/sessions` | signed in | US37.13: a user sees where they're signed in. |
 | DELETE | `/api/auth/sessions/{session_id}` | signed in | US37.13: a user ends one of their own sessions -- this one included, which signs them out here. |
+| GET | `/api/auth/support/enter` | public | Epic 38, US38.8: an operator arrives from the console with a one-time link (valid for a minute) and gets a support session in this tenant, u |
 
 ### batches
 
@@ -129,6 +130,9 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/directory/scim` | `users.manage` |  |
 | POST | `/api/directory/scim/tokens` | `users.manage` | The token is in this response only; afterwards just its hash exists. |
 | DELETE | `/api/directory/scim/tokens/{token_id}` | `users.manage` |  |
+| GET | `/api/directory/support-grants` | `users.manage` |  |
+| POST | `/api/directory/support-grants` | `users.manage` | Lets the hosting company's support in, until it expires or is revoked. |
+| POST | `/api/directory/support-grants/{grant_id}/revoke` | `users.manage` |  |
 
 ### documents
 
@@ -196,6 +200,24 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | Method | Path | Access | What it does |
 |---|---|---|---|
 | GET | `/api/jobs` | signed in | US31.1: what the queue is doing. |
+
+### operator
+
+| Method | Path | Access | What it does |
+|---|---|---|---|
+| GET | `/api/host` | public | Public: tells the frontend whether to show a tenant's app or the operator console on this host. |
+| GET | `/api/operator/audit` | public |  |
+| GET | `/api/operator/config` | public |  |
+| POST | `/api/operator/login` | public | Development only (OPERATOR_AUTH_MODE=local, refused in production). |
+| POST | `/api/operator/logout` | public |  |
+| GET | `/api/operator/me` | public |  |
+| GET | `/api/operator/oidc/callback` | public | Every refusal is returned, not raised, so its audit event commits. |
+| GET | `/api/operator/oidc/login` | public |  |
+| GET | `/api/operator/tenants` | public |  |
+| POST | `/api/operator/tenants` | public | A tenant and its first host. Its first admin and IdP come with US38.12; until then `python -m app.tenancy identity set`. |
+| GET | `/api/operator/tenants/{tenant_id}/support-grants` | public |  |
+| POST | `/api/operator/tenants/{tenant_id}/support-grants/{grant_id}/enter` | public | A one-time link (a minute) into the tenant's own host, under the grant. |
+| POST | `/api/operator/tenants/{tenant_id}/{action}` | public |  |
 
 ### oracles
 

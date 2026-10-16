@@ -7,8 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
-from app.db.models import PLATFORM_TABLES, Base, JobModel, ProcessModel, UserModel
-from app.db.session import get_engine, get_owner_engine, get_session_factory
+from app.db.models import NON_TENANT_TABLES, OPERATOR_TABLES, PLATFORM_TABLES, Base, JobModel, ProcessModel, UserModel
+from app.db.session import get_engine, get_owner_engine, get_platform_session_factory, get_session_factory
 from app.jobs import queue
 from app.jobs.worker import handler, run_pending
 from app.main import app
@@ -35,7 +35,7 @@ def _client(host: str, name: str = "someone", roles=None) -> TestClient:
 # ---- US38.2: every table, enforced by the database ---------------------------------
 
 
-TENANT_TABLES = sorted(name for name in Base.metadata.tables if name not in PLATFORM_TABLES)
+TENANT_TABLES = sorted(name for name in Base.metadata.tables if name not in NON_TENANT_TABLES)
 
 
 def test_every_tenant_table_has_the_column_in_the_model():
@@ -95,6 +95,25 @@ def test_the_app_role_is_held_to_row_level_security_and_cannot_write_platform_ta
             assert conn.scalar(text(f"SELECT has_table_privilege('{table}', 'SELECT')"))
             assert not conn.scalar(text(f"SELECT has_table_privilege('{table}', 'INSERT, UPDATE, DELETE, TRUNCATE')"))
         assert not conn.scalar(text("SELECT has_table_privilege('processes', 'TRUNCATE')"))
+        # US38.8: the operator console's tables are out of the app's reach entirely.
+        for table in OPERATOR_TABLES:
+            assert not conn.scalar(text(f"SELECT has_table_privilege('{table}', 'SELECT, INSERT, UPDATE, DELETE')"))
+
+
+def test_the_platform_role_cannot_touch_any_tenant_table():
+    """US38.8: the operator console's connection has no privilege on tenant
+    data at all, row-level security or not, and can't bypass it."""
+    with get_platform_session_factory()() as db:
+        role = db.execute(text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")).one()
+        assert (role.rolsuper, role.rolbypassrls) == (False, False)
+        readable = [
+            t for t in TENANT_TABLES
+            if db.scalar(text(f"SELECT has_table_privilege('{t}', 'SELECT, INSERT, UPDATE, DELETE')"))
+        ]
+        assert readable == []
+        assert db.scalar(text("SELECT has_table_privilege('tenants', 'INSERT, UPDATE')"))
+        assert not db.scalar(text("SELECT has_table_privilege('tenants', 'DELETE, TRUNCATE')"))
+        assert not db.scalar(text("SELECT has_table_privilege('platform_audit_events', 'UPDATE, DELETE')"))
 
 
 def test_without_a_tenant_nothing_is_visible_and_nothing_can_be_written(client):

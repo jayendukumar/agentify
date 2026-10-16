@@ -121,3 +121,27 @@ class ConnectionTestOut(BaseModel):
     signing_keys: int = 0
     secret_configured: bool = False
     problems: list[str] = Field(default_factory=list)
+
+
+class SupportGrantIn(BaseModel):
+    """Epic 38, US38.8: let the hosting company's support in."""
+
+    access: Literal["read", "write"] = "read"
+    hours: int = Field(ge=1)
+    # Only this operator; empty: any of the hosting company's operators.
+    operator_email: str | None = None
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class SupportGrantOut(BaseModel):
+    id: str
+    access: Literal["read", "write"]
+    operator_email: str | None
+    reason: str
+    granted_by: str
+    created_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None
+    revoked_by: str | None
+    active: bool
+    live_sessions: int

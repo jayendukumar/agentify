@@ -28,6 +28,12 @@ os.environ.setdefault("TENANT_DEFAULT_SLUG", "test")
 os.environ.setdefault(
     "DATABASE_OWNER_URL", "postgresql+psycopg://agentic:agentic@127.0.0.1:5432/agentic_solution_generator_test"
 )
+# Epic 38, US38.8: the operator console's role, on the same test database
+# and port as DATABASE_URL.
+os.environ.setdefault(
+    "DATABASE_PLATFORM_URL",
+    os.environ["DATABASE_URL"].replace("axyntro_app:axyntro_app@", "axyntro_platform:axyntro_platform@"),
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

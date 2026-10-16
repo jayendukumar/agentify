@@ -42,6 +42,15 @@ the environment variables.
 The two realms don't know each other's people: Sam can't sign in to
 Northwind, and Nora can't sign in to Meridian.
 
+Epic 38, US38.8: a third realm, `platform`, is the hosting company's own
+IdP for the operator console (http://ops.localhost:3000). Only members of
+`platform-operators` get in.
+
+| Username | Groups (realm platform) | In the console | Authenticator secret (base32) |
+|---|---|---|---|
+| `otto` | platform-operators | Operator | `MF4HS3TUOJXS2ZDFOYWW65DQFVXXI5DP` |
+| `petra` | (none) | Refused: not an operator | `MF4HS3TUOJXS2ZDFOYWW65DQFVYGK5DS` |
+
 To get a one-time code, add the person's secret to an authenticator app
 (Google Authenticator, Microsoft Authenticator, 1Password). The secret is
 `axyntro-dev-otp-<username>`, cut or zero-padded to exactly 20 characters and then
@@ -110,7 +119,11 @@ does exactly that for `olivia`.
 python testing/keycloak/smoke_sso.py    # sign-in, MFA, logout, sessions
 python testing/keycloak/smoke_scim.py   # SCIM provisioning and group mappings
 python testing/tenancy/smoke_tenant_sso.py   # Epic 38: Northwind through its own realm
+python testing/tenancy/smoke_operator.py     # Epic 38: the operator console and support access
 ```
+
+Run them a minute apart if they sign in the same person: Keycloak refuses
+a one-time code that was already used.
 
 `smoke_sso.py` signs in through Keycloak's real pages (a password, then a
 computed one-time code) and checks:

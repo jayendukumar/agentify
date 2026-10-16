@@ -53,6 +53,10 @@ class Base(DeclarativeBase):
 # Epic 38, US38.1: the only tables without a tenant. Operator-only: the API
 # reads them to resolve a request's host, and never writes them.
 PLATFORM_TABLES = frozenset({"tenants", "tenant_domains"})
+# US38.8: the operator console's own tables. No tenant, and the app role
+# has no access to them at all; only the platform role does.
+OPERATOR_TABLES = frozenset({"operators", "operator_sessions", "operator_login_requests", "platform_audit_events"})
+NON_TENANT_TABLES = PLATFORM_TABLES | OPERATOR_TABLES
 
 
 class TenantModel(Base):
@@ -79,6 +83,75 @@ class TenantDomainModel(Base):
     host: Mapped[str] = mapped_column(String, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class OperatorModel(Base):
+    """Epic 38, US38.8: a person at the hosting company, known by the
+    platform IdP's (issuer, subject). Not a user of any tenant."""
+
+    __tablename__ = "operators"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    issuer: Mapped[str] = mapped_column(String, nullable=False)
+    subject: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_sign_in_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    __table_args__ = (UniqueConstraint("issuer", "subject", name="uq_operators_identity"),)
+
+
+class OperatorSessionModel(Base):
+    """Epic 38, US38.8: an operator's sign-in to the console. One cookie
+    (only its hash is stored), a fixed lifetime, and a CSRF token like
+    tenant sessions. A platform session: it opens no tenant."""
+
+    __tablename__ = "operator_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    operator_id: Mapped[str] = mapped_column(ForeignKey("operators.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    csrf_token: Mapped[str] = mapped_column(String, nullable=False)
+    auth_method: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # The hint the platform IdP's logout needs, after an SSO sign-in.
+    idp_id_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    operator: Mapped[OperatorModel] = relationship()
+
+
+class OperatorLoginRequestModel(Base):
+    """Epic 38, US38.8: an operator's sign-in in flight (as
+    OidcLoginRequestModel is for a tenant's)."""
+
+    __tablename__ = "operator_login_requests"
+
+    state_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    nonce: Mapped[str] = mapped_column(String, nullable=False)
+    code_verifier: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+
+
+class PlatformAuditEventModel(Base):
+    """Epic 38, US38.8: what operators did -- sign-ins, tenants created,
+    suspended or deleted, support sessions opened. Names tenants by id and
+    slug, never their content. What an operator does *inside* a tenant
+    is in that tenant's own audit log."""
+
+    __tablename__ = "platform_audit_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    operator_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    operator_name: Mapped[str] = mapped_column(String, nullable=False)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    outcome: Mapped[str] = mapped_column(String, nullable=False, default="success", server_default="success")
+    tenant_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    ip: Mapped[str | None] = mapped_column(String, nullable=True)
+    detail: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class TenantScoped:
@@ -560,6 +633,11 @@ class SessionModel(TenantScoped, Base):
     idp_sid: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     idp_id_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     idp_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Epic 38, US38.8: an operator's support session, alive only while
+    # this grant is (checked on every request, app/auth/support.py).
+    support_grant_id: Mapped[str | None] = mapped_column(
+        ForeignKey("support_grants.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     user: Mapped[UserModel] = relationship()
 
@@ -663,6 +741,45 @@ class GroupRoleMappingModel(TenantScoped, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "group", "role", "scope_type", "scope_id", name="uq_group_role_mappings_tenant"),
     )
+
+
+class SupportGrantModel(TenantScoped, Base):
+    """Epic 38, US38.8: a tenant admin lets the hosting company's support
+    in, for a set time. `access` is `read` (look, change nothing; the
+    default) or `write` (also edit processes and agents -- never manage
+    users, sign-in, support grants, or approve). `operator_email` limits
+    it to one operator; empty means any. Ends at `expires_at` or when
+    revoked, and every support session under it ends with it."""
+
+    __tablename__ = "support_grants"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    access: Mapped[str] = mapped_column(String, nullable=False, default="read")
+    operator_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    reason: Mapped[str] = mapped_column(String, nullable=False)
+    granted_by_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    granted_by_name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    revoked_by_name: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class SupportEntryModel(TenantScoped, Base):
+    """Epic 38, US38.8: the one-time link that takes an operator from the
+    console into the tenant's own host under a grant. Written by the
+    console (as the tenant, after checking the grant), redeemed once
+    within a minute on the tenant's host. Only the hash is stored."""
+
+    __tablename__ = "support_entries"
+
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    grant_id: Mapped[str] = mapped_column(ForeignKey("support_grants.id", ondelete="CASCADE"), index=True)
+    operator_id: Mapped[str] = mapped_column(String, nullable=False)
+    operator_name: Mapped[str] = mapped_column(String, nullable=False)
+    operator_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
 
 
 class TenantIdentityModel(TenantScoped, Base):

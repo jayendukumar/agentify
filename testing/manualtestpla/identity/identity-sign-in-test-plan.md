@@ -209,6 +209,31 @@ with password `Axyntro!2026`. Their authenticator secrets are in
 If a save ever locks an organization out:
 `docker compose exec api python -m app.tenancy identity reset northwind`.
 
+## Part 5 -- The operator console and support access (Epic 38, US38.8)
+
+### Setup
+
+`.\start.ps1 -Sso`. The console is at http://ops.localhost:3000; operators
+sign in through realm `platform` (`otto` is an operator, `petra` isn't).
+Without `-Sso`, operators sign in by name (development only).
+
+### Test cases
+
+| ID | Steps | Expected |
+|---|---|---|
+| O-01 | Open http://ops.localhost:3000 and sign in as `otto` | The Tenants page: Meridian and Northwind with hosts, status and counts, and no process names or other content |
+| O-02 | Sign in as `petra` | Refused: "Your account isn't in the platform operators' group" |
+| O-03 | Open http://ops.localhost:8000/api/processes, and http://northwind.localhost:8000/api/operator/config | Both 404: tenant routes don't exist on the console's host, nor the console's on a tenant's |
+| O-04 | Create tenant `acme` with host `acme.localhost`; open http://acme.localhost:3000 | The new tenant answers (no sign-in set up yet); the platform audit log shows `tenant_created` |
+| O-05 | Suspend `acme`, then open http://acme.localhost:3000 | "This account is suspended"; Delete appears, and needs a second click to confirm |
+| O-06 | In the console, open Northwind's **Support** | "No support access granted to you" |
+| O-07 | As `nora` on Northwind: **Directory** → **Support access**, reason "Ticket 1", read-only, 2 hours, grant | Listed as active, for any operator |
+| O-08 | In the console: Northwind's **Support** → **Open as support** | Northwind's app opens as "Otto Operator (support)", with the yellow support banner (read-only, until ...) |
+| O-09 | As support, try to create a process | Refused: read-only support access |
+| O-10 | As Nora, open **Audit log** | `support_session_started` and one `support_request` per request, with Otto's email |
+| O-11 | As Nora, **Revoke** the grant, then click anything in Otto's window | Otto's support session ends (sign-in page) |
+| O-12 | Run `python testing/tenancy/smoke_operator.py` | `15/15 passed` |
+
 ## Automated coverage behind this plan
 
 - Backend: `tests/test_identity_and_sod.py`, `test_sessions.py`,

@@ -2,8 +2,9 @@
 
 **Status: build step 1 implemented (2026-10-15): US38.1-38.5, the tenant
 boundary. Step 2 in progress: US38.6 (each tenant's own IdP) implemented
-2026-10-15, US38.7 (SCIM and logout stay inside the tenant) 2026-10-16;
-open: US38.8-38.15. Decisions confirmed 2026-10-15
+2026-10-15, US38.7 (SCIM and logout stay inside the tenant) and US38.8
+(operator console, support access) 2026-10-16. Step 2 is complete; open:
+US38.9-38.15. Decisions confirmed 2026-10-15
 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
@@ -226,6 +227,63 @@ Deviations and decisions:
 - **Keycloak's local users have fixed IDs** in the realm files, so
   re-importing a realm keeps each person's `sub`; otherwise every
   re-import made new users at the next sign-in.
+
+## US38.8 as built
+
+- **Operator console** on its own host (`OPERATOR_HOSTS`, locally
+  `ops.localhost`), which reaches no tenant: the middleware answers only
+  `/api/operator/*` and `/api/host` there, and `/api/operator/*` answers
+  on no tenant's host. `app/operators/`, `app/api/operator.py`, and a
+  lazily loaded frontend (`frontend/src/operator/`) chosen by
+  `GET /api/host`.
+- **Operators** sign in through the platform's IdP (`OPERATOR_OIDC_*`;
+  locally Keycloak realm `platform`) with MFA, and only members of
+  `OPERATOR_GROUP`. Their sessions, sign-ins in flight and the platform
+  audit log are platform tables (`OPERATOR_TABLES`).
+- **A third database role**, `axyntro_platform` (migration
+  `b4c5d6e7f8a9`), for the console: it may write `tenants` and
+  `tenant_domains` and its own tables, has *no privilege on any tenant
+  table*, and no BYPASSRLS. `tests/test_tenancy.py` checks every tenant
+  table against it.
+- **Tenants:** list (hosts, status, and usage as counts), create (slug,
+  name, host, region), suspend, activate, delete.
+- **Support access** (`app/auth/support.py`): a tenant admin grants it on
+  the Directory page (`support_grants`, a tenant row): read-only by
+  default, or "can edit"; for a number of hours (at most
+  `SUPPORT_MAX_HOURS`, 72); optionally for one operator's email. The
+  operator opens it from the console, which checks the grant *as the
+  tenant* and writes a one-time entry (`support_entries`, a minute); the
+  browser redeems it on the tenant's own host, which starts a tenant
+  session for a support user (`actor_type` "support"). Every request in
+  that session re-checks the grant, refuses writes under a read-only
+  grant, and is written to the tenant's audit log with the operator's
+  email.
+- **Tests.** `tests/test_operator_console.py` (17), and the schema test
+  for the platform role. Live: `testing/tenancy/smoke_operator.py`
+  (15/15) against Keycloak realms `platform` and `northwind`.
+
+Deviations and decisions:
+
+- **Delete only marks the tenant `deleting`** (unreachable, data kept).
+  Removing the data, with export, a waiting period and a certificate, is
+  US38.13; the platform role deliberately can't delete `tenants` rows.
+- **Usage counts are computed as each tenant**, by the app role under
+  its row-level security, one short session per tenant: the platform
+  role can't read tenant tables at all, and a cross-tenant view would
+  need a role that can. Counts only: users, processes, waiting jobs,
+  last sign-in, live support grants. Cost per tenant comes with usage
+  records (US38.9).
+- **Support roles come from the grant:** read-only gets Auditor, "can
+  edit" gets Analyst, Architect, Process Owner and Auditor. Never Admin
+  or Approver, so support can't widen its own access, change sign-in, or
+  approve. The Users page refuses to change a support user's roles, and
+  an admin who deactivates the support user keeps that operator out
+  even under a live grant.
+- **The console is closed by default** (`OPERATOR_AUTH_MODE=none`).
+  Docker Compose sets `local` (a name, for development; refused in
+  production) and `-Sso` sets `oidc`.
+- **Creating a tenant doesn't yet hand it to a first admin**; that's
+  US38.12. Until then `python -m app.tenancy identity set`.
 
 ## User Stories
 

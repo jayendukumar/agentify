@@ -1014,6 +1014,8 @@ export interface User {
   // US37.13 / US37.11: only on the Users list.
   active_sessions?: number | null
   groups?: string[] | null
+  // Epic 38, US38.8: only for the signed-in user, in a support session.
+  support?: SupportSessionInfo | null
 }
 
 // Epic 37, US37.10-37.11: the Directory page.
@@ -1114,6 +1116,39 @@ export interface SignedInUser extends User {
   session_id: string
   session_expires_at: string
   idle_timeout_minutes: number
+}
+
+// Epic 38, US38.8: the hosting company's support, under a grant.
+export interface SupportSessionInfo {
+  access: 'read' | 'write'
+  expires_at: string
+  granted_by: string
+}
+
+export interface SupportGrantInput {
+  access: 'read' | 'write'
+  hours: number
+  operator_email: string | null
+  reason: string
+}
+
+export interface SupportGrant {
+  id: string
+  access: 'read' | 'write'
+  operator_email: string | null
+  reason: string
+  granted_by: string
+  created_at: string
+  expires_at: string
+  revoked_at: string | null
+  revoked_by: string | null
+  active: boolean
+  live_sessions: number
+}
+
+export interface HostKind {
+  kind: 'tenant' | 'operator'
+  name: string | null
 }
 
 // US37.13: one live sign-in.

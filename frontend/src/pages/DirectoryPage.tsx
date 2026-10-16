@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import {
   ApiError,
   createScimToken,
@@ -12,6 +12,9 @@ import {
   getIdentitySettings,
   saveIdentitySettings,
   testIdentitySettings,
+  grantSupport,
+  listSupportGrants,
+  revokeSupport,
 } from '../api/client'
 import type {
   ConnectionTest,
@@ -24,6 +27,8 @@ import type {
   RoleGrantChange,
   ScimSetup,
   ScimTokenIssued,
+  SupportGrant,
+  SupportGrantInput,
 } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { ROLE_INFO, roleLabel } from '../auth/roles'
@@ -181,6 +186,93 @@ function IdentitySection() {
           Save sign-in settings
         </button>
       </div>
+    </section>
+  )
+}
+
+const NEW_GRANT: SupportGrantInput = { access: 'read', hours: 24, operator_email: null, reason: '' }
+
+// Epic 38, US38.8: let the hosting company's support in, for a set time.
+// Read-only unless the admin says otherwise; never admin or approver.
+function SupportSection() {
+  const [grants, setGrants] = useState<SupportGrant[] | null>(null)
+  const [form, setForm] = useState<SupportGrantInput>(NEW_GRANT)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = () =>
+    listSupportGrants().then(setGrants).catch((err) => setError(errorText(err, 'Failed to load support access')))
+  useEffect(() => {
+    load()
+  }, [])
+
+  async function grant(event: FormEvent) {
+    event.preventDefault()
+    setError(null)
+    try {
+      await grantSupport({ ...form, operator_email: form.operator_email?.trim() || null })
+      setForm(NEW_GRANT)
+      await load()
+    } catch (err) {
+      setError(errorText(err, 'Could not grant support access'))
+    }
+  }
+
+  async function revoke(id: string) {
+    setError(null)
+    try {
+      await revokeSupport(id)
+      await load()
+    } catch (err) {
+      setError(errorText(err, 'Could not revoke support access'))
+    }
+  }
+
+  const active = grants?.filter((g) => g.active) ?? []
+  return (
+    <section>
+      <h2>Support access</h2>
+      <p className="meta">
+        The hosting company's support can't see your data unless you let them in here, for a set time. Read-only support
+        can look but change nothing; support that can edit works on processes and agents, but never manages users,
+        sign-in or approvals. Everything they do is in your audit log.
+      </p>
+      {error && <p className="error" role="alert">{error}</p>}
+      {active.length === 0 ? (
+        <p className="meta">No support access right now.</p>
+      ) : (
+        <ul>
+          {active.map((g) => (
+            <li key={g.id}>
+              {g.access === 'read' ? 'Read-only' : 'Can edit'} for {g.operator_email ?? 'any operator'}, until{' '}
+              {when(g.expires_at)} (granted by {g.granted_by}: <em>{g.reason}</em>)
+              {g.live_sessions > 0 && ` -- ${g.live_sessions} support session(s) open`}{' '}
+              <button type="button" className="button-secondary" onClick={() => revoke(g.id)}>Revoke</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="identity-form" onSubmit={grant} aria-label="Grant support access">
+        <label>
+          Reason
+          <input value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="Ticket 4711: batch results look wrong" required minLength={3} />
+        </label>
+        <label>
+          Access
+          <select value={form.access} onChange={(e) => setForm({ ...form, access: e.target.value as 'read' | 'write' })}>
+            <option value="read">Read-only</option>
+            <option value="write">Can edit processes and agents</option>
+          </select>
+        </label>
+        <label>
+          For (hours)
+          <input type="number" min={1} value={form.hours} onChange={(e) => setForm({ ...form, hours: Number(e.target.value) })} />
+        </label>
+        <label>
+          Only this operator (email, optional)
+          <input type="email" value={form.operator_email ?? ''} onChange={(e) => setForm({ ...form, operator_email: e.target.value })} />
+        </label>
+        <div className="registry-entry-actions"><button type="submit">Grant support access</button></div>
+      </form>
     </section>
   )
 }
@@ -456,6 +548,7 @@ export default function DirectoryPage() {
     <div className="page">
       <h1>Directory</h1>
       <IdentitySection />
+      <SupportSection />
       <ScimSection />
       <MappingsSection />
     </div>

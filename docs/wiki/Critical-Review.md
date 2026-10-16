@@ -60,7 +60,9 @@ fixable without rethinking the product.
    tenant, and Postgres row-level security, not the application, keeps
    each tenant's rows invisible to the others; a test probes every route
    with another tenant's ids. Each tenant signs in through its own IdP.
-   Still shared per deployment: registries, the model provider's key, connector
+   Operators work in a separate console, through a database role that
+   can't read tenant tables, and enter a tenant only as support under a
+   grant its admin gave. Still shared per deployment: registries, the model provider's key, connector
    secrets, uploaded files and the logs. The job queue walks tenants in
    turn but has no quotas. Foreign keys aren't tenant-aware: Postgres
    checks them without row-level security, so a route that doesn't look

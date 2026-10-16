@@ -17,7 +17,7 @@ from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.db.models import PLATFORM_TABLES, Base
+from app.db.models import NON_TENANT_TABLES, Base
 from app.db.session import get_owner_engine
 from app.llm.client import get_llm_client
 from app.main import app
@@ -81,7 +81,7 @@ def _tenant_a_digest() -> dict[str, str]:
     """Every row of tenant A, per table, as a hash."""
     digest = {}
     with get_owner_engine().connect() as conn:
-        for table in sorted(set(Base.metadata.tables) - PLATFORM_TABLES):
+        for table in sorted(set(Base.metadata.tables) - NON_TENANT_TABLES):
             digest[table] = conn.scalar(
                 text(f'SELECT md5(coalesce(string_agg(t::text, \'|\' ORDER BY t::text), \'\')) FROM "{table}" t WHERE tenant_id = :t'),
                 {"t": TEST_TENANT_ID},

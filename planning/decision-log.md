@@ -3553,3 +3553,59 @@ files now have fixed IDs (the subjects the local database already held).
 The same run showed a second trap: signing the same person in twice
 within 30 seconds reuses their one-time code, which Keycloak refuses,
 so the smoke test waits for the next code.
+
+## 2026-10-16 -- Epic 38, US38.8: the operator console and support access
+
+### The console connects as a third role that can't read tenant tables
+
+"No standing access" could have been met with the app role (operators
+see nothing because no tenant is set) or with the owner. Both can read
+tenant tables the moment a tenant *is* set, or bypass row-level security.
+The console instead connects as `axyntro_platform`, which has privileges
+only on the platform tables and none on any tenant table. So a bug in
+the console can't read tenant data at all, row-level security or not,
+and the schema test checks that for every table. The platform role
+can't delete `tenants` rows either: deletion with evidence is US38.13.
+
+### New platform tables needed an explicit REVOKE
+
+Migration `f2a3b4c5d6e7` set default privileges so every *future* table
+grants the app role full access, which suits tenant tables, whose
+row-level security does the rest. The operator tables have no tenant and
+no policy, so by default the app role could have read every operator's
+session hash. Migration `b4c5d6e7f8a9` revokes them, and the schema test
+asserts the app role has no privilege on any operator table.
+
+### Usage counts run as each tenant, not as the platform
+
+The console shows counts per tenant (users, processes, waiting jobs, last
+sign-in). The platform role can't read tenant tables, and a cross-tenant
+aggregate would need a role that can. So the console counts by opening a
+short app-role session as each tenant in turn, under that tenant's
+row-level security, and returns only the numbers. It's one query batch
+per tenant per page view, acceptable until tenant counts say otherwise.
+
+### Support is an ordinary tenant session, entered through a one-time link
+
+A support session had to live on the tenant's host, because cookies are
+host-only and the tenant's frontend calls its own host. The console
+checks the grant as the tenant and writes a one-time entry (a minute,
+stored as a hash); the operator's browser redeems it on the tenant's
+host, which starts a normal session for a "support" user. That keeps
+every existing rule in force (row-level security, permissions, session
+expiry), with three additions checked on every request: the grant must
+still be alive, a read-only grant refuses writes, and the request is
+audited in the tenant's log in its own transaction, so a refused or
+failed request is still recorded. Roles come from the grant and never
+include Admin or Approver.
+
+### Keycloak sent one back-channel token for a user with two sessions
+
+Found live: after the operator smoke test left Nora signed in, the next
+run's admin sign-out of Nora ended both of her Keycloak sessions but
+sent a single logout token, for the older session. The newer Axyntro
+session stayed until its next refresh, which asks Keycloak and fails, so
+it ends within the 15-minute access window rather than at once. Our
+endpoint revokes by `sid` when the token has one, as the spec says. The
+smoke test now signs its people out at the end; a `sub`-wide revocation
+on admin sign-outs would be the fix if this matters for real IdPs.

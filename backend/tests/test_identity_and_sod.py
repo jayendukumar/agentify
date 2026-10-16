@@ -47,6 +47,8 @@ def test_every_write_route_declares_a_permission():
             continue
         if not (route.methods - {"GET", "HEAD", "OPTIONS"}) or route.path.startswith("/api/auth/"):
             continue
+        if route.path.startswith("/api/operator/"):
+            continue  # Epic 38, US38.8: operators, not tenant roles (tests/test_operator_console.py)
         checked += 1
         calls = []
         stack = list(route.dependant.dependencies)

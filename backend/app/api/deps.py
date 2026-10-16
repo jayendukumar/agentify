@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.auth import audit, sessions, sod
+from app.auth import audit, sessions, sod, support
 from app.auth.permissions import Permission, has_permission, missing_permission_message
 from app.db.models import ProcessModel, SessionModel, UserModel
 from app.db.session import get_db
@@ -45,6 +45,8 @@ def get_current_session(
             detail="Missing or outdated CSRF token -- reload the page and try again",
             headers={"X-Auth-Error": "csrf"},
         )
+    if record.support_grant_id is not None:
+        support.check(db, record, request)  # Epic 38, US38.8: grant alive, read-only, audited
     return record
 
 

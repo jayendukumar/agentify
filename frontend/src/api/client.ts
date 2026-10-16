@@ -99,6 +99,9 @@ import type {
   IdentitySettings,
   IdentitySettingsInput,
   ConnectionTest,
+  HostKind,
+  SupportGrant,
+  SupportGrantInput,
   KnownGroup,
   RoleChange,
   ScimSetup,
@@ -131,7 +134,7 @@ import type {
 // the login screen. Defaulting to the page's own hostname keeps the API
 // on the same site as the frontend regardless of which of the two the
 // browser was actually pointed at.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`
 
 export class ApiError extends Error {
   status: number
@@ -304,6 +307,26 @@ export function testIdentitySettings(settings: IdentitySettingsInput): Promise<C
 
 export function saveIdentitySettings(settings: IdentitySettingsInput): Promise<IdentitySettings> {
   return request('/api/directory/identity', { method: 'PUT', body: JSON.stringify(settings) })
+}
+
+// Epic 38, US38.8: support access for the hosting company.
+export function listSupportGrants(): Promise<SupportGrant[]> {
+  return request('/api/directory/support-grants')
+}
+
+export function grantSupport(grant: SupportGrantInput): Promise<SupportGrant> {
+  return request('/api/directory/support-grants', { method: 'POST', body: JSON.stringify(grant) })
+}
+
+export function revokeSupport(grantId: string): Promise<SupportGrant> {
+  return request(`/api/directory/support-grants/${grantId}/revoke`, { method: 'POST' })
+}
+
+// Which app this host serves: a tenant's, or the operator console (US38.8).
+export async function getHostKind(): Promise<HostKind> {
+  const response = await fetch(`${API_BASE_URL}/api/host`, { credentials: 'include' })
+  if (!response.ok) throw new ApiError(response.status, response.statusText)
+  return response.json()
 }
 
 export function getScimSetup(): Promise<ScimSetup> {

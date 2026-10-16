@@ -51,6 +51,10 @@ def list_users(db: DbDep, user: UsersManageDep) -> list[UserOut]:
 @router.put("/users/{user_id}/roles", response_model=UserOut)
 def set_user_roles(user_id: str, body: UserRolesUpdate, db: DbDep, request: Request, user: UsersManageDep) -> UserOut:
     target = _get_user(db, user_id)
+    if target.actor_type == "support":
+        # Epic 38, US38.8: a support user's roles come from the support grant.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            detail="Support users get their roles from the support grant -- change the grant instead")
     for grant in body.roles:
         if grant.scope_type == "business_unit":
             unit = db.get(ContextEntityModel, grant.scope_id)

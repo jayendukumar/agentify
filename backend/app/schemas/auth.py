@@ -47,6 +47,15 @@ class UserOut(BaseModel):
     groups: list[str] | None = None
 
 
+class SupportSessionInfo(BaseModel):
+    """Epic 38, US38.8: this session is the hosting company's support,
+    under a grant (shown as a banner)."""
+
+    access: Literal["read", "write"]
+    expires_at: datetime
+    granted_by: str
+
+
 class SignedInUser(UserOut):
     """US37.12: what sign-in, refresh and /me return to the signed-in user
     themselves -- their CSRF token for writes, and when the session ends."""
@@ -55,6 +64,7 @@ class SignedInUser(UserOut):
     session_id: str
     session_expires_at: datetime
     idle_timeout_minutes: int
+    support: SupportSessionInfo | None = None
 
 
 class SessionOut(BaseModel):

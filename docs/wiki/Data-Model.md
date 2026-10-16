@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-15 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**63 tables, 697 columns (92 JSON), 160 foreign keys, 35 Alembic migrations.**
+**69 tables, 746 columns (93 JSON), 166 foreign keys, 36 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -528,6 +528,7 @@ erDiagram
     sessions {
         string id PK
         string user_id FK
+        string support_grant_id FK
     }
     session_tokens {
         string token_hash PK
@@ -556,6 +557,14 @@ erDiagram
         json mfa_amr_values
         json mfa_acr_values
     }
+    support_grants {
+        string id PK
+        string granted_by_id FK
+    }
+    support_entries {
+        string token_hash PK
+        string grant_id FK
+    }
     contributions {
         bigint seq PK
         string actor_id FK
@@ -569,8 +578,10 @@ erDiagram
         string id PK
         json detail
     }
+    support_grants o|--o{ sessions : "support_grant_id"
     sessions ||--o{ session_tokens : "session_id"
     directory_groups ||--o{ directory_group_members : "group_id"
+    support_grants ||--o{ support_entries : "grant_id"
 ```
 
 ### Platform (Epics 31, 38)
@@ -592,7 +603,23 @@ erDiagram
         string host PK
         string tenant_id FK
     }
+    operators {
+        string id PK
+        string name
+    }
+    operator_sessions {
+        string id PK
+        string operator_id FK
+    }
+    operator_login_requests {
+        string state_hash PK
+    }
+    platform_audit_events {
+        string id PK
+        json detail
+    }
     tenants ||--o{ tenant_domains : "tenant_id"
+    operators ||--o{ operator_sessions : "operator_id"
 ```
 <!-- END GENERATED: er-diagrams -->
 
@@ -1496,6 +1523,7 @@ Epic 37, US37.12: one sign-in on one browser. `id` isn't a secret -- it's what t
 | `idp_sid` | string | yes | indexed |
 | `idp_id_token` | text | yes |  |
 | `idp_refresh_token` | text | yes |  |
+| `support_grant_id` | string | yes | -> `support_grants.id` (cascade); indexed |
 
 #### `session_tokens` (SessionTokenModel)
 
@@ -1592,6 +1620,37 @@ Epic 38, US38.6: how this tenant's people sign in -- its own IdP, MFA rules and 
 | `scim_link_claim` | string | no |  |
 | `updated_at` | datetime | no |  |
 | `updated_by` | string | yes |  |
+
+#### `support_grants` (SupportGrantModel)
+
+Epic 38, US38.8: a tenant admin lets the hosting company's support in, for a set time. `access` is `read` (look, change nothing; the default) or `write` (also edit processes and agents -- never manage users, sign-in, support grants, or approve). `operator_email` limits it to one operator; empty means any. Ends at `expires_at` or when revoked, and every support session under it ends with it.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `access` | string | no |  |
+| `operator_email` | string | yes |  |
+| `reason` | string | no |  |
+| `granted_by_id` | string | yes | -> `users.id` (set null) |
+| `granted_by_name` | string | no |  |
+| `created_at` | datetime | no |  |
+| `expires_at` | datetime | no |  |
+| `revoked_at` | datetime | yes |  |
+| `revoked_by_name` | string | yes |  |
+
+#### `support_entries` (SupportEntryModel)
+
+Epic 38, US38.8: the one-time link that takes an operator from the console into the tenant's own host under a grant. Written by the console (as the tenant, after checking the grant), redeemed once within a minute on the tenant's host. Only the hash is stored.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `token_hash` | string | no | primary key |
+| `grant_id` | string | no | -> `support_grants.id` (cascade); indexed |
+| `operator_id` | string | no |  |
+| `operator_name` | string | no |  |
+| `operator_email` | string | yes |  |
+| `created_at` | datetime | no |  |
+| `expires_at` | datetime | no |  |
 
 #### `contributions` (ContributionModel)
 
@@ -1692,4 +1751,60 @@ Epic 38, US38.1: a host name that reaches a tenant, matched without the port (`m
 | `host` | string | no | primary key |
 | `tenant_id` | string | no | -> `tenants.id` (cascade); indexed |
 | `created_at` | datetime | no |  |
+
+#### `operators` (OperatorModel)
+
+Epic 38, US38.8: a person at the hosting company, known by the platform IdP's (issuer, subject). Not a user of any tenant.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `issuer` | string | no |  |
+| `subject` | string | no |  |
+| `name` | string | no |  |
+| `email` | string | yes |  |
+| `created_at` | datetime | no |  |
+| `last_sign_in_at` | datetime | yes |  |
+
+#### `operator_sessions` (OperatorSessionModel)
+
+Epic 38, US38.8: an operator's sign-in to the console. One cookie (only its hash is stored), a fixed lifetime, and a CSRF token like tenant sessions. A platform session: it opens no tenant.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `operator_id` | string | no | -> `operators.id` (cascade); indexed |
+| `token_hash` | string | no |  |
+| `csrf_token` | string | no |  |
+| `auth_method` | string | no |  |
+| `created_at` | datetime | no |  |
+| `expires_at` | datetime | no |  |
+| `revoked_at` | datetime | yes |  |
+| `idp_id_token` | text | yes |  |
+
+#### `operator_login_requests` (OperatorLoginRequestModel)
+
+Epic 38, US38.8: an operator's sign-in in flight (as OidcLoginRequestModel is for a tenant's).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `state_hash` | string | no | primary key |
+| `nonce` | string | no |  |
+| `code_verifier` | string | no |  |
+| `created_at` | datetime | no |  |
+
+#### `platform_audit_events` (PlatformAuditEventModel)
+
+Epic 38, US38.8: what operators did -- sign-ins, tenants created, suspended or deleted, support sessions opened. Names tenants by id and slug, never their content. What an operator does *inside* a tenant is in that tenant's own audit log.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `occurred_at` | datetime | no | indexed |
+| `operator_id` | string | yes |  |
+| `operator_name` | string | no |  |
+| `action` | string | no |  |
+| `outcome` | string | no |  |
+| `ip` | string | yes |  |
+| `detail` | json | no |  |
 <!-- END GENERATED: table-catalogue -->

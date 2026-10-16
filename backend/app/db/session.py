@@ -32,6 +32,17 @@ def get_session_factory() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), expire_on_commit=False)
 
 
+@lru_cache
+def get_platform_session_factory() -> sessionmaker[Session] | None:
+    """Epic 38, US38.8: the operator console's connection, as a role that
+    may write the platform tables and has no privilege on any tenant
+    table. None when DATABASE_PLATFORM_URL isn't set (no console)."""
+    url = get_settings().database_platform_url
+    if not url:
+        return None
+    return sessionmaker(bind=create_engine(url, pool_pre_ping=True), expire_on_commit=False)
+
+
 @event.listens_for(Session, "after_begin")
 def _set_transaction_tenant(session: Session, transaction: SessionTransaction, connection: Connection) -> None:
     """Epic 38, US38.3: every transaction runs as one tenant, and Postgres

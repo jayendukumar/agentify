@@ -58,9 +58,12 @@ DOMAINS: dict[str, list[str]] = {
     "Identity and access (Epics 9-10, 37, 38)": [
         "users", "user_roles", "user_identities", "sessions", "session_tokens", "oidc_login_requests",
         "scim_tokens", "directory_groups", "directory_group_members", "group_role_mappings", "tenant_identity",
-        "contributions", "approvals", "audit_events",
+        "support_grants", "support_entries", "contributions", "approvals", "audit_events",
     ],
-    "Platform (Epics 31, 38)": ["jobs", "tenants", "tenant_domains"],
+    "Platform (Epics 31, 38)": [
+        "jobs", "tenants", "tenant_domains", "operators", "operator_sessions", "operator_login_requests",
+        "platform_audit_events",
+    ],
 }
 
 
@@ -81,10 +84,10 @@ def unisolated_tables() -> list[str]:
     """Epic 38, US38.2: tables that are neither platform tables nor carry
     the tenant column -- row-level security can't apply to them."""
     _backend_on_path()
-    from app.db.models import PLATFORM_TABLES
+    from app.db.models import NON_TENANT_TABLES
 
     md = _metadata()
-    return sorted(t for t in md.tables if t not in PLATFORM_TABLES and "tenant_id" not in md.tables[t].c)
+    return sorted(t for t in md.tables if t not in NON_TENANT_TABLES and "tenant_id" not in md.tables[t].c)
 
 
 def unmapped_tables() -> list[str]:

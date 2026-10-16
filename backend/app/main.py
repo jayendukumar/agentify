@@ -17,6 +17,7 @@ from app.api import (
     catalog,
     connectors,
     datasets,
+    operator,
     oracles,
     chat,
     documents,
@@ -166,6 +167,8 @@ app.add_middleware(
 app.middleware("http")(request_id_middleware)
 
 app.include_router(auth.router)
+app.include_router(operator.router)
+app.include_router(operator.host_router)
 app.include_router(oidc.router)
 app.include_router(directory.router)
 app.include_router(scim.router)

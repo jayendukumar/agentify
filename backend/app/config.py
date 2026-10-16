@@ -180,6 +180,34 @@ class Settings(BaseSettings):
     # client.ts), so locally any <tenant>.localhost:3000 is an allowed origin.
     cors_origin_regex: str | None = r"^http://([a-z0-9-]+\.)?localhost:3000$"
 
+    # Epic 38, US38.8: the operator console. It answers only on these hosts,
+    # which reach no tenant, and connects to the database as its own role,
+    # which may write the platform tables and can't read any tenant table.
+    # Operators sign in through the platform's own IdP, with MFA, and must
+    # be in `operator_group`. `local` (a name, no password) is for
+    # development and refused in production, like AUTH_MODE=local; `none`
+    # (the default) keeps the console closed until it's configured.
+    operator_hosts: str = "ops.localhost"
+    database_platform_url: str | None = (
+        "postgresql+psycopg://axyntro_platform:axyntro_platform@127.0.0.1:5432/agentic_solution_generator"
+    )
+    operator_auth_mode: Literal["local", "oidc", "none"] = "none"
+    operator_oidc_issuer: str = ""
+    operator_oidc_discovery_url: str = ""
+    operator_oidc_client_id: str = ""
+    operator_oidc_client_secret_env: str = "OPERATOR_OIDC_CLIENT_SECRET"
+    operator_oidc_acr_values: str = ""
+    operator_mfa_amr_values: list[str] = Field(default_factory=lambda: ["mfa", "otp", "hwk", "swk"])
+    operator_mfa_acr_values: list[str] = Field(default_factory=list)
+    operator_group: str = "platform-operators"
+    operator_session_hours: int = Field(default=8, ge=1)
+    # The longest support grant a tenant admin can give.
+    support_max_hours: int = Field(default=72, ge=1)
+
+    @property
+    def operator_host_set(self) -> frozenset[str]:
+        return frozenset(h.strip().lower() for h in self.operator_hosts.split(",") if h.strip())
+
     @property
     def oidc_client_secret(self) -> str:
         return os.environ.get(self.oidc_client_secret_env, "")
@@ -227,6 +255,8 @@ class Settings(BaseSettings):
                 raise ValueError("AUTH_REQUIRE_MFA is on but AUTH_MFA_AMR_VALUES and AUTH_MFA_ACR_VALUES are both empty")
         if self.environment == "production" and not self.auth_require_mfa:
             raise ValueError("AUTH_REQUIRE_MFA=false is not allowed with ENVIRONMENT=production")
+        if self.environment == "production" and self.operator_auth_mode == "local":
+            raise ValueError("OPERATOR_AUTH_MODE=local is not allowed with ENVIRONMENT=production")
         return self
 
     @property

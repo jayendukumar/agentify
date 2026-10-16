@@ -5,15 +5,16 @@ this organization signs in with."""
 
 import hashlib
 import secrets
+from datetime import timedelta
 from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 
-from app.auth import audit, directory, oidc
+from app.auth import audit, directory, oidc, sessions, support
 from app.config import get_settings
-from app.db.models import ContextEntityModel, ScimTokenModel, TenantIdentityModel
+from app.db.models import ContextEntityModel, ScimTokenModel, SessionModel, SupportGrantModel, TenantIdentityModel
 from app.ids import new_id, utcnow
 from app.tenancy import identity
 from app.schemas.directory import (
@@ -30,6 +31,8 @@ from app.schemas.directory import (
     ScimTokenCreate,
     ScimTokenIssued,
     ScimTokenOut,
+    SupportGrantIn,
+    SupportGrantOut,
 )
 
 from .deps import DbDep, UsersManageDep
@@ -165,6 +168,60 @@ def revoke_scim_token(token_id: str, db: DbDep, request: Request, user: UsersMan
     row.revoked_at = utcnow().replace(tzinfo=None)
     audit.record(db, actor=user, action="scim_token_revoked", object_type="scim_token", object_id=row.id,
                  request=request, detail={"label": row.label})
+
+
+# ---- Epic 38, US38.8: support access ----------------------------------------------
+
+
+def _grant_out(db, row: SupportGrantModel) -> SupportGrantOut:
+    live = [r for r in db.scalars(select(SessionModel).where(SessionModel.support_grant_id == row.id))
+            if sessions.is_alive(r)] if support.is_alive(row) else []
+    return SupportGrantOut(
+        id=row.id, access=row.access, operator_email=row.operator_email, reason=row.reason,
+        granted_by=row.granted_by_name, created_at=row.created_at, expires_at=row.expires_at,
+        revoked_at=row.revoked_at, revoked_by=row.revoked_by_name, active=support.is_alive(row),
+        live_sessions=len(live),
+    )
+
+
+@router.get("/support-grants", response_model=list[SupportGrantOut])
+def list_support_grants(db: DbDep, user: UsersManageDep) -> list[SupportGrantOut]:
+    del user
+    rows = db.scalars(select(SupportGrantModel).order_by(SupportGrantModel.created_at.desc()).limit(50))
+    return [_grant_out(db, r) for r in rows]
+
+
+@router.post("/support-grants", response_model=SupportGrantOut, status_code=201)
+def grant_support(body: SupportGrantIn, db: DbDep, request: Request, user: UsersManageDep) -> SupportGrantOut:
+    """Lets the hosting company's support in, until it expires or is revoked."""
+    limit = get_settings().support_max_hours
+    if body.hours > limit:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Support access can last at most {limit} hours")
+    if user.actor_type == "support":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Support can't grant itself access")
+    now = utcnow().replace(tzinfo=None)
+    email = (body.operator_email or "").strip().lower() or None
+    row = SupportGrantModel(
+        id=new_id("support"), access=body.access, operator_email=email, reason=body.reason.strip(),
+        granted_by_id=user.id, granted_by_name=user.name, created_at=now, expires_at=now + timedelta(hours=body.hours),
+    )
+    db.add(row)
+    db.flush()
+    audit.record(db, actor=user, action="support_access_granted", object_type="support_grant", object_id=row.id,
+                 request=request, detail={"access": row.access, "hours": body.hours, "operator_email": email,
+                                          "reason": row.reason})
+    return _grant_out(db, row)
+
+
+@router.post("/support-grants/{grant_id}/revoke", response_model=SupportGrantOut)
+def revoke_support(grant_id: str, db: DbDep, request: Request, user: UsersManageDep) -> SupportGrantOut:
+    row = db.get(SupportGrantModel, grant_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No such support grant")
+    ended = support.revoke(db, row, user.name)
+    audit.record(db, actor=user, action="support_access_revoked", object_type="support_grant", object_id=row.id,
+                 request=request, detail={"sessions_ended": ended})
+    return _grant_out(db, row)
 
 
 @router.get("/groups", response_model=list[KnownGroup])

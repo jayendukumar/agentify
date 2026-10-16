@@ -153,6 +153,7 @@ else {
     & docker compose exec -T api python -m app.tenancy identity reset northwind | Out-Null
 }
 Write-Host 'Tenants:  http://meridian.localhost:3000 (same as localhost) and http://northwind.localhost:3000'
+Write-Host 'Operator console: http://ops.localhost:3000'
 if ($Sso) {
     Write-Host '          Each signs in through its own Keycloak realm (testing\keycloak\README.md).'
 }

@@ -17,6 +17,7 @@ const SSO_ERRORS: Record<string, string> = {
   state_mismatch: 'That sign-in was started in another browser or tab. Please sign in again.',
   expired: 'That sign-in expired. Please sign in again.',
   idp_error: 'Your identity provider cancelled or refused the sign-in.',
+  support_refused: "That support link didn't work: it was already used, expired, or the support grant has ended.",
   idp_unavailable: "The sign-in service can't be reached right now. Try again in a few minutes.",
 }
 const SSO_ERROR_FALLBACK = "Your sign-in couldn't be verified. Try again, and contact your administrator if it keeps happening."

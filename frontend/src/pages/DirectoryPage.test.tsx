@@ -14,6 +14,9 @@ const api = vi.hoisted(() => ({
   getIdentitySettings: vi.fn(),
   testIdentitySettings: vi.fn(),
   saveIdentitySettings: vi.fn(),
+  listSupportGrants: vi.fn(),
+  grantSupport: vi.fn(),
+  revokeSupport: vi.fn(),
 }))
 
 vi.mock('../api/client', async (importOriginal) => ({ ...(await importOriginal<object>()), ...api }))
@@ -38,6 +41,7 @@ beforeEach(() => {
   api.listKnownGroups.mockResolvedValue([{ name: 'axyntro-approvers', external_id: null, source: 'scim', members: 2 }])
   api.listContextEntities.mockResolvedValue([])
   api.getIdentitySettings.mockResolvedValue(identity)
+  api.listSupportGrants.mockResolvedValue([])
 })
 
 describe('Directory page (Epic 37, US37.10-37.11)', () => {
@@ -119,5 +123,30 @@ describe('Sign-in settings (Epic 38, US38.6)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }))
     expect(await screen.findByText(/connection test failed: Couldn't reach the IdP/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save sign-in settings' })).toBeDisabled()
+  })
+})
+
+describe('Support access (Epic 38, US38.8)', () => {
+  const grant = {
+    id: 'g1', access: 'read', operator_email: null, reason: 'Ticket 4711', granted_by: 'Nora Lund',
+    created_at: '2026-10-16T08:00:00', expires_at: '2026-10-17T08:00:00', revoked_at: null, revoked_by: null,
+    active: true, live_sessions: 1,
+  }
+
+  it('grants read-only access by default, for a set time, and can revoke it', async () => {
+    api.grantSupport.mockResolvedValue(grant)
+    api.revokeSupport.mockResolvedValue({ ...grant, active: false })
+    render(<DirectoryPage />)
+    expect(await screen.findByText('No support access right now.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Ticket 4711' } })
+    fireEvent.change(screen.getByLabelText('For (hours)'), { target: { value: '4' } })
+    api.listSupportGrants.mockResolvedValue([grant])
+    fireEvent.click(screen.getByRole('button', { name: 'Grant support access' }))
+    await waitFor(() => expect(api.grantSupport).toHaveBeenCalledWith({
+      access: 'read', hours: 4, operator_email: null, reason: 'Ticket 4711',
+    }))
+    expect(await screen.findByText(/1 support session\(s\) open/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }))
+    await waitFor(() => expect(api.revokeSupport).toHaveBeenCalledWith('g1'))
   })
 })
