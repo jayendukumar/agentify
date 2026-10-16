@@ -63,8 +63,10 @@ fixable without rethinking the product.
    Operators work in a separate console, through a database role that
    can't read tenant tables, and enter a tenant only as support under a
    grant its admin gave. Still shared per deployment: registries, the model provider's key, connector
-   secrets, uploaded files and the logs. The job queue walks tenants in
-   turn but has no quotas. Foreign keys aren't tenant-aware: Postgres
+   secrets, uploaded files and the logs. The job queue shares free
+   capacity round-robin across tenants, and each tenant has its own
+   limits (concurrent jobs, LLM requests per minute, a monthly LLM
+   budget) and usage records. Foreign keys aren't tenant-aware: Postgres
    checks them without row-level security, so a route that doesn't look
    its parent up first could link a row to another tenant's object (the
    probe found one, now fixed). (`app/tenancy`, Epic 38 steps 2-4)
@@ -87,8 +89,10 @@ fixable without rethinking the product.
    with request handling. A redeploy kills in-flight agent turns: leases
    recover the jobs, but a half-run case restarts, its cost is paid twice,
    and a partial trace can be left behind. Concurrency is a single number
-   per kind. There's no fair-share between tenants or processes, and no
-   back-pressure from the LLM provider beyond a semaphore.
+   per kind. Tenants get a fair share of it (Epic 38, US38.9), but
+   processes within a tenant don't, and there's no back-pressure from the
+   LLM provider beyond a semaphore and each tenant's requests per minute
+   (counted per process).
 6. **Run traces are rewritten on every step.** `on_step` does
    `run_model.steps = [*run_model.steps, step]` and commits. That makes each
    run O(n^2) bytes written, and one hot row per run. A 9-agent process

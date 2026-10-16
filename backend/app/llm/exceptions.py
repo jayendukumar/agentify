@@ -25,3 +25,8 @@ class LLMServerError(LLMError):
 class LLMPolicyError(LLMError):
     """Epic 31, US31.8: the business unit's model/provider policy forbids
     this call (provider not allowed, or residency not met)."""
+
+
+class LLMBudgetError(LLMError):
+    """Epic 38, US38.9: the tenant's monthly LLM budget is used up. Not
+    retryable until the month turns or an operator raises the budget."""

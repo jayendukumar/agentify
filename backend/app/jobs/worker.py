@@ -12,9 +12,15 @@ per-kind concurrency limit (`JOB_CONCURRENCY`, default 2 per kind).
 Epic 38, US38.3: jobs are tenant rows, invisible without a tenant. The
 worker walks the active tenants (a platform table), claims each one's due
 jobs as that tenant, and runs every job as its tenant. A suspended
-tenant's jobs wait. Each tick starts the walk one tenant further on, so
-no tenant is always first in line for free capacity; real fair share and
-quotas are US38.9.
+tenant's jobs wait.
+
+US38.9, fair share: free capacity is handed out one job per tenant per
+round, to the tenants with queued work, those with the fewest jobs
+running here first -- so a tenant with 10,000 queued jobs gets every
+other free slot, not all of them, and a tenant with one job gets the next
+slot that frees up. Within a tenant, jobs keep their priority and age
+order. A tenant's own limit on concurrent jobs is counted in the database
+(running jobs on every worker).
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ import socket
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings, settings_or_exit
@@ -33,6 +40,7 @@ from app.db.models import JobModel
 from app.db.session import get_session_factory
 from app.tenancy.context import tenant_scope
 from app.tenancy.hosts import active_tenant_ids
+from app.tenancy.limits import TenantLimits, active_tenant_limits
 
 from . import queue
 
@@ -66,6 +74,11 @@ def _load_handlers() -> None:
 def _active_tenants() -> list[str]:
     with get_session_factory()() as session:
         return active_tenant_ids(session)
+
+
+def _active_tenant_limits() -> list[TenantLimits]:
+    with get_session_factory()() as session:
+        return active_tenant_limits(session)
 
 
 async def run_job(job_id: str, tenant_id: str) -> None:
@@ -132,6 +145,7 @@ class Worker:
         self.concurrency = settings.job_concurrency
         self.lease_seconds = settings.job_lease_seconds
         self._running: dict[str, set[asyncio.Task]] = {}
+        self._by_tenant: dict[str, set[asyncio.Task]] = {}
         self._stopping = asyncio.Event()
         self._turn = 0
 
@@ -140,17 +154,30 @@ class Worker:
         tasks -= {t for t in tasks if t.done()}
         return self.concurrency - len(tasks)
 
+    def _running_here(self, tenant_id: str) -> int:
+        tasks = self._by_tenant.setdefault(tenant_id, set())
+        tasks -= {t for t in tasks if t.done()}
+        return len(tasks)
+
     async def tick(self) -> None:
         _load_handlers()
-        tenants = _active_tenants()
+        tenants = _active_tenant_limits()
         if not tenants:
             return
         self._turn = (self._turn + 1) % len(tenants)
-        for tenant_id in tenants[self._turn:] + tenants[: self._turn]:
-            with tenant_scope(tenant_id):
-                self._tick_tenant(tenant_id)
+        rotated = tenants[self._turn:] + tenants[: self._turn]
+        for limits in rotated:
+            with tenant_scope(limits.tenant_id):
+                self._prepare_tenant()
+        # Least served here first; the rotation breaks ties.
+        order = sorted(rotated, key=lambda t: self._running_here(t.tenant_id))
+        for job_id, kind, tenant_id in self._claim_fairly(order):
+            task = asyncio.create_task(run_job(job_id, tenant_id))
+            self._running.setdefault(kind, set()).add(task)
+            self._by_tenant.setdefault(tenant_id, set()).add(task)
 
-    def _tick_tenant(self, tenant_id: str) -> None:
+    def _prepare_tenant(self) -> None:
+        """Requeues the tenant's abandoned jobs and enqueues what's due."""
         from app.batches.service import enqueue_due_batches
         from app.connectors.jobs import enqueue_due_syncs
 
@@ -159,16 +186,48 @@ class Worker:
             queue.recover_expired(session, lease_seconds=self.lease_seconds)
             enqueue_due_syncs(session)
             enqueue_due_batches(session)
-            claimed: list[JobModel] = []
-            for kind in _HANDLERS:
-                claimed += queue.claim(session, self.worker_id, kinds=[kind], limit=self._capacity(kind))
             session.commit()
-            job_ids = [(job.id, job.kind) for job in claimed]
         finally:
             session.close()
-        for job_id, kind in job_ids:
-            task = asyncio.create_task(run_job(job_id, tenant_id))
-            self._running.setdefault(kind, set()).add(task)
+
+    def _claim_fairly(self, order: list[TenantLimits]) -> list[tuple[str, str, str]]:
+        """Round-robin: each round, every tenant still holding due work
+        claims one job of a kind with capacity left. A tenant drops out once
+        it has nothing due, or is at its own limit."""
+        free = {kind: self._capacity(kind) for kind in _HANDLERS}
+        claimed: list[tuple[str, str, str]] = []
+        waiting = list(order)
+        while waiting:
+            still_waiting = []
+            for limits in waiting:
+                kinds = [kind for kind, n in free.items() if n > 0]
+                if not kinds:
+                    return claimed
+                with tenant_scope(limits.tenant_id):
+                    job = self._claim_one(kinds, limits.max_concurrent_jobs)
+                if job is None:
+                    continue
+                free[job[1]] -= 1
+                claimed.append((*job, limits.tenant_id))
+                still_waiting.append(limits)
+            waiting = still_waiting
+        return claimed
+
+    def _claim_one(self, kinds: list[str], max_concurrent: int | None) -> tuple[str, str] | None:
+        session = get_session_factory()()
+        try:
+            if max_concurrent is not None:
+                # One claimer per tenant at a time, across workers, so two
+                # can't both take the last slot under the limit.
+                session.execute(text("SELECT pg_advisory_xact_lock(hashtext('jobs:' || app_current_tenant()))"))
+                running = session.scalar(select(func.count()).select_from(JobModel).where(JobModel.status == "running"))
+                if running >= max_concurrent:
+                    return None
+            jobs = queue.claim(session, self.worker_id, kinds=kinds, limit=1)
+            session.commit()
+            return (jobs[0].id, jobs[0].kind) if jobs else None
+        finally:
+            session.close()
 
     async def run(self) -> None:
         logger.info("job_worker_started", extra={"worker_id": self.worker_id})

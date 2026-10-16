@@ -2,6 +2,7 @@ from .client import LLMClient, get_llm_client
 from .exceptions import (
     LLMAuthenticationError,
     LLMBadRequestError,
+    LLMBudgetError,
     LLMError,
     LLMRateLimitError,
     LLMServerError,
@@ -24,6 +25,7 @@ __all__ = [
     "LLMError",
     "LLMAuthenticationError",
     "LLMBadRequestError",
+    "LLMBudgetError",
     "LLMRateLimitError",
     "LLMTimeoutError",
     "LLMServerError",

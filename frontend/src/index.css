@@ -539,6 +539,22 @@ button:disabled {
   text-align: center;
 }
 
+/* Epic 38, US38.9: the Usage page's limits. */
+.usage-limits {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.usage-limits dt {
+  color: var(--muted);
+}
+
+.usage-limits dd {
+  margin: 0;
+}
+
 .local-auth-banner {
   padding: 0.2rem 1rem;
   background: var(--axyntro-warning-bg);

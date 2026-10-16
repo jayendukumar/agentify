@@ -2118,3 +2118,47 @@ export interface EfficiencyReport {
   cases_detail: CaseEfficiency[]
   usd_to_currency: number
 }
+
+// Epic 38, US38.9: what this organization has used, against limits an
+// operator sets. null is "no limit".
+export interface TenantLimits {
+  max_concurrent_jobs: number | null
+  llm_requests_per_minute: number | null
+  llm_monthly_budget_usd: number | null
+}
+
+export interface BudgetState {
+  month: string
+  spent_usd: number
+  budget_usd: number | null
+  warn_at_usd: number | null
+  status: 'unlimited' | 'ok' | 'warning' | 'stopped'
+}
+
+export interface OperationUsage {
+  operation: string
+  model: string
+  calls: number
+  total_tokens: number
+  cost_usd: number
+  calls_without_cost: number
+}
+
+export interface MonthUsage {
+  month: string
+  calls: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cost_usd: number
+  calls_without_cost: number
+  operations: OperationUsage[]
+}
+
+export interface UsageOverview {
+  limits: TenantLimits
+  budget: BudgetState
+  jobs_running: number
+  jobs_queued: number
+  months: MonthUsage[]
+}

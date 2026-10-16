@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.tenancy.context import current_tenant_id
+
 from .types import Usage
 
 logger = logging.getLogger("app.llm.usage")
@@ -36,11 +38,14 @@ class UsageEvent:
     output_tokens: int
     total_tokens: int
     estimated_cost_usd: float | None
+    # Epic 38, US38.9: whose call it was; None outside any tenant (scripts).
+    tenant_id: str | None = None
 
     def to_json_line(self) -> str:
         return json.dumps(
             {
                 "timestamp": self.timestamp,
+                "tenant_id": self.tenant_id,
                 "operation": self.operation,
                 "model": self.model,
                 "input_tokens": self.input_tokens,
@@ -84,6 +89,7 @@ class UsageTracker:
             output_tokens=usage.output_tokens,
             total_tokens=usage.total_tokens,
             estimated_cost_usd=cost,
+            tenant_id=current_tenant_id(),
         )
         self._events.append(event)
 
@@ -100,6 +106,7 @@ class UsageTracker:
         logger.info(
             "llm_usage",
             extra={
+                "tenant_id": event.tenant_id,
                 "operation": operation,
                 "model": model,
                 "input_tokens": usage.input_tokens,

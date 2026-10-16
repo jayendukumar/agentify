@@ -31,6 +31,7 @@ from app.db.models import (
 )
 from app.ids import new_id, utcnow
 from app.jobs import queue
+from app.llm import metering
 from app.schemas.process_twin import (
     EfficiencyReport,
     NodeOperatingModel,
@@ -256,6 +257,10 @@ def gate_run(session: Session, run: SimulationRunModel) -> Literal["go", "wait",
     if batch.budget_usd is not None and sum(r.total_cost_usd or 0 for r in batch_runs(session, batch.id)) >= batch.budget_usd:
         batch.status = "stopped_budget"
         _cancel_pending(session, batch, f"Budget of ${batch.budget_usd:.2f} reached")
+        return "skip"
+    if metering.budget_reached(session):  # Epic 38, US38.9: the tenant's month
+        batch.status = "stopped_budget"
+        _cancel_pending(session, batch, "This month's LLM budget is used up")
         return "skip"
     return "go"
 

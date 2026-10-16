@@ -10,6 +10,7 @@ import openai
 
 from app.config import Settings, get_settings
 
+from . import metering
 from .exceptions import (
     LLMAuthenticationError,
     LLMBadRequestError,
@@ -137,10 +138,16 @@ class LLMClient:
         Epic 31, US31.8: honours the business-unit LLM policy in effect
         (app/llm/routing.py) -- refuses a disallowed provider, routes to a
         self-hosted endpoint, and redacts personal data when required.
+
+        Epic 38, US38.9: inside a tenant, refused once its monthly budget is
+        spent (LLMBudgetError), held to its requests per minute, and
+        recorded as its usage (app/llm/metering.py).
         """
         route = current_route.get()
         if route is not None and route.blocked_reason:
             raise LLMPolicyError(route.blocked_reason)
+        # Epic 38, US38.9: the tenant's budget and requests per minute.
+        await metering.admit()
         if route is not None and route.redact_pii:
             messages = self._redacted(messages)
         if route is not None and route.model:
@@ -162,7 +169,9 @@ class LLMClient:
             try:
                 async with slot:
                     response = await client.chat.completions.create(**payload)
-                return self._parse_response(response, operation=operation)
+                result = self._parse_response(response, operation=operation)
+                await metering.record(operation=operation, model=result.model, usage=result.usage)
+                return result
             except openai.AuthenticationError as exc:
                 raise LLMAuthenticationError(str(exc)) from exc
             except openai.BadRequestError as exc:

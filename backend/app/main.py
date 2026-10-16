@@ -37,6 +37,7 @@ from app.api import (
     scim,
     twin,
     twin_builder,
+    usage,
     versions,
 )
 from app.config import get_settings, settings_or_exit
@@ -44,6 +45,7 @@ from app.context.repository import ContextValidationError
 from app.llm.exceptions import (
     LLMAuthenticationError,
     LLMBadRequestError,
+    LLMBudgetError,
     LLMError,
     LLMPolicyError,
     LLMRateLimitError,
@@ -173,6 +175,7 @@ app.include_router(oidc.router)
 app.include_router(directory.router)
 app.include_router(scim.router)
 app.include_router(governance.router)
+app.include_router(usage.router)
 app.include_router(processes.router)
 app.include_router(documents.router)
 app.include_router(bpmn.router)
@@ -227,6 +230,11 @@ def handle_context_validation(request: Request, exc: ContextValidationError) -> 
 @app.exception_handler(LLMPolicyError)
 def handle_llm_policy(request: Request, exc: LLMPolicyError) -> JSONResponse:
     return JSONResponse(status_code=403, content={"detail": f"Blocked by the model policy: {exc}"})
+
+
+@app.exception_handler(LLMBudgetError)
+def handle_llm_budget(request: Request, exc: LLMBudgetError) -> JSONResponse:
+    return JSONResponse(status_code=429, content={"detail": str(exc)})
 
 
 @app.exception_handler(LLMAuthenticationError)

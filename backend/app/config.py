@@ -92,6 +92,13 @@ class Settings(BaseSettings):
     job_concurrency: int = Field(default=2, ge=1)
     job_lease_seconds: float = Field(default=900.0, gt=0)
     job_backoff_seconds: float = Field(default=5.0, ge=0)
+    # Epic 38, US38.9: each tenant's limits, unless an operator sets its
+    # own on the tenant (app/tenancy/limits.py). Unset means no limit.
+    # Concurrent jobs count across workers; requests per minute are
+    # counted per process.
+    tenant_max_concurrent_jobs: int | None = Field(default=None, ge=1)
+    tenant_llm_requests_per_minute: int | None = Field(default=None, ge=1)
+    tenant_llm_monthly_budget_usd: float | None = Field(default=None, gt=0)
     connector_timeout_seconds: float = Field(default=30.0, gt=0)
     # Epic 31, US31.8: what the default LLM provider is and where it runs,
     # for business-unit residency checks. Empty region = unknown, which

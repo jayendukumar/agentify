@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**243 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**245 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -215,6 +215,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/operator/oidc/login` | public |  |
 | GET | `/api/operator/tenants` | public |  |
 | POST | `/api/operator/tenants` | public | A tenant and its first host. Its first admin and IdP come with US38.12; until then `python -m app.tenancy identity set`. |
+| PUT | `/api/operator/tenants/{tenant_id}/limits` | public | US38.9: concurrent jobs, LLM requests per minute, monthly LLM budget. Empty means the deployment's default. |
 | GET | `/api/operator/tenants/{tenant_id}/support-grants` | public |  |
 | POST | `/api/operator/tenants/{tenant_id}/support-grants/{grant_id}/enter` | public | A one-time link (a minute) into the tenant's own host, under the grant. |
 | POST | `/api/operator/tenants/{tenant_id}/{action}` | public |  |
@@ -381,6 +382,12 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/processes/{process_id}/twin-runs/{run_id}` | signed in |  |
 | POST | `/api/processes/{process_id}/twin-runs/{run_id}/cancel` | `agent.test` |  |
 | POST | `/api/processes/{process_id}/twin-runs/{run_id}/resume` | `agent.test` |  |
+
+### usage
+
+| Method | Path | Access | What it does |
+|---|---|---|---|
+| GET | `/api/usage` | `org.admin` |  |
 
 ### versions
 

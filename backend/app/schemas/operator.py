@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .usage import TenantLimitsIn, TenantLimitsOut
+
 
 class HostKind(BaseModel):
     """Which app this host serves: a tenant's, or the operator console."""
@@ -45,6 +47,9 @@ class TenantUsage(BaseModel):
     jobs_waiting: int
     last_sign_in_at: datetime | None
     support_grants_active: int
+    # US38.9: this month's LLM calls and their estimated cost.
+    llm_calls_this_month: int
+    llm_cost_this_month_usd: float
 
 
 class TenantOut(BaseModel):
@@ -56,6 +61,10 @@ class TenantOut(BaseModel):
     created_at: datetime
     hosts: list[str]
     usage: TenantUsage | None = None
+    # US38.9: the tenant's own limits (None: the deployment's default) and
+    # what's in effect.
+    limits: TenantLimitsIn
+    effective_limits: TenantLimitsOut
 
 
 class TenantCreate(BaseModel):

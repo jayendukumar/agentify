@@ -35,6 +35,7 @@ from app.db.models import (
 )
 from app.ids import new_id, utcnow
 from app.jobs import queue
+from app.llm import metering
 from app.schemas.run import NON_TERMINAL_RUN_STATUSES
 from app.store import NotFoundError
 
@@ -296,6 +297,11 @@ def gate_run(session: Session, run: SimulationRunModel) -> Literal["go", "wait",
         batch.status = "stopped_budget"
         batch.finished_at = _now()
         _cancel_pending(session, batch, f"Budget of ${batch.budget_usd:.2f} reached")
+        return "skip"
+    if metering.budget_reached(session):  # Epic 38, US38.9: the tenant's month
+        batch.status = "stopped_budget"
+        batch.finished_at = _now()
+        _cancel_pending(session, batch, "This month's LLM budget is used up")
         return "skip"
     return "go"
 

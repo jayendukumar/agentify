@@ -3609,3 +3609,52 @@ it ends within the 15-minute access window rather than at once. Our
 endpoint revokes by `sid` when the token has one, as the spec says. The
 smoke test now signs its people out at the end; a `sub`-wide revocation
 on admin sign-outs would be the fix if this matters for real IdPs.
+
+## 2026-10-16 -- Epic 38, US38.9: fair-share jobs, per-tenant limits and usage
+
+### Free capacity goes round the tenants a job at a time
+
+The worker used to walk the tenants from a rotating start and let each
+claim up to the free capacity, so whoever came first with a big backlog
+took every free slot. Now the free slots are handed out one job per
+tenant per round, least-served tenant first (fewest jobs running on this
+worker), until slots or due work run out. A tenant with one job gets a
+slot on the next tick even while another has 10,000 queued; the test
+runs it with each tenant first. Each claim is its own short transaction
+as the tenant, so row-level security still decides what it can see.
+
+### Limits live on the tenant row, set by operators
+
+Limits could have been a tenant table (an admin edits them) or settings
+only (one number for every tenant). They're the hosting company's quota,
+so they sit on `tenants`: the platform role already writes it and the
+app role can only read it, so no tenant can raise its own. Empty falls
+back to a deployment default.
+
+### The budget check reads a monthly total, not the call log
+
+Every LLM call checks the month's spend first. Summing `llm_usage_events`
+each time grows with usage; batches at Epic 34 volumes make thousands of
+calls a month. `llm_usage_monthly` (tenant, month, operation, model) is
+upserted with each call, so the check sums a handful of rows and the
+Usage page reads the same table. The per-call rows stay as the input to
+billing.
+
+### Requests per minute are counted in-process, concurrent jobs in the database
+
+A cross-process rate needs a shared counter written on every call. The
+worker runs in the API process by default, so an in-process window is
+the whole deployment there; with a separate worker a tenant gets its rate
+in each process, documented. Concurrent jobs are different: they're
+already rows, so the limit counts `running` jobs across all workers,
+with a per-tenant advisory lock while claiming so two workers can't both
+take the last slot.
+
+### Live: the budget stops a real extraction before it reaches the model
+
+`testing/tenancy/smoke_usage.py` ran a real document extraction in
+Northwind (recorded as $0.000579, Meridian's usage unchanged), then set
+Northwind's budget below that: the next extraction failed with the
+budget error, no new call was recorded, and the audit log said why. No
+defects; the one wait it needs is the 30-second limit cache.
+

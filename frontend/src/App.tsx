@@ -10,6 +10,7 @@ import AuditLogPage from './pages/AuditLogPage'
 import BatchResultsPage from './pages/BatchResultsPage'
 import DatasetsPage from './pages/DatasetsPage'
 import DirectoryPage from './pages/DirectoryPage'
+import UsagePage from './pages/UsagePage'
 import GapReviewPage from './pages/GapReviewPage'
 import ProcessDetailPage from './pages/ProcessDetailPage'
 import OrganizationPage from './pages/OrganizationPage'
@@ -76,6 +77,11 @@ function AppHeader() {
                 Directory
               </NavLink>
             )}
+            {can('org.admin') && (
+              <NavLink to="/usage" className="app-header-nav-link">
+                Usage
+              </NavLink>
+            )}
             <NavLink to="/sessions" className="app-header-nav-link">
               Sessions
             </NavLink>
@@ -140,6 +146,7 @@ function AppRoutes() {
       <Route path="/users" element={<UsersPage />} />
       <Route path="/sessions" element={<SessionsPage />} />
       <Route path="/directory" element={<DirectoryPage />} />
+      <Route path="/usage" element={<UsagePage />} />
       <Route path="/processes/:processId" element={<ProcessDetailPage />} />
       <Route path="/processes/:processId/diagram" element={<DiagramPage />} />
       <Route path="/processes/:processId/versions" element={<VersionsPage />} />

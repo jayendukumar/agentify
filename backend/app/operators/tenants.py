@@ -18,6 +18,7 @@ from app.auth import support
 from app.config import get_settings
 from app.db.models import (
     JobModel,
+    LlmUsageMonthlyModel,
     ProcessModel,
     SessionModel,
     SupportGrantModel,
@@ -27,9 +28,11 @@ from app.db.models import (
 )
 from app.db.session import get_session_factory
 from app.ids import new_id
+from app.llm import metering
 from app.tenancy import tenant_scope
 from app.tenancy.hosts import normalize_host
 from app.tenancy.identity import with_host
+from app.tenancy.limits import forget_cached_limits
 
 SLUG = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
 
@@ -45,11 +48,14 @@ class Usage:
     jobs_waiting: int
     last_sign_in_at: datetime | None
     support_grants_active: int
+    llm_calls_this_month: int
+    llm_cost_this_month_usd: float
 
 
 def usage(tenant_id: str) -> Usage:
-    """Counts only (decided 2026-10-15: platform analytics keep counts and
-    costs, never content). As the tenant, under row-level security."""
+    """Counts and costs only (decided 2026-10-15: platform analytics keep
+    counts and costs, never content). As the tenant, under row-level
+    security."""
     with tenant_scope(tenant_id), get_session_factory()() as db:
         count = lambda query: db.scalar(select(func.count()).select_from(query.subquery()))  # noqa: E731
         return Usage(
@@ -60,6 +66,11 @@ def usage(tenant_id: str) -> Usage:
                 select(func.max(SessionModel.created_at)).where(SessionModel.support_grant_id.is_(None))
             ),
             support_grants_active=len(support.active_grants(db)),
+            llm_calls_this_month=db.scalar(
+                select(func.coalesce(func.sum(LlmUsageMonthlyModel.calls), 0))
+                .where(LlmUsageMonthlyModel.month == metering.month_of(metering.utcnow()))
+            ),
+            llm_cost_this_month_usd=round(metering.month_spend(db), 4),
         )
 
 
@@ -85,6 +96,19 @@ def create(platform_db: Session, *, slug: str, display_name: str, host: str, reg
     platform_db.add(TenantDomainModel(host=host, tenant_id=tenant.id))
     platform_db.flush()
     return tenant
+
+
+LIMIT_FIELDS = ("max_concurrent_jobs", "llm_requests_per_minute", "llm_monthly_budget_usd")
+
+
+def set_limits(tenant: TenantModel, values: dict) -> dict:
+    """US38.9: the tenant's own limits; None falls back to the deployment's
+    default. Returns what they were."""
+    before = {name: getattr(tenant, name) for name in LIMIT_FIELDS}
+    for name in LIMIT_FIELDS:
+        setattr(tenant, name, values.get(name))
+    forget_cached_limits()
+    return before
 
 
 TRANSITIONS = {

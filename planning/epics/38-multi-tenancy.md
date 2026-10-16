@@ -3,8 +3,9 @@
 **Status: build step 1 implemented (2026-10-15): US38.1-38.5, the tenant
 boundary. Step 2 in progress: US38.6 (each tenant's own IdP) implemented
 2026-10-15, US38.7 (SCIM and logout stay inside the tenant) and US38.8
-(operator console, support access) 2026-10-16. Step 2 is complete; open:
-US38.9-38.15. Decisions confirmed 2026-10-15
+(operator console, support access) 2026-10-16. Step 2 is complete.
+Step 3 in progress: US38.9 (fair share, limits, usage) implemented
+2026-10-16; open: US38.10-38.15. Decisions confirmed 2026-10-15
 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
@@ -284,6 +285,73 @@ Deviations and decisions:
   production) and `-Sso` sets `oidc`.
 - **Creating a tenant doesn't yet hand it to a first admin**; that's
   US38.12. Until then `python -m app.tenancy identity set`.
+
+## US38.9 as built
+
+- **Fair share** (`app/jobs/worker.py`): each tick, the worker hands free
+  capacity out one job per tenant per round, to the tenants with due
+  work, those with the fewest jobs running on this worker first (the
+  rotation breaks ties). Within a tenant, priority and age order stay.
+  A tenant drops out of the round once it has nothing due or is at its
+  limit.
+- **Limits** are columns on `tenants` (migration `c5d6e7f8a9b0`):
+  `max_concurrent_jobs`, `llm_requests_per_minute`,
+  `llm_monthly_budget_usd`. An operator sets them in the console
+  (`PUT /api/operator/tenants/{id}/limits`, platform-audited); empty means
+  the deployment's default (`TENANT_MAX_CONCURRENT_JOBS`,
+  `TENANT_LLM_REQUESTS_PER_MINUTE`, `TENANT_LLM_MONTHLY_BUDGET_USD`), and
+  no default means no limit. `app/tenancy/limits.py`.
+  - **Concurrent jobs** are counted in the database (running jobs on every
+    worker), under a per-tenant advisory lock while claiming.
+  - **LLM requests per minute**: a call over the rate waits for the
+    window rather than failing.
+  - **Monthly budget**: before each call, the month's spend is read; at
+    80% a `llm_budget_warning` goes to the tenant's audit log (once a
+    month), at 100% calls are refused (`LLMBudgetError`, 429 on a
+    request) and audited as `llm_budget_reached`. Batch and process-twin
+    gates check it too, so a batch stops as `stopped_budget` rather than
+    failing run by run.
+- **Usage records** (`app/llm/metering.py`): every LLM call inside a
+  tenant writes an `llm_usage_events` row and adds to
+  `llm_usage_monthly` (month, operation, model), both tenant tables under
+  row-level security. The JSONL log gains `tenant_id`.
+- **Who sees it:** admins (`org.admin`) on a new Usage page
+  (`GET /api/usage`): this month against the budget, the limits in
+  effect, running and queued jobs, and cost per month and operation.
+  Operators see each tenant's calls and cost this month, and its budget,
+  in the console.
+- **Tests.** `tests/test_tenant_limits.py` (13): a tenant with one job
+  gets a slot on the first tick while another has 10,000 queued (whichever
+  tenant the walk starts with); the less-served tenant gets the next free
+  slot; two workers never exceed a tenant's concurrent limit; calls are
+  recorded per tenant; warn at 80% once, refuse at 100% without reaching
+  the provider; a batch stops on the tenant's budget; the rate waits;
+  the admin and operator views. Live: `testing/tenancy/smoke_usage.py`
+  (12/12), real extractions in Northwind.
+
+Deviations and decisions:
+
+- **Operators set the limits, tenants see them.** They're the hosting
+  company's quota, on the platform table the platform role already
+  writes and the app role can only read, so a tenant admin can't raise
+  their own. A tenant-set budget *below* the quota is a later addition.
+- **A monthly total next to the per-call rows.** The budget check runs
+  before every LLM call; summing a month of calls each time would grow
+  with usage, so `llm_usage_monthly` is kept up to date by an upsert and
+  the check reads a handful of rows.
+- **Requests per minute are counted per process.** A window shared
+  across processes needs a shared counter (a table row or Redis) on
+  every call; with the worker in the API process (the default), one
+  process is the whole deployment. With a separate worker, a tenant can
+  make its rate in each.
+- **Limits are read at most every 30 seconds** per process, so an
+  operator's change takes up to that long to apply. The spend itself is
+  read fresh before every call.
+- **Unpriced models cost nothing against the budget.** Calls to a model
+  without a known price (`app/llm/usage.py`) are counted as
+  `calls_without_cost` and shown as such, rather than guessed.
+- **Fair share is per tenant, not per process** within a tenant: a
+  tenant's own big batch can still hold back its other work.
 
 ## User Stories
 

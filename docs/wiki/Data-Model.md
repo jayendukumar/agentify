@@ -1,9 +1,9 @@
 # Data Model
 
-Last reviewed: 2026-10-15 · Sources: `backend/app/db/models.py`, `backend/migrations`
+Last reviewed: 2026-10-16 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**69 tables, 746 columns (93 JSON), 166 foreign keys, 36 Alembic migrations.**
+**71 tables, 768 columns (93 JSON), 168 foreign keys, 37 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -43,6 +43,11 @@ the database stores their paths.
   catalogue below. Uniqueness that used to be deployment-wide (user names,
   connector names, context-pack hashes, IdP identities) is per tenant.
   See the [Glossary](Glossary.md#many-customers-on-one-deployment-tenancy).
+- **Usage is kept twice (Epic 38, US38.9).** `llm_usage_events` has one
+  row per LLM call; `llm_usage_monthly` sums them per month, operation and
+  model, upserted with each call, so the budget check before every call
+  reads a few rows. Each tenant's limits are columns on `tenants`, set by
+  operators.
 - **Everything hangs off a process.** Most tables have `process_id` with
   `ON DELETE CASCADE`, so deleting a process removes its whole tree.
   Organization context is the exception: it is organization-wide and
@@ -618,6 +623,14 @@ erDiagram
         string id PK
         json detail
     }
+    llm_usage_events {
+        bigint id PK
+    }
+    llm_usage_monthly {
+        string month PK
+        string operation PK
+        string model PK
+    }
     tenants ||--o{ tenant_domains : "tenant_id"
     operators ||--o{ operator_sessions : "operator_id"
 ```
@@ -633,7 +646,7 @@ erDiagram
 | Simulation run | CREATED ... COMPLETED / FAILED / ESCALATED / TIMED_OUT / CANCELLED | `simulation_runs.status` |
 | Context entity | proposed -> confirmed -> retired | `context_entities.status` + versions |
 | Decision rule | proposed -> confirmed / unstructurable | `decision_rules.status` |
-| Batch / process twin batch | running -> completed / cancelled / stopped_budget (paused in between) | `batch_runs.status`, `process_twin_batches.status` |
+| Batch / process twin batch | running -> completed / cancelled / stopped_budget (the batch's own budget or the tenant's monthly LLM budget; paused in between) | `batch_runs.status`, `process_twin_batches.status` |
 | Job | queued -> running -> done / failed (retried with backoff) | `jobs.status` |
 | Agent approval | each high-risk change voids the approval; APPROVED once enough distinct, eligible approvers sign | `approvals` rows + `agent_artifacts.approved_through_seq` |
 | User | active -> deactivated (history kept, every session revoked) | `users.active` |
@@ -1741,6 +1754,9 @@ Epic 38, US38.1: one customer of this deployment. Every other table is the tenan
 | `status` | string | no |  |
 | `region` | string | yes |  |
 | `created_at` | datetime | no |  |
+| `max_concurrent_jobs` | int | yes |  |
+| `llm_requests_per_minute` | int | yes |  |
+| `llm_monthly_budget_usd` | float | yes |  |
 
 #### `tenant_domains` (TenantDomainModel)
 
@@ -1807,4 +1823,35 @@ Epic 38, US38.8: what operators did -- sign-ins, tenants created, suspended or d
 | `outcome` | string | no |  |
 | `ip` | string | yes |  |
 | `detail` | json | no |  |
+
+#### `llm_usage_events` (LlmUsageEventModel)
+
+Epic 38, US38.9: one LLM call -- what the JSONL usage log holds, as the tenant's row. The input to billing (out of scope here).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | bigint | no | primary key |
+| `occurred_at` | datetime | no |  |
+| `operation` | string | no |  |
+| `model` | string | no |  |
+| `input_tokens` | int | no |  |
+| `output_tokens` | int | no |  |
+| `total_tokens` | int | no |  |
+| `estimated_cost_usd` | float | yes |  |
+
+#### `llm_usage_monthly` (LlmUsageMonthlyModel)
+
+Epic 38, US38.9: LLM usage summed per month (`YYYY-MM`, UTC), operation and model, kept up to date with every call -- so the budget check before each call reads a handful of rows. `calls_without_cost` counts calls to a model with no known price (they add nothing to `cost_usd`).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `month` | string | no | primary key |
+| `operation` | string | no | primary key |
+| `model` | string | no | primary key |
+| `calls` | int | no |  |
+| `input_tokens` | bigint | no |  |
+| `output_tokens` | bigint | no |  |
+| `total_tokens` | bigint | no |  |
+| `cost_usd` | float | no |  |
+| `calls_without_cost` | int | no |  |
 <!-- END GENERATED: table-catalogue -->

@@ -62,7 +62,7 @@ DOMAINS: dict[str, list[str]] = {
     ],
     "Platform (Epics 31, 38)": [
         "jobs", "tenants", "tenant_domains", "operators", "operator_sessions", "operator_login_requests",
-        "platform_audit_events",
+        "platform_audit_events", "llm_usage_events", "llm_usage_monthly",
     ],
 }
 

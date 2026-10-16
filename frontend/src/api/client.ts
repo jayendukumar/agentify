@@ -102,6 +102,7 @@ import type {
   HostKind,
   SupportGrant,
   SupportGrantInput,
+  UsageOverview,
   KnownGroup,
   RoleChange,
   ScimSetup,
@@ -320,6 +321,11 @@ export function grantSupport(grant: SupportGrantInput): Promise<SupportGrant> {
 
 export function revokeSupport(grantId: string): Promise<SupportGrant> {
   return request(`/api/directory/support-grants/${grantId}/revoke`, { method: 'POST' })
+}
+
+// Epic 38, US38.9: this organization's LLM usage and cost per month, and its limits.
+export function getUsage(): Promise<UsageOverview> {
+  return request('/api/usage')
 }
 
 // Which app this host serves: a tenant's, or the operator console (US38.8).

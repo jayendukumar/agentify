@@ -4,14 +4,19 @@ import OperatorConsole from './OperatorConsole'
 
 const api = vi.hoisted(() => ({
   config: vi.fn(), me: vi.fn(), login: vi.fn(), logout: vi.fn(), tenants: vi.fn(), createTenant: vi.fn(),
-  changeStatus: vi.fn(), grants: vi.fn(), enter: vi.fn(), audit: vi.fn(),
+  changeStatus: vi.fn(), grants: vi.fn(), enter: vi.fn(), audit: vi.fn(), setLimits: vi.fn(),
 }))
 vi.mock('./api', () => ({ operatorApi: api }))
 
 const tenant = {
   id: 'ten_1', slug: 'northwind', display_name: 'Northwind', status: 'active', region: null, created_at: '2026-10-15T00:00:00',
   hosts: ['northwind.localhost'],
-  usage: { users: 3, processes: 7, jobs_waiting: 0, last_sign_in_at: null, support_grants_active: 1 },
+  usage: {
+    users: 3, processes: 7, jobs_waiting: 0, last_sign_in_at: null, support_grants_active: 1,
+    llm_calls_this_month: 40, llm_cost_this_month_usd: 12.5,
+  },
+  limits: { max_concurrent_jobs: null, llm_requests_per_minute: null, llm_monthly_budget_usd: 50 },
+  effective_limits: { max_concurrent_jobs: 4, llm_requests_per_minute: null, llm_monthly_budget_usd: 50 },
 }
 const operator = { id: 'op1', name: 'Otto Operator', email: 'otto@hosting.test', csrf_token: 'c', session_expires_at: '', auth_method: 'local' }
 
@@ -56,5 +61,23 @@ describe('Operator console (Epic 38, US38.8)', () => {
     expect(api.changeStatus).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Confirm: delete northwind' }))
     await waitFor(() => expect(api.changeStatus).toHaveBeenCalledWith('ten_1', 'delete'))
+  })
+
+  it("shows each tenant's LLM cost against its budget and sets its limits (US38.9)", async () => {
+    api.me.mockResolvedValue(operator)
+    api.setLimits.mockResolvedValue(tenant)
+    render(<OperatorConsole />)
+    const row = (await screen.findByText('Northwind')).closest('tr')!
+    expect(row).toHaveTextContent('$12.50 of $50.00')
+    fireEvent.click(screen.getByRole('button', { name: 'Limits' }))
+    expect(screen.getByLabelText('Concurrent jobs')).toHaveAttribute('placeholder', 'default: 4')
+    fireEvent.change(screen.getByLabelText('LLM requests per minute'), { target: { value: '120' } })
+    fireEvent.change(screen.getByLabelText('Monthly LLM budget (USD)'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save limits' }))
+    await waitFor(() =>
+      expect(api.setLimits).toHaveBeenCalledWith('ten_1', {
+        max_concurrent_jobs: null, llm_requests_per_minute: 120, llm_monthly_budget_usd: null,
+      }),
+    )
   })
 })

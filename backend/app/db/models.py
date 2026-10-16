@@ -72,6 +72,12 @@ class TenantModel(Base):
     status: Mapped[str] = mapped_column(String, nullable=False, default="active", server_default="active")
     region: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # US38.9: set by an operator; NULL means the deployment's default
+    # (`TENANT_*` settings, app/tenancy/limits.py), which is no limit
+    # unless one is configured.
+    max_concurrent_jobs: Mapped[int | None] = mapped_column(nullable=True)
+    llm_requests_per_minute: Mapped[int | None] = mapped_column(nullable=True)
+    llm_monthly_budget_usd: Mapped[float | None] = mapped_column(nullable=True)
 
 
 class TenantDomainModel(Base):
@@ -1488,6 +1494,44 @@ class JobModel(TenantScoped, Base):
     dedupe_key: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class LlmUsageEventModel(TenantScoped, Base):
+    """Epic 38, US38.9: one LLM call -- what the JSONL usage log holds,
+    as the tenant's row. The input to billing (out of scope here)."""
+
+    __tablename__ = "llm_usage_events"
+    __table_args__ = (Index("ix_llm_usage_events_tenant_occurred", "tenant_id", "occurred_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(nullable=False)
+    operation: Mapped[str] = mapped_column(String, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    input_tokens: Mapped[int] = mapped_column(nullable=False)
+    output_tokens: Mapped[int] = mapped_column(nullable=False)
+    total_tokens: Mapped[int] = mapped_column(nullable=False)
+    estimated_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+
+
+class LlmUsageMonthlyModel(TenantScoped, Base):
+    """Epic 38, US38.9: LLM usage summed per month (`YYYY-MM`, UTC),
+    operation and model, kept up to date with every call -- so the budget
+    check before each call reads a handful of rows. `calls_without_cost`
+    counts calls to a model with no known price (they add nothing to
+    `cost_usd`)."""
+
+    __tablename__ = "llm_usage_monthly"
+    __table_args__ = (PrimaryKeyConstraint("tenant_id", "month", "operation", "model"),)
+
+    month: Mapped[str] = mapped_column(String(7), nullable=False)
+    operation: Mapped[str] = mapped_column(String, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    calls: Mapped[int] = mapped_column(nullable=False)
+    input_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    cost_usd: Mapped[float] = mapped_column(nullable=False)
+    calls_without_cost: Mapped[int] = mapped_column(nullable=False)
 
 
 class ConnectorModel(TenantScoped, Base):

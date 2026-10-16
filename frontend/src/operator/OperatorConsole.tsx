@@ -6,7 +6,15 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import BrandLogo from '../components/BrandLogo'
 import '../auth/LoginPage.css'
-import { operatorApi, type Operator, type OperatorConfig, type OperatorGrant, type PlatformEvent, type Tenant } from './api'
+import {
+  operatorApi,
+  type Operator,
+  type OperatorConfig,
+  type OperatorGrant,
+  type PlatformEvent,
+  type Tenant,
+  type TenantLimits,
+} from './api'
 
 const SIGN_IN_ERRORS: Record<string, string> = {
   not_an_operator: "Your account isn't in the platform operators' group.",
@@ -103,6 +111,64 @@ function SupportAccess({ tenant }: { tenant: Tenant }) {
   )
 }
 
+function usd(value: number): string {
+  return `$${value.toFixed(2)}`
+}
+
+const LIMIT_FIELDS: { key: keyof TenantLimits; label: string; step: string }[] = [
+  { key: 'max_concurrent_jobs', label: 'Concurrent jobs', step: '1' },
+  { key: 'llm_requests_per_minute', label: 'LLM requests per minute', step: '1' },
+  { key: 'llm_monthly_budget_usd', label: 'Monthly LLM budget (USD)', step: '0.01' },
+]
+
+// US38.9: what a tenant may use. Empty takes the deployment's default.
+function Limits({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void }) {
+  const toForm = (limits: TenantLimits) =>
+    Object.fromEntries(LIMIT_FIELDS.map(({ key }) => [key, limits[key] === null ? '' : String(limits[key])])) as Record<
+      keyof TenantLimits,
+      string
+    >
+  const [form, setForm] = useState(() => toForm(tenant.limits))
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setError(null)
+    const limits = Object.fromEntries(
+      LIMIT_FIELDS.map(({ key }) => [key, form[key].trim() === '' ? null : Number(form[key])]),
+    ) as unknown as TenantLimits
+    try {
+      await operatorApi.setLimits(tenant.id, limits)
+      onSaved()
+    } catch (err) {
+      setError(message(err, 'Could not save the limits'))
+    }
+  }
+
+  return (
+    <form className="identity-form" onSubmit={submit} aria-label="Tenant limits">
+      {LIMIT_FIELDS.map(({ key, label, step }) => (
+        <label key={key}>
+          {label}
+          <input
+            type="number"
+            min={step === '1' ? 1 : 0.01}
+            step={step}
+            value={form[key]}
+            onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+            placeholder={tenant.effective_limits[key] === null ? 'no limit' : `default: ${tenant.effective_limits[key]}`}
+          />
+        </label>
+      ))}
+      <p className="meta">
+        Empty takes the deployment's default. The budget warns the tenant at 80% and stops its LLM calls at 100%.
+      </p>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="registry-entry-actions"><button type="submit">Save limits</button></div>
+    </form>
+  )
+}
+
 function CreateTenant({ onCreated }: { onCreated: () => void }) {
   const [form, setForm] = useState({ slug: '', display_name: '', host: '', region: '' })
   const [error, setError] = useState<string | null>(null)
@@ -135,6 +201,7 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
   const [tenants, setTenants] = useState<Tenant[] | null>(null)
   const [events, setEvents] = useState<PlatformEvent[]>([])
   const [open, setOpen] = useState<string | null>(null)
+  const [limitsOpen, setLimitsOpen] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -175,14 +242,14 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
       </header>
       <main className="page" id="main-content">
         <h1>Tenants</h1>
-        <p className="meta">Usage is counts only. To look inside a tenant, its admin grants support access.</p>
+        <p className="meta">Usage is counts and costs only. To look inside a tenant, its admin grants support access.</p>
         {error && <p className="error" role="alert">{error}</p>}
         {tenants && (
           <table className="data-table">
             <thead>
               <tr>
                 <th>Tenant</th><th>Status</th><th>Hosts</th><th>Users</th><th>Processes</th><th>Jobs waiting</th>
-                <th>Last sign-in</th><th>Support</th><th />
+                <th>LLM this month</th><th>Last sign-in</th><th>Support</th><th />
               </tr>
             </thead>
             <tbody>
@@ -194,6 +261,15 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
                   <td>{tenant.usage?.users ?? '--'}</td>
                   <td>{tenant.usage?.processes ?? '--'}</td>
                   <td>{tenant.usage?.jobs_waiting ?? '--'}</td>
+                  <td>
+                    {tenant.usage ? usd(tenant.usage.llm_cost_this_month_usd) : '--'}
+                    {tenant.effective_limits.llm_monthly_budget_usd !== null && (
+                      <span className="meta"> of {usd(tenant.effective_limits.llm_monthly_budget_usd)}</span>
+                    )}{' '}
+                    <button type="button" className="button-secondary" onClick={() => setLimitsOpen(limitsOpen === tenant.id ? null : tenant.id)}>
+                      Limits
+                    </button>
+                  </td>
                   <td>{when(tenant.usage?.last_sign_in_at ?? null)}</td>
                   <td>
                     {tenant.status === 'active' && (
@@ -221,6 +297,19 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
               ))}
             </tbody>
           </table>
+        )}
+        {limitsOpen && tenants?.find((t) => t.id === limitsOpen) && (
+          <section aria-label="Limits">
+            <h2>Limits: {tenants.find((t) => t.id === limitsOpen)!.display_name}</h2>
+            <Limits
+              key={limitsOpen}
+              tenant={tenants.find((t) => t.id === limitsOpen)!}
+              onSaved={() => {
+                setLimitsOpen(null)
+                load()
+              }}
+            />
+          </section>
         )}
         {open && tenants?.find((t) => t.id === open) && (
           <section aria-label="Support access">

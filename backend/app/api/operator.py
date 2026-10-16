@@ -37,7 +37,9 @@ from app.schemas.operator import (
     TenantOut,
     TenantUsage,
 )
+from app.schemas.usage import TenantLimitsIn, TenantLimitsOut
 from app.tenancy.hosts import normalize_host
+from app.tenancy.limits import limits_of
 
 logger = logging.getLogger(__name__)
 
@@ -240,9 +242,13 @@ def _tenant_out(db: Session, tenant: TenantModel, with_usage: bool = True) -> Te
     if with_usage and tenant.status != "deleting":
         u = tenants.usage(tenant.id)
         usage = TenantUsage(**u.__dict__)
+    effective = limits_of(tenant)
     return TenantOut(id=tenant.id, slug=tenant.slug, display_name=tenant.display_name, status=tenant.status,
                      region=tenant.region, created_at=tenant.created_at, hosts=tenants.hosts(db, tenant.id),
-                     usage=usage)
+                     usage=usage,
+                     limits=TenantLimitsIn(**{name: getattr(tenant, name) for name in tenants.LIMIT_FIELDS}),
+                     effective_limits=TenantLimitsOut(**{name: getattr(effective, name)
+                                                         for name in tenants.LIMIT_FIELDS}))
 
 
 def _tenant(db: Session, tenant_id: str) -> TenantModel:
@@ -285,6 +291,19 @@ def change_tenant_status(tenant_id: str, action: str, record: OperatorSession, d
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     auth.record(db, operator=record.operator, action=f"tenant_{action}", request=request, tenant_id=tenant.id,
                 detail={"slug": tenant.slug, "from": before, "to": tenant.status})
+    return _tenant_out(db, tenant, with_usage=False)
+
+
+@router.put("/tenants/{tenant_id}/limits", response_model=TenantOut)
+def set_tenant_limits(tenant_id: str, body: TenantLimitsIn, record: OperatorSession, db: PlatformDb,
+                      request: Request) -> TenantOut:
+    """US38.9: concurrent jobs, LLM requests per minute, monthly LLM budget.
+    Empty means the deployment's default."""
+    tenant = _tenant(db, tenant_id)
+    before = tenants.set_limits(tenant, body.model_dump())
+    auth.record(db, operator=record.operator, action="tenant_limits_changed", request=request, tenant_id=tenant.id,
+                detail={"slug": tenant.slug, "from": before, "to": body.model_dump()})
+    db.flush()
     return _tenant_out(db, tenant, with_usage=False)
 
 

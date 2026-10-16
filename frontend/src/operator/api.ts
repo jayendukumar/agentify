@@ -24,6 +24,15 @@ export interface TenantUsage {
   jobs_waiting: number
   last_sign_in_at: string | null
   support_grants_active: number
+  llm_calls_this_month: number
+  llm_cost_this_month_usd: number
+}
+
+// US38.9: null is "the deployment's default" (as set) or "no limit" (in effect).
+export interface TenantLimits {
+  max_concurrent_jobs: number | null
+  llm_requests_per_minute: number | null
+  llm_monthly_budget_usd: number | null
 }
 
 export interface Tenant {
@@ -35,6 +44,8 @@ export interface Tenant {
   created_at: string
   hosts: string[]
   usage: TenantUsage | null
+  limits: TenantLimits
+  effective_limits: TenantLimits
 }
 
 export interface OperatorGrant {
@@ -88,6 +99,8 @@ export const operatorApi = {
     call<Tenant>('/tenants', { method: 'POST', body: JSON.stringify(body) }),
   changeStatus: (tenantId: string, action: 'suspend' | 'activate' | 'delete') =>
     call<Tenant>(`/tenants/${tenantId}/${action}`, { method: 'POST' }),
+  setLimits: (tenantId: string, limits: TenantLimits) =>
+    call<Tenant>(`/tenants/${tenantId}/limits`, { method: 'PUT', body: JSON.stringify(limits) }),
   grants: (tenantId: string) => call<OperatorGrant[]>(`/tenants/${tenantId}/support-grants`),
   enter: (tenantId: string, grantId: string) =>
     call<{ url: string; expires_in_seconds: number }>(`/tenants/${tenantId}/support-grants/${grantId}/enter`, {
