@@ -1,5 +1,5 @@
-"""Epic 38, US38.6: a live check that each tenant signs in through its own
-identity provider. Needs the stack with Keycloak (`.\\start.ps1 -Sso`),
+"""Epic 38, US38.6-38.7: a live check that each tenant signs in through its
+own identity provider, and that the IdP's back-channel logout reaches it. Needs the stack with Keycloak (`.\\start.ps1 -Sso`),
 which saves Northwind's settings (realm "northwind") while Meridian keeps
 the environment's (realm "axyntro").
 
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import socket
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -104,6 +105,22 @@ def main() -> int:
           logout_url.startswith(f"{KEYCLOAK}/realms/northwind/")
           and back.headers.get("location", "").startswith("http://northwind.localhost:3000/"),
           back.headers.get("location"))
+
+    # US38.7: Keycloak calls the back-channel URL on the internal host `api`,
+    # which reaches Meridian; the logout token's issuer routes it to Northwind.
+    time.sleep(31 - time.time() % 30)  # Keycloak refuses a one-time code used twice: wait for Nora's next one
+    nora, _ = sign_in(NORTHWIND, "nora")
+    sam, _ = sign_in(MERIDIAN, "sam")
+    token = httpx.post(f"{KEYCLOAK}/realms/master/protocol/openid-connect/token", data={
+        "grant_type": "password", "client_id": "admin-cli", "username": "admin", "password": "admin"}).json()["access_token"]
+    admin = httpx.Client(base_url=f"{KEYCLOAK}/admin/realms/northwind", headers={"Authorization": f"Bearer {token}"})
+    before = nora.get(f"{NORTHWIND}/api/auth/me").status_code
+    nora_id = admin.get("/users", params={"username": "nora", "exact": "true"}).json()[0]["id"]
+    admin.post(f"/users/{nora_id}/logout")
+    time.sleep(1)
+    check("Keycloak's back-channel logout (sent to Meridian's host) ends Nora's Northwind session",
+          before == 200 and nora.get(f"{NORTHWIND}/api/auth/me").status_code == 401)
+    check("... and Sam's Meridian session is untouched", sam.get(f"{MERIDIAN}/api/auth/me").status_code == 200)
 
     print(f"{sum(results)}/{len(results)} passed")
     return 0 if all(results) else 1

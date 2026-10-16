@@ -41,6 +41,7 @@
   ],
   "users": [
     {
+      "id": "5198e7e3-cfb0-4c69-9d11-bd86cc8248b4",
       "username": "sam",
       "email": "sam@meridian.example",
       "emailVerified": true,
@@ -65,6 +66,7 @@
       ]
     },
     {
+      "id": "fbac28f7-7711-486f-bb7b-0152875c71e6",
       "username": "olivia",
       "email": "olivia@meridian.example",
       "emailVerified": true,
@@ -89,6 +91,7 @@
       ]
     },
     {
+      "id": "7f6fee21-9ebb-41d0-9a76-1a06b87676a1",
       "username": "morgan",
       "email": "morgan@meridian.example",
       "emailVerified": true,
@@ -113,6 +116,7 @@
       ]
     },
     {
+      "id": "fde8425a-3ef8-4605-b82d-d6ac40e7885b",
       "username": "arjun",
       "email": "arjun@meridian.example",
       "emailVerified": true,
@@ -139,6 +143,7 @@
       ]
     },
     {
+      "id": "52a89142-fe9b-5684-9a6c-98e7ba509a3a",
       "username": "ana",
       "email": "ana@meridian.example",
       "emailVerified": true,
@@ -163,6 +168,7 @@
       ]
     },
     {
+      "id": "baac13f0-1574-4ae2-a315-324c2d670621",
       "username": "avery",
       "email": "avery@meridian.example",
       "emailVerified": true,
@@ -187,6 +193,7 @@
       ]
     },
     {
+      "id": "d4dbda6a-d03e-54ac-85c1-2719549e76a2",
       "username": "nina",
       "email": "nina@meridian.example",
       "emailVerified": true,

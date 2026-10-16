@@ -5,10 +5,14 @@ OIDC_* environment variables. Northwind configures its own IdP on the
 Directory page, and signs in through it, while the test tenant is
 untouched."""
 
+import secrets
+import time
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Depends
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -204,3 +208,56 @@ def test_an_operator_can_set_and_undo_a_tenants_identity_provider(northwind_admi
     tenancy_cli(["identity", "reset", "northwind"])
     assert "removed" in capsys.readouterr().out
     assert northwind_admin.get("/api/directory/identity").json()["source"] == "unset"
+
+
+# ---- US38.7: back-channel logout finds the tenant from the token ----------------------
+
+
+def _nora_signed_in(fake_idp, northwind_admin, sid: str = "nw-session") -> TestClient:
+    assert northwind_admin.put("/api/directory/identity", json=_settings()).status_code == 200
+    browser = TestClient(app, base_url=f"http://{NORTHWIND}")
+    start = browser.get("/api/auth/oidc/login", follow_redirects=False)
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    code = fake_idp.authenticate(start.headers["location"], sub="sub-nora", name="Nora Lund", sid=sid)
+    browser.get("/api/auth/oidc/callback", params={"code": code, "state": state}, follow_redirects=False)
+    assert browser.get("/api/auth/me").status_code == 200
+    return browser
+
+
+def _logout(fake_idp, **claims) -> str:
+    now = int(time.time())
+    body = {"iss": ISSUER, "aud": CLIENT_ID, "iat": now, "exp": now + 120, "jti": secrets.token_hex(8),
+            "events": {oidc.BACKCHANNEL_LOGOUT_EVENT: {}}, "sid": "nw-session", **claims}
+    return fake_idp.sign(body)
+
+
+def test_backchannel_logout_reaches_the_tenant_named_by_the_issuer_on_any_host(client, northwind_admin, fake_idp):
+    nora = _nora_signed_in(fake_idp, northwind_admin)
+    # The IdP calls the platform's internal host (here: the test tenant's), as Keycloak in Docker calls `api`.
+    response = TestClient(app).post("/api/auth/oidc/backchannel-logout", data={"logout_token": _logout(fake_idp)})
+    assert response.status_code == 200
+    assert nora.get("/api/auth/me").status_code == 401
+    with tenant_scope(NORTHWIND_ID), get_session_factory()() as db:
+        event = db.scalar(select(AuditEventModel).where(AuditEventModel.action == "idp_logout"))
+        assert event.detail["sessions_revoked"] == 1
+    with tenant_scope(TEST_TENANT_ID), get_session_factory()() as db:
+        assert db.scalar(select(AuditEventModel).where(AuditEventModel.action == "idp_logout")) is None
+
+
+@pytest.mark.parametrize("bad", ["other_client", "other_issuer", "forged", "garbage"])
+def test_a_logout_token_no_tenant_trusts_ends_nothing(northwind_admin, fake_idp, bad):
+    nora = _nora_signed_in(fake_idp, northwind_admin)
+    if bad == "other_client":
+        token = _logout(fake_idp, aud="someone-elses-client")
+    elif bad == "other_issuer":
+        token = _logout(fake_idp, iss="https://idp.test/realms/other")
+    elif bad == "forged":
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+        fake_idp.sign_with = (pem, "RS256", {"kid": fake_idp.kid})
+        token = _logout(fake_idp)
+    else:
+        token = "not-a-jwt"
+    response = TestClient(app).post("/api/auth/oidc/backchannel-logout", data={"logout_token": token})
+    assert response.status_code == 400
+    assert nora.get("/api/auth/me").status_code == 200

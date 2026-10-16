@@ -136,10 +136,13 @@ def idp(monkeypatch):
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     get_settings.cache_clear()
-    provider = oidc.OidcProvider(from_settings(get_settings()), http=httpx.Client(transport=httpx.MockTransport(fake.handle)))
+    http = httpx.Client(transport=httpx.MockTransport(fake.handle))
+    provider = oidc.OidcProvider(from_settings(get_settings()), http=http)
     app.dependency_overrides[oidc.get_oidc_provider] = lambda: provider
+    app.dependency_overrides[oidc.get_idp_http] = lambda: http  # back-channel logout builds its own (US38.7)
     yield fake
     app.dependency_overrides.pop(oidc.get_oidc_provider, None)
+    app.dependency_overrides.pop(oidc.get_idp_http, None)
     monkeypatch.undo()
     get_settings.cache_clear()
 

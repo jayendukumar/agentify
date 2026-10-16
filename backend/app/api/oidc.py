@@ -15,6 +15,8 @@ from datetime import timedelta
 from typing import Annotated
 from urllib.parse import urlencode
 
+import httpx
+import jwt
 from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy import delete, select
@@ -22,7 +24,10 @@ from sqlalchemy import delete, select
 from app.auth import audit, oidc, sessions
 from app.config import get_settings
 from app.db.models import OidcLoginRequestModel, SessionModel
+from app.db.session import get_session_factory
 from app.ids import utcnow
+from app.tenancy import identity, tenant_scope
+from app.tenancy.hosts import tenant_ids
 from app.tenancy.identity import IdentityConfig, get_identity
 
 from .deps import DbDep
@@ -156,30 +161,75 @@ def oidc_callback(
     return response
 
 
+def _addressed_tenants(issuer: str, audience: list[str]) -> list[IdentityConfig]:
+    """US38.7: the tenants whose IdP is this issuer, with this client.
+    Walks the tenants one at a time, under each one's row-level security,
+    as the job worker does; a lookup across tenants would need a role that
+    bypasses it, for a request nobody has authenticated yet."""
+    factory = get_session_factory()
+    with factory() as db:
+        candidates = tenant_ids(db)
+    found = []
+    for tenant_id in candidates:
+        with tenant_scope(tenant_id), factory() as db:
+            config = identity.resolve(db, tenant_id=tenant_id)
+        if config.auth_mode == "oidc" and config.issuer == issuer and config.client_id in audience:
+            found.append(config)
+    return found
+
+
+def _end_idp_sessions(config: IdentityConfig, claims: dict, request: Request) -> int:
+    with tenant_scope(config.tenant_id), get_session_factory()() as db, db.begin():
+        query = select(SessionModel).where(SessionModel.idp_issuer == claims["iss"])
+        query = query.where(SessionModel.idp_sid == claims["sid"]) if claims.get("sid") else query.where(
+            SessionModel.idp_subject == claims["sub"]
+        )
+        ended = [record for record in db.scalars(query) if sessions.is_alive(record)]
+        for record in ended:
+            sessions.revoke(db, record, "idp_logout")
+        audit.record(
+            db, actor=None, actor_name="identity provider", action="idp_logout", object_type="user",
+            object_id=ended[0].user_id if ended else None, request=request,
+            detail={"sid": claims.get("sid"), "sub": claims.get("sub"), "sessions_revoked": len(ended)},
+        )
+        return len(ended)
+
+
 @router.post("/backchannel-logout")
 def backchannel_logout(
-    db: DbDep, provider: OidcDep, config: IdentityDep, request: Request, logout_token: Annotated[str, Form()]
+    request: Request, logout_token: Annotated[str, Form()],
+    http: Annotated[httpx.Client | None, Depends(oidc.get_idp_http)],
 ) -> Response:
     """US37.13: the IdP says a user signed out there (or an admin ended
     their IdP session). Authenticated by the logout token's signature, not
-    by a cookie -- the IdP calls this server to server."""
-    _require_oidc(config)
+    by a cookie -- the IdP calls this server to server.
+
+    Epic 38, US38.7: the tenant comes from the token, not the host. An IdP
+    may call any host that reaches the platform (Keycloak in Docker calls
+    `api`), so the unverified issuer and audience only pick the tenants
+    that trust that IdP and client; each one then checks the signature
+    against its own IdP's keys, and only its own sessions end."""
+    refused = JSONResponse({"error": "invalid_request"}, status.HTTP_400_BAD_REQUEST, headers={"Cache-Control": "no-store"})
     try:
-        claims = provider.validate_logout_token(logout_token)
-    except (oidc.OidcError, oidc.IdpUnavailable) as exc:
-        logger.warning("Rejected back-channel logout: %s", exc)
-        return JSONResponse({"error": "invalid_request"}, status.HTTP_400_BAD_REQUEST, headers={"Cache-Control": "no-store"})
-    query = select(SessionModel).where(SessionModel.idp_issuer == claims["iss"])
-    query = query.where(SessionModel.idp_sid == claims["sid"]) if claims.get("sid") else query.where(
-        SessionModel.idp_subject == claims["sub"]
-    )
-    ended = [record for record in db.scalars(query) if sessions.is_alive(record)]
-    for record in ended:
-        sessions.revoke(db, record, "idp_logout")
-    audit.record(
-        db, actor=None, actor_name="identity provider", action="idp_logout", object_type="user",
-        object_id=ended[0].user_id if ended else None, request=request,
-        detail={"sid": claims.get("sid"), "sub": claims.get("sub"), "sessions_revoked": len(ended)},
-    )
-    return Response(status_code=200, headers={"Cache-Control": "no-store"})
+        unverified = jwt.decode(logout_token, options={"verify_signature": False})
+    except jwt.PyJWTError as exc:
+        logger.warning("Rejected back-channel logout: malformed token (%s)", exc)
+        return refused
+    audience = unverified.get("aud")
+    audience = [audience] if isinstance(audience, str) else [a for a in audience or [] if isinstance(a, str)]
+    configs = _addressed_tenants(str(unverified.get("iss") or ""), audience)
+    if not configs:
+        logger.warning("Rejected back-channel logout: no tenant trusts issuer %r for %r", unverified.get("iss"), audience)
+        return refused
+    accepted = False
+    for config in configs:
+        provider = oidc.OidcProvider(config, http=http) if http is not None else oidc.provider_for(config)
+        try:
+            claims = provider.validate_logout_token(logout_token)
+        except (oidc.OidcError, oidc.IdpUnavailable) as exc:
+            logger.warning("Rejected back-channel logout for tenant %s: %s", config.tenant_id, exc)
+            continue
+        _end_idp_sessions(config, claims, request)
+        accepted = True
+    return Response(status_code=200, headers={"Cache-Control": "no-store"}) if accepted else refused
 

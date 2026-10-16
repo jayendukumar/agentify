@@ -45,6 +45,12 @@ def resolve_host(host: str) -> Tenant | None:
         return tenant_for_host(session, host)
 
 
+def tenant_ids(session: Session) -> list[str]:
+    """Every tenant, suspended ones too: for work that only protects them,
+    like ending sessions at the IdP's request (US38.7)."""
+    return list(session.scalars(select(TenantModel.id).where(TenantModel.status != "deleting").order_by(TenantModel.id)))
+
+
 def active_tenant_ids(session: Session) -> list[str]:
     """For work that runs across tenants, one tenant at a time (the job
     worker). Ordered so every worker walks them the same way."""

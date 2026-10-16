@@ -62,7 +62,14 @@ The realm is `axyntro-realm.json`, imported when the container starts.
   flow only, and requires PKCE (S256). The redirect URI is the API's
   `/api/auth/oidc/callback`. Logout may return to the frontend. The
   back-channel logout URL is `http://api:8000/api/auth/oidc/backchannel-logout`,
-  which Keycloak calls inside the compose network.
+  which Keycloak calls inside the compose network. The northwind realm
+  uses the same URL: `api` reaches Meridian's host, and the API finds
+  Northwind from the logout token's issuer (Epic 38, US38.7).
+- **Fixed user IDs.** Each user has an `id` in the realm file, so
+  re-importing a realm keeps their `sub` and the app still recognises
+  them. To load a changed realm file, recreate the container
+  (`docker compose -f docker-compose.yml -f docker-compose.sso.yml up -d --force-recreate keycloak`):
+  Keycloak skips importing a realm that already exists.
 - **Groups claim.** A mapper puts the user's group names (not full paths)
   into the ID token as `groups`. Until US37.11 brings admin-managed
   mappings, `OIDC_GROUP_ROLES` in `docker-compose.sso.yml` maps groups to

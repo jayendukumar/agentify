@@ -2,7 +2,8 @@
 
 **Status: build step 1 implemented (2026-10-15): US38.1-38.5, the tenant
 boundary. Step 2 in progress: US38.6 (each tenant's own IdP) implemented
-2026-10-15; open: US38.7-38.15. Decisions confirmed 2026-10-15
+2026-10-15, US38.7 (SCIM and logout stay inside the tenant) 2026-10-16;
+open: US38.8-38.15. Decisions confirmed 2026-10-15
 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
@@ -186,10 +187,45 @@ Deviations and decisions:
   enables Save after a passing test of exactly the values being saved: a
   bad save would lock everyone out at their next sign-in. If it happens
   anyway, `python -m app.tenancy identity reset <slug>` undoes it.
-- **Back-channel logout** for a tenant other than the first still needs
-  US38.7 (the tenant from the logout token's issuer): Keycloak calls the
-  API on its internal host, which reaches the first tenant. The northwind
-  realm doesn't configure it; front-channel logout works.
+- **Back-channel logout** for a tenant other than the first came with
+  US38.7, below.
+
+## US38.7 as built
+
+- **SCIM tokens** were already tenant rows since step 1: a token is looked
+  up under the host's tenant, so on another tenant's host it isn't found
+  (401, `tests/test_tenancy.py`), and the cross-tenant probe sends B's
+  token at every SCIM route with A's ids. Groups, mappings and users are
+  tenant rows. Nothing new was needed.
+- **Back-channel logout** (`app/api/oidc.py`) no longer uses the host's
+  tenant. The logout token's unverified `iss` and `aud` pick the tenants
+  whose IdP is that issuer with that client; each verifies the signature
+  with its own IdP's keys, and revokes and audits only its own sessions.
+  A token no tenant trusts, or that fails every candidate's check, gets
+  400 and ends nothing.
+- **Tests.** `tests/test_tenant_identity.py`: a logout token for Northwind
+  posted to the test tenant's host ends Nora's session there and is
+  audited in Northwind only; another client, another issuer, a forged
+  signature and garbage end nothing. Live: the northwind realm now calls
+  `http://api:8000/...` (the first tenant's host) and
+  `smoke_tenant_sso.py` (12/12) checks that a Keycloak admin's logout of
+  Nora ends her Northwind session while Sam's Meridian session stays.
+
+Deviations and decisions:
+
+- **Candidates are found by walking the tenants**, one at a time under
+  each one's row-level security, as the job worker does. A single lookup
+  across tenants would need a role that bypasses row-level security, on
+  an endpoint anyone can call. It's one small query per tenant per
+  logout; a platform-level index of (issuer, client) is the fix if tenant
+  counts make that matter.
+- **Suspended tenants are included:** ending a session only protects them.
+- **Two tenants may trust the same issuer and client.** Both check the
+  token and both end the matching sessions: each has only sessions its
+  own users started through that IdP, so neither can reach the other's.
+- **Keycloak's local users have fixed IDs** in the realm files, so
+  re-importing a realm keeps each person's `sub`; otherwise every
+  re-import made new users at the next sign-in.
 
 ## User Stories
 

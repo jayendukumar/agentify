@@ -203,7 +203,8 @@ with password `Axyntro!2026`. Their authenticator secrets are in
 | T-06 | Set the client secret reference to `env:OIDC_CLIENT_SECRET` and test | Refused: Northwind's secrets must be named `TENANT_NORTHWIND_...` |
 | T-07 | Click **Test connection** with the original values | "Connected: http://localhost:8180/realms/northwind, 1 signing key(s)" (or more) |
 | T-08 | As Nora, sign out | Keycloak's northwind realm signs out and returns to northwind.localhost |
-| T-09 | Run `python testing/tenancy/smoke_tenant_sso.py` | `10/10 passed` |
+| T-09 | Sign in to Northwind as `nora` and to Meridian as `sam` (two browsers). In the Keycloak console, realm **northwind** → Users → `nora` → Sessions → **Sign out**. Click anything in both | Nora is sent to the sign-in page; Sam is still signed in (US38.7) |
+| T-10 | Run `python testing/tenancy/smoke_tenant_sso.py` | `12/12 passed` |
 
 If a save ever locks an organization out:
 `docker compose exec api python -m app.tenancy identity reset northwind`.

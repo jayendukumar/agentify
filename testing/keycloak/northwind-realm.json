@@ -25,6 +25,7 @@
   ],
   "users": [
     {
+      "id": "26be93c4-7712-41a0-8791-76249bc990d9",
       "username": "nora",
       "email": "nora@northwind.example",
       "emailVerified": true,
@@ -49,6 +50,7 @@
       ]
     },
     {
+      "id": "7fc119db-8c67-5c72-b648-858cc3ceb184",
       "username": "nils",
       "email": "nils@northwind.example",
       "emailVerified": true,
@@ -94,6 +96,8 @@
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://northwind.localhost:3000/*",
+        "backchannel.logout.url": "http://api:8000/api/auth/oidc/backchannel-logout",
+        "backchannel.logout.session.required": "true",
         "acr.loa.map": "{\"pwd\": 1, \"mfa\": 2}"
       },
       "protocolMappers": [

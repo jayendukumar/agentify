@@ -1,6 +1,6 @@
 # Critical review of the architecture
 
-Last reviewed: 2026-10-15 · Sources: `backend/app`, `frontend/src`, `docker-compose.yml`, `docs/code-health/report.json`
+Last reviewed: 2026-10-16 · Sources: `backend/app`, `frontend/src`, `docker-compose.yml`, `docs/code-health/report.json`
 
 This is a candid assessment of where Axyntro is weak, written to decide
 what to fix before it's offered to enterprise customers. It's grounded in
@@ -60,7 +60,7 @@ fixable without rethinking the product.
    tenant, and Postgres row-level security, not the application, keeps
    each tenant's rows invisible to the others; a test probes every route
    with another tenant's ids. Each tenant signs in through its own IdP.
-   Still shared per deployment: back-channel logout routing, registries, the model provider's key, connector
+   Still shared per deployment: registries, the model provider's key, connector
    secrets, uploaded files and the logs. The job queue walks tenants in
    turn but has no quotas. Foreign keys aren't tenant-aware: Postgres
    checks them without row-level security, so a route that doesn't look

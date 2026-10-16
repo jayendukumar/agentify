@@ -3526,3 +3526,30 @@ test checks discovery (whose issuer must match), the endpoints and the
 signing keys, and that the secret reference resolves; it can't prove the
 secret is right without a real sign-in. `python -m app.tenancy identity
 reset <slug>` is the way back if it happens anyway.
+
+## 2026-10-16 -- Epic 38, US38.7: back-channel logout by issuer
+
+### The logout token picks the tenant, its own IdP's keys confirm it
+
+The IdP calls back-channel logout server to server, on whatever host it
+was given: Keycloak in Docker calls `api`, the first tenant's host. So
+the host can't name the tenant. The endpoint reads the token's issuer
+and audience *unverified*, only to choose candidates (the tenants whose
+IdP is that issuer with that client), then each candidate verifies the
+signature with its own IdP's keys before ending any of its sessions. An
+unverified claim never decides what gets revoked; at worst it decides
+which keys are tried. The alternative, a platform table of issuers, would
+duplicate each tenant's settings outside row-level security; walking the
+tenants costs one query per tenant per logout, acceptable until tenant
+counts say otherwise.
+
+### Re-importing a Keycloak realm changed everyone's `sub`
+
+Found live: recreating the Keycloak container (to load a changed realm
+file) gave every user a new ID, so the next sign-in didn't match the
+stored identity and created "Sam Okafor (sam)" beside Sam Okafor; the
+SSO and SCIM smoke tests failed on names and links. Users in the realm
+files now have fixed IDs (the subjects the local database already held).
+The same run showed a second trap: signing the same person in twice
+within 30 seconds reuses their one-time code, which Keycloak refuses,
+so the smoke test waits for the next code.

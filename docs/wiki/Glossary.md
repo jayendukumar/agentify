@@ -1,6 +1,6 @@
 # Glossary: identity, access, sessions and tenancy
 
-Last reviewed: 2026-10-15 · Sources: `backend/app/tenancy`, `backend/app/db/session.py`, `backend/app/auth`, `backend/app/api/auth.py`, `backend/app/api/oidc.py`, `backend/app/api/scim.py`, `backend/app/scim`, `backend/app/api/deps.py`, `testing/keycloak`, `backend/app/config.py`, `frontend/src/api/client.ts`, `planning/epics/37-enterprise-identity-and-access.md`
+Last reviewed: 2026-10-16 · Sources: `backend/app/tenancy`, `backend/app/db/session.py`, `backend/app/auth`, `backend/app/api/auth.py`, `backend/app/api/oidc.py`, `backend/app/api/scim.py`, `backend/app/scim`, `backend/app/api/deps.py`, `testing/keycloak`, `backend/app/config.py`, `frontend/src/api/client.ts`, `planning/epics/37-enterprise-identity-and-access.md`
 
 These are the security and governance concepts behind Epics 37 and 38. Each entry
 gives the general meaning and how Axyntro applies it, with the code that
@@ -40,7 +40,7 @@ full stories.
 | **Source of a user's groups** | Where the product learns someone's groups. | SCIM for provisioned users (the claim is then ignored). Otherwise the groups claim at their last sign-in, which is recorded so mapping changes apply at once. |
 | **Groups overage** | Entra ID replaces the `groups` claim with a Graph link once a user is in too many groups. | Detected from `_claim_names`. The user keeps their previous group roles instead of losing them, and the sign-in audit event says so. |
 | **RP-initiated logout** | The app sends the browser to the IdP to end the IdP session too. | Logout returns the IdP's `logout_url`, with the ID token as a hint. Without it, "Sign in" would go straight back in. |
-| **Back-channel logout** | The IdP calls the app server to server when a user's IdP session ends. | `POST /api/auth/oidc/backchannel-logout` validates the signed logout token and revokes the sessions with that `sid` (or all of that `sub`'s). |
+| **Back-channel logout** | The IdP calls the app server to server when a user's IdP session ends. | `POST /api/auth/oidc/backchannel-logout` validates the signed logout token and revokes the sessions with that `sid` (or all of that `sub`'s). The token's issuer, not the host, says which tenant (Epic 38). |
 | **Backend-for-frontend (BFF)** | The server does the token exchange and keeps IdP tokens; the browser only holds the app's own session cookies. | The chosen design: no tokens in browser storage, and revocation is immediate because the server checks every session. |
 | **Fail closed** | When configuration is missing or unsafe, refuse to run rather than run open. | US37.14: the API and job worker exit at startup if `AUTH_MODE=local` with `ENVIRONMENT=production`, if MFA is disabled in production, or if `AUTH_COOKIE_SECURE=false` in production. The Docker image defaults to `production`. `config.py` `_check_auth_safety`. |
 
