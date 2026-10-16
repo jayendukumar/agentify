@@ -1,16 +1,16 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1300,
-   "mean_cyclomatic": 4.63,
-   "mean_cognitive": 4.44,
+   "functions": 1319,
+   "mean_cyclomatic": 4.61,
+   "mean_cognitive": 4.41,
    "max_cognitive": 98,
    "over_cognitive_limit": 89,
-   "over_cyclomatic_limit": 129
+   "over_cyclomatic_limit": 130
   },
   "frontend": {
-   "functions": 634,
-   "mean_cyclomatic": 4.71,
+   "functions": 637,
+   "mean_cyclomatic": 4.72,
    "mean_cognitive": 4.79,
    "max_cognitive": 93,
    "over_cognitive_limit": 50,
@@ -297,9 +297,9 @@
  },
  "duplication": {
   "backend": {
-   "loc": 27289,
-   "duplicated_lines": 74,
-   "percent": 0.27,
+   "loc": 27613,
+   "duplicated_lines": 96,
+   "percent": 0.35,
    "clones": [
     {
      "tokens": 90,
@@ -317,9 +317,19 @@
      "a_start": 126,
      "a_end": 137,
      "b_file": "backend/app/api/operator.py",
-     "b_start": 191,
-     "b_end": 200,
+     "b_start": 197,
+     "b_end": 206,
      "lines": 12
+    },
+    {
+     "tokens": 85,
+     "a_file": "backend/app/auth/support.py",
+     "a_start": 140,
+     "a_end": 150,
+     "b_file": "backend/app/tenancy/onboarding.py",
+     "b_start": 171,
+     "b_end": 181,
+     "lines": 11
     },
     {
      "tokens": 85,
@@ -332,9 +342,9 @@
      "lines": 14
     }
    ],
-   "clone_count": 3,
-   "structural_percent": 3.33,
-   "structural_clone_count": 36,
+   "clone_count": 4,
+   "structural_percent": 3.6,
+   "structural_clone_count": 39,
    "structural_clones": [
     {
      "tokens": 283,
@@ -399,11 +409,11 @@
     {
      "tokens": 143,
      "a_file": "backend/app/db/models.py",
-     "a_start": 1010,
-     "a_end": 1023,
+     "a_start": 1032,
+     "a_end": 1045,
      "b_file": "backend/app/db/models.py",
-     "b_start": 1122,
-     "b_end": 1138,
+     "b_start": 1144,
+     "b_end": 1160,
      "lines": 17
     },
     {
@@ -419,11 +429,11 @@
     {
      "tokens": 131,
      "a_file": "backend/app/db/models.py",
-     "a_start": 1030,
-     "a_end": 1068,
+     "a_start": 1052,
+     "a_end": 1090,
      "b_file": "backend/app/db/models.py",
-     "b_start": 1100,
-     "b_end": 1120,
+     "b_start": 1122,
+     "b_end": 1142,
      "lines": 39
     },
     {
@@ -459,11 +469,11 @@
     {
      "tokens": 126,
      "a_file": "backend/app/db/models.py",
-     "a_start": 1163,
-     "a_end": 1170,
+     "a_start": 1185,
+     "a_end": 1192,
      "b_file": "backend/app/db/models.py",
-     "b_start": 1207,
-     "b_end": 1216,
+     "b_start": 1229,
+     "b_end": 1238,
      "lines": 10
     },
     {
@@ -504,14 +514,24 @@
      "percent": 5.9
     },
     {
+     "file": "backend/app/auth/support.py",
+     "duplicated_lines": 11,
+     "percent": 6.5
+    },
+    {
+     "file": "backend/app/tenancy/onboarding.py",
+     "duplicated_lines": 11,
+     "percent": 6.7
+    },
+    {
      "file": "backend/app/api/operator.py",
      "duplicated_lines": 10,
-     "percent": 3.4
+     "percent": 2.8
     }
    ]
   },
   "frontend": {
-   "loc": 16574,
+   "loc": 16692,
    "duplicated_lines": 14,
    "percent": 0.08,
    "clones": [
@@ -527,7 +547,7 @@
     }
    ],
    "clone_count": 1,
-   "structural_percent": 0.63,
+   "structural_percent": 0.62,
    "structural_clone_count": 2,
    "structural_clones": [
     {
@@ -581,9 +601,9 @@
    },
    {
     "node": "app.auth",
-    "afferent": 4,
+    "afferent": 5,
     "efferent": 5,
-    "instability": 0.56
+    "instability": 0.5
    },
    {
     "node": "app.batches",
@@ -738,8 +758,8 @@
    {
     "node": "app.tenancy",
     "afferent": 13,
-    "efferent": 4,
-    "instability": 0.24
+    "efferent": 5,
+    "instability": 0.28
    },
    {
     "node": "app.twin",
@@ -757,12 +777,18 @@
    },
    {
     "node": "app.db.models",
-    "afferent": 59,
+    "afferent": 60,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.ids",
+    "afferent": 42,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.config",
     "afferent": 40,
     "efferent": 0,
     "instability": 0.0
@@ -780,10 +806,10 @@
     "instability": 0.26
    },
    {
-    "node": "app.config",
-    "afferent": 39,
-    "efferent": 0,
-    "instability": 0.0
+    "node": "app.tenancy.identity",
+    "afferent": 18,
+    "efferent": 5,
+    "instability": 0.22
    },
    {
     "node": "app.api.organization",
@@ -792,28 +818,22 @@
     "instability": 0.95
    },
    {
+    "node": "app.db.session",
+    "afferent": 20,
+    "efferent": 2,
+    "instability": 0.09
+   },
+   {
     "node": "app.context.repository",
     "afferent": 15,
     "efferent": 6,
     "instability": 0.29
    },
    {
-    "node": "app.db.session",
-    "afferent": 19,
-    "efferent": 2,
-    "instability": 0.1
-   },
-   {
     "node": "app.jobs.worker",
     "afferent": 8,
     "efferent": 13,
     "instability": 0.62
-   },
-   {
-    "node": "app.tenancy.identity",
-    "afferent": 16,
-    "efferent": 5,
-    "instability": 0.24
    },
    {
     "node": "app.llm",
@@ -829,9 +849,9 @@
    },
    {
     "node": "app.auth.audit",
-    "afferent": 14,
+    "afferent": 15,
     "efferent": 3,
-    "instability": 0.18
+    "instability": 0.17
    },
    {
     "node": "app.context.resolver",
@@ -1048,7 +1068,7 @@
     "frontend/src/components"
    ]
   ],
-  "deferred_import_count": 63
+  "deferred_import_count": 64
  },
  "dead_code": {
   "python": [
@@ -1183,6 +1203,13 @@
     "line": 30,
     "name": "VersionDiffRequest",
     "kind": "class",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/tenancy/onboarding.py",
+    "line": 210,
+    "name": "is_console_tenant",
+    "kind": "function",
     "status": "unused"
    }
   ],
@@ -1755,6 +1782,27 @@
     "status": "export-unneeded"
    },
    {
+    "file": "frontend/src/operator/api.ts",
+    "line": 39,
+    "name": "FirstAdmin",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/operator/api.ts",
+    "line": 45,
+    "name": "TenantIdp",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/operator/api.ts",
+    "line": 56,
+    "name": "TenantCreate",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
     "file": "frontend/src/api/types.ts",
     "line": 172,
     "name": "AgentSpec",
@@ -1893,11 +1941,11 @@
   },
   {
    "file": "frontend/src/api/client.ts",
-   "commits": 27,
-   "lines_changed": 1581,
+   "commits": 28,
+   "lines_changed": 1601,
    "cognitive": 67,
    "loc": 1160,
-   "score": 1809
+   "score": 1876
   },
   {
    "file": "frontend/src/pages/BlueprintPage.tsx",
@@ -1957,11 +2005,19 @@
   },
   {
    "file": "backend/app/llm/client.py",
-   "commits": 5,
-   "lines_changed": 330,
+   "commits": 6,
+   "lines_changed": 378,
    "cognitive": 81,
    "loc": 306,
-   "score": 405
+   "score": 486
+  },
+  {
+   "file": "backend/app/api/organization.py",
+   "commits": 4,
+   "lines_changed": 665,
+   "cognitive": 117,
+   "loc": 526,
+   "score": 468
   },
   {
    "file": "backend/app/batches/results.py",
@@ -1986,14 +2042,6 @@
    "cognitive": 177,
    "loc": 491,
    "score": 354
-  },
-  {
-   "file": "backend/app/api/organization.py",
-   "commits": 3,
-   "lines_changed": 627,
-   "cognitive": 117,
-   "loc": 526,
-   "score": 351
   },
   {
    "file": "frontend/src/components/TwinTestBuilder.tsx",
@@ -2616,6 +2664,16 @@
    "endpoints": 236,
    "stories": 269,
    "stories_implemented": 241
+  },
+  {
+   "commit": "1b92e1e",
+   "date": "2026-10-16",
+   "subject": "Build Epic 38 US38.11: model policy, registries and provider key per tenant",
+   "prod_loc": 43863,
+   "test_loc": 14697,
+   "endpoints": 238,
+   "stories": 269,
+   "stories_implemented": 241
   }
  ],
  "mutation": {
@@ -2945,9 +3003,9 @@
   }
  },
  "size": {
-  "backend_prod_loc": 27289,
-  "backend_test_loc": 11225,
-  "frontend_prod_loc": 16574,
-  "frontend_test_loc": 3472
+  "backend_prod_loc": 27613,
+  "backend_test_loc": 11359,
+  "frontend_prod_loc": 16692,
+  "frontend_test_loc": 3520
  }
 }

@@ -13,6 +13,7 @@ import {
   type OperatorGrant,
   type PlatformEvent,
   type Tenant,
+  type TenantCreated,
   type TenantLimits,
 } from './api'
 
@@ -169,17 +170,51 @@ function Limits({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void }) {
   )
 }
 
-function CreateTenant({ onCreated }: { onCreated: () => void }) {
+const FIRST_ADMIN_TEXT: Record<string, string> = {
+  invited: 'Invited',
+  expired: 'Invitation expired',
+  joined: 'Joined',
+  sso: 'Through its IdP',
+  none: 'No admin yet',
+}
+
+// US38.12: the first admin's one-time link, shown once -- send it to them.
+function InvitationLink({ created }: { created: TenantCreated }) {
+  if (!created.invitation_url) return null
+  return (
+    <div className="support-banner" role="status" aria-label="Invitation link">
+      Send this link to {created.tenant.first_admin?.email ?? 'the first admin'}. It works once, until{' '}
+      {when(created.invitation_expires_at)}, and isn't shown again:{' '}
+      <input readOnly value={created.invitation_url} onFocus={(e) => e.currentTarget.select()} aria-label="Invitation URL" />
+    </div>
+  )
+}
+
+const NEW_IDP = {
+  issuer: '', discovery_url: '', client_id: '', client_secret_ref: 'secret://tenant/oidc_client_secret',
+  display_name: 'single sign-on', acr_values: '', mfa_acr_values: [] as string[], admin_group: '',
+}
+
+function CreateTenant({ onCreated }: { onCreated: (created: TenantCreated) => void }) {
   const [form, setForm] = useState({ slug: '', display_name: '', host: '', region: '' })
+  const [how, setHow] = useState<'invite' | 'idp'>('invite')
+  const [email, setEmail] = useState('')
+  const [idp, setIdp] = useState(NEW_IDP)
   const [error, setError] = useState<string | null>(null)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError(null)
     try {
-      await operatorApi.createTenant({ ...form, region: form.region || null })
+      const created = await operatorApi.createTenant({
+        ...form,
+        region: form.region || null,
+        ...(how === 'invite' ? { first_admin_email: email.trim() } : { idp }),
+      })
       setForm({ slug: '', display_name: '', host: '', region: '' })
-      onCreated()
+      setEmail('')
+      setIdp(NEW_IDP)
+      onCreated(created)
     } catch (err) {
       setError(message(err, 'Could not create the tenant'))
     }
@@ -191,6 +226,29 @@ function CreateTenant({ onCreated }: { onCreated: () => void }) {
       <label>Name<input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} placeholder="Acme Corp" /></label>
       <label>Host<input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="acme.localhost" required /></label>
       <label>Region<input value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} placeholder="optional" /></label>
+      <fieldset>
+        <legend>First admin</legend>
+        <label className="check-row">
+          <input type="radio" name="first-admin" checked={how === 'invite'} onChange={() => setHow('invite')} />
+          Invite them by email: a one-time link (24 hours) to set up single sign-on
+        </label>
+        <label className="check-row">
+          <input type="radio" name="first-admin" checked={how === 'idp'} onChange={() => setHow('idp')} />
+          Connect their identity provider: its admins group gets Admin
+        </label>
+      </fieldset>
+      {how === 'invite' ? (
+        <label>First admin's email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+      ) : (
+        <>
+          <label>Issuer<input value={idp.issuer} onChange={(e) => setIdp({ ...idp, issuer: e.target.value })} required /></label>
+          <label>Discovery URL (optional)<input value={idp.discovery_url} onChange={(e) => setIdp({ ...idp, discovery_url: e.target.value })} /></label>
+          <label>Client ID<input value={idp.client_id} onChange={(e) => setIdp({ ...idp, client_id: e.target.value })} required /></label>
+          <label>Client secret reference<input value={idp.client_secret_ref} onChange={(e) => setIdp({ ...idp, client_secret_ref: e.target.value })} required /></label>
+          <label>Ask the IdP for (acr_values)<input value={idp.acr_values} onChange={(e) => setIdp({ ...idp, acr_values: e.target.value, mfa_acr_values: e.target.value.split(/[\s,]+/).filter(Boolean) })} placeholder="e.g. mfa" /></label>
+          <label>Admins group<input value={idp.admin_group} onChange={(e) => setIdp({ ...idp, admin_group: e.target.value })} placeholder="acme-admins" required /></label>
+        </>
+      )}
       {error && <p className="error" role="alert">{error}</p>}
       <div className="registry-entry-actions"><button type="submit">Create tenant</button></div>
     </form>
@@ -202,6 +260,7 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
   const [events, setEvents] = useState<PlatformEvent[]>([])
   const [open, setOpen] = useState<string | null>(null)
   const [limitsOpen, setLimitsOpen] = useState<string | null>(null)
+  const [invitation, setInvitation] = useState<TenantCreated | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -219,6 +278,18 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
       load()
     } catch (err) {
       setError(message(err, `Could not ${action} ${tenant.slug}`))
+    }
+  }
+
+  async function reinvite(tenant: Tenant) {
+    setError(null)
+    const email = tenant.first_admin?.email ?? window.prompt(`The first admin's email for ${tenant.slug}`) ?? ''
+    if (!email) return
+    try {
+      setInvitation(await operatorApi.invite(tenant.id, email))
+      load()
+    } catch (err) {
+      setError(message(err, `Could not invite ${tenant.slug}'s first admin`))
     }
   }
 
@@ -244,12 +315,13 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
         <h1>Tenants</h1>
         <p className="meta">Usage is counts and costs only. To look inside a tenant, its admin grants support access.</p>
         {error && <p className="error" role="alert">{error}</p>}
+        {invitation && <InvitationLink created={invitation} />}
         {tenants && (
           <table className="data-table">
             <thead>
               <tr>
                 <th>Tenant</th><th>Status</th><th>Hosts</th><th>Users</th><th>Processes</th><th>Jobs waiting</th>
-                <th>LLM this month</th><th>Last sign-in</th><th>Support</th><th />
+                <th>First admin</th><th>LLM this month</th><th>Last sign-in</th><th>Support</th><th />
               </tr>
             </thead>
             <tbody>
@@ -261,6 +333,17 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
                   <td>{tenant.usage?.users ?? '--'}</td>
                   <td>{tenant.usage?.processes ?? '--'}</td>
                   <td>{tenant.usage?.jobs_waiting ?? '--'}</td>
+                  <td>
+                    {tenant.first_admin ? FIRST_ADMIN_TEXT[tenant.first_admin.state] : '--'}
+                    {tenant.first_admin?.email && <span className="meta"> ({tenant.first_admin.email})</span>}
+                    {tenant.status === 'active' && tenant.created_via === 'console' &&
+                      (tenant.first_admin?.state === 'invited' || tenant.first_admin?.state === 'expired' || tenant.first_admin?.state === 'none') && (
+                        <>
+                          {' '}
+                          <button type="button" className="button-secondary" onClick={() => reinvite(tenant)}>New invitation</button>
+                        </>
+                      )}
+                  </td>
                   <td>
                     {tenant.usage ? usd(tenant.usage.llm_cost_this_month_usd) : '--'}
                     {tenant.effective_limits.llm_monthly_budget_usd !== null && (
@@ -319,7 +402,12 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
         )}
         <section>
           <h2>Create a tenant</h2>
-          <CreateTenant onCreated={load} />
+          <CreateTenant
+            onCreated={(created) => {
+              setInvitation(created.invitation_url ? created : null)
+              load()
+            }}
+          />
         </section>
         <section>
           <h2>Platform audit log</h2>

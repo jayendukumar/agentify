@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**249 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**251 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -25,6 +25,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | Method | Path | Access | What it does |
 |---|---|---|---|
 | GET | `/api/auth/config` | public | Epic 37: public -- the sign-in page needs it before anyone signs in. Epic 38: this tenant's sign-in ("none": single sign-on isn't set up). |
+| GET | `/api/auth/invitation/accept` | public | Epic 38, US38.12: a new organization's first admin arrives with the one-time link the hosting company sent, and is signed in as Admin to set |
 | POST | `/api/auth/login` | public | Local sign-in: a name and self-picked roles. Settings validation refuses AUTH_MODE=local in production (US37.14), so this endpoint never ser |
 | POST | `/api/auth/logout` | signed in | Ends this session. After an SSO sign-in it also returns the IdP's logout URL, so the IdP session ends too -- otherwise the next "Sign in" wo |
 | GET | `/api/auth/me` | signed in |  |
@@ -214,7 +215,8 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/operator/oidc/callback` | public | Every refusal is returned, not raised, so its audit event commits. |
 | GET | `/api/operator/oidc/login` | public |  |
 | GET | `/api/operator/tenants` | public |  |
-| POST | `/api/operator/tenants` | public | A tenant and its first host. Its first admin and IdP come with US38.12; until then `python -m app.tenancy identity set`. |
+| POST | `/api/operator/tenants` | public | US38.12: a tenant, its first host, and how its first admin gets in -- an invitation to their email, or the tenant's IdP with its admins grou |
+| POST | `/api/operator/tenants/{tenant_id}/invitation` | public | US38.12: a new one-time link for the first admin (the earlier one stops working). Only while the tenant has no single sign-on and no admin. |
 | PUT | `/api/operator/tenants/{tenant_id}/limits` | public | US38.9: concurrent jobs, LLM requests per minute, monthly LLM budget. Empty means the deployment's default. |
 | GET | `/api/operator/tenants/{tenant_id}/support-grants` | public |  |
 | POST | `/api/operator/tenants/{tenant_id}/support-grants/{grant_id}/enter` | public | A one-time link (a minute) into the tenant's own host, under the grant. |

@@ -3718,3 +3718,34 @@ repo's sequential hex pattern and landed on `e7f8a9b0c1d2`, which Epic
 cycle. Renamed to `f9a0b1c2d3e4`. Worth checking `grep "^revision"` before
 picking the next id in that pattern.
 
+## 2026-10-16 -- Epic 38, US38.12: creating a tenant and its first admin
+
+### Invitations only while a tenant has no SSO and no admin
+
+The story asks for a one-time link for a new tenant's first admin. Made
+from the operator console, a link that can be issued any time would let
+an operator invite themselves into any tenant as Admin -- the standing
+access US38.8 rules out. So a link can be made, and is honoured, only
+while the tenant has neither single sign-on nor an active admin. After
+that, the tenant's own admins add people, and an operator gets in only
+through a support grant.
+
+### A tenant created in the console never offers local sign-in
+
+Tenants without identity settings fall back to the local name picker
+outside production (US38.6). For a console-created tenant that would
+make the invitation pointless in development and staging: anyone could
+pick "Admin". The tenant records how it was created (`created_via`), and
+a console tenant's sign-in is `none` until SSO is set up; saving local
+sign-in for it is refused. Tenants created before, or with the CLI, keep
+their behaviour.
+
+### The tenant's row commits before its first rows
+
+Writing the invitation, identity settings and audit entries as the new
+tenant needs its `tenants` row visible to another connection (the
+foreign key, and the app role's session). The console commits the
+platform transaction first, then onboards as the tenant. If onboarding
+then fails, the tenant exists without a first admin, and the console
+offers a new invitation.
+

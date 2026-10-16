@@ -4,7 +4,7 @@ import OperatorConsole from './OperatorConsole'
 
 const api = vi.hoisted(() => ({
   config: vi.fn(), me: vi.fn(), login: vi.fn(), logout: vi.fn(), tenants: vi.fn(), createTenant: vi.fn(),
-  changeStatus: vi.fn(), grants: vi.fn(), enter: vi.fn(), audit: vi.fn(), setLimits: vi.fn(),
+  changeStatus: vi.fn(), grants: vi.fn(), enter: vi.fn(), audit: vi.fn(), setLimits: vi.fn(), invite: vi.fn(),
 }))
 vi.mock('./api', () => ({ operatorApi: api }))
 
@@ -17,6 +17,8 @@ const tenant = {
   },
   limits: { max_concurrent_jobs: null, llm_requests_per_minute: null, llm_monthly_budget_usd: 50 },
   effective_limits: { max_concurrent_jobs: 4, llm_requests_per_minute: null, llm_monthly_budget_usd: 50 },
+  created_via: 'console',
+  first_admin: { state: 'invited', email: 'ada@northwind.test', expires_at: '2026-10-17T08:00:00' },
 }
 const operator = { id: 'op1', name: 'Otto Operator', email: 'otto@hosting.test', csrf_token: 'c', session_expires_at: '', auth_method: 'local' }
 
@@ -79,5 +81,54 @@ describe('Operator console (Epic 38, US38.8)', () => {
         max_concurrent_jobs: null, llm_requests_per_minute: 120, llm_monthly_budget_usd: null,
       }),
     )
+  })
+
+  it('creates a tenant with an invitation for its first admin and shows the link once (US38.12)', async () => {
+    api.me.mockResolvedValue(operator)
+    api.createTenant.mockResolvedValue({
+      tenant: { ...tenant, slug: 'acme', first_admin: { state: 'invited', email: 'ada@acme.test', expires_at: null } },
+      invitation_url: 'http://acme.localhost:8000/api/auth/invitation/accept?token=t1',
+      invitation_expires_at: '2026-10-17T08:00:00',
+    })
+    render(<OperatorConsole />)
+    fireEvent.change(await screen.findByLabelText('Slug'), { target: { value: 'acme' } })
+    fireEvent.change(screen.getByLabelText('Host'), { target: { value: 'acme.localhost' } })
+    fireEvent.change(screen.getByLabelText("First admin's email"), { target: { value: 'ada@acme.test' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create tenant' }))
+    await waitFor(() =>
+      expect(api.createTenant).toHaveBeenCalledWith({
+        slug: 'acme', display_name: '', host: 'acme.localhost', region: null, first_admin_email: 'ada@acme.test',
+      }),
+    )
+    expect(await screen.findByLabelText('Invitation URL')).toHaveValue('http://acme.localhost:8000/api/auth/invitation/accept?token=t1')
+  })
+
+  it("connects the tenant's IdP instead, with its admins group", async () => {
+    api.me.mockResolvedValue(operator)
+    api.createTenant.mockResolvedValue({ tenant, invitation_url: null, invitation_expires_at: null })
+    render(<OperatorConsole />)
+    fireEvent.change(await screen.findByLabelText('Slug'), { target: { value: 'acme' } })
+    fireEvent.change(screen.getByLabelText('Host'), { target: { value: 'acme.localhost' } })
+    fireEvent.click(screen.getByLabelText(/Connect their identity provider/))
+    fireEvent.change(screen.getByLabelText('Issuer'), { target: { value: 'https://login.acme.example' } })
+    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: 'axyntro' } })
+    fireEvent.change(screen.getByLabelText('Admins group'), { target: { value: 'acme-admins' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create tenant' }))
+    await waitFor(() => expect(api.createTenant).toHaveBeenCalled())
+    const body = api.createTenant.mock.calls[0][0]
+    expect(body.idp).toMatchObject({ issuer: 'https://login.acme.example', client_id: 'axyntro', admin_group: 'acme-admins' })
+    expect(body.first_admin_email).toBeUndefined()
+    expect(screen.queryByLabelText('Invitation URL')).not.toBeInTheDocument()
+  })
+
+  it('sends a new invitation while the first admin has not joined', async () => {
+    api.me.mockResolvedValue(operator)
+    api.invite.mockResolvedValue({ tenant, invitation_url: 'http://northwind.localhost:8000/api/auth/invitation/accept?token=t2', invitation_expires_at: null })
+    render(<OperatorConsole />)
+    const row = (await screen.findByText('Northwind')).closest('tr')!
+    expect(row).toHaveTextContent('Invited (ada@northwind.test)')
+    fireEvent.click(screen.getByRole('button', { name: 'New invitation' }))
+    await waitFor(() => expect(api.invite).toHaveBeenCalledWith('ten_1', 'ada@northwind.test'))
+    expect(await screen.findByLabelText('Invitation URL')).toHaveValue('http://northwind.localhost:8000/api/auth/invitation/accept?token=t2')
   })
 })

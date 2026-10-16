@@ -78,6 +78,10 @@ class TenantModel(Base):
     max_concurrent_jobs: Mapped[int | None] = mapped_column(nullable=True)
     llm_requests_per_minute: Mapped[int | None] = mapped_column(nullable=True)
     llm_monthly_budget_usd: Mapped[float | None] = mapped_column(nullable=True)
+    # US38.12: `console` (an operator created it, for a first admin who signs
+    # in by invitation or through the tenant's IdP: never by local sign-in)
+    # or `cli` (python -m app.tenancy, and the tenants that came before).
+    created_via: Mapped[str] = mapped_column(String, nullable=False, default="cli", server_default="cli")
 
 
 class TenantDomainModel(Base):
@@ -769,6 +773,24 @@ class SupportGrantModel(TenantScoped, Base):
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
     revoked_by_name: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class TenantInvitationModel(TenantScoped, Base):
+    """Epic 38, US38.12: the one-time link that lets a new tenant's first
+    admin in, to set up single sign-on. Made by an operator in the console,
+    valid for 24 hours, used once, and only while the tenant has neither
+    single sign-on nor an admin. Only the hash is stored."""
+
+    __tablename__ = "tenant_invitations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String, nullable=False)
+    invited_by: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    redeemed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    redeemed_by_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class SupportEntryModel(TenantScoped, Base):

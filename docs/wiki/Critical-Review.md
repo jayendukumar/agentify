@@ -62,7 +62,9 @@ fixable without rethinking the product.
    with another tenant's ids. Each tenant signs in through its own IdP.
    Operators work in a separate console, through a database role that
    can't read tenant tables, and enter a tenant only as support under a
-   grant its admin gave. Each tenant's secrets are references into its own store
+   grant its admin gave. A new tenant is handed to its first admin by a
+   one-time invitation or through its IdP, and never offers local
+   sign-in. Each tenant's secrets are references into its own store
    (`secret://tenant/<name>`), its uploads live in a directory of its own,
    and every log line names its tenant. Its model policy and registries
    are its own, and it may call the model provider on its own key. Still

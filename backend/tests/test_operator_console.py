@@ -98,14 +98,18 @@ def test_a_tenant_session_is_nothing_on_the_console(client):
 
 def test_create_suspend_activate_and_delete_a_tenant(client):
     ops = _operator()
-    for body, reason in [({"slug": "A!", "host": "x.test"}, "slug"), ({"slug": "test", "host": "new.test"}, "exists"),
-                         ({"slug": "acme", "host": "testserver"}, "already reaches"),
-                         ({"slug": "acme", "host": "ops.localhost"}, "host name of its own")]:
+    admin = {"first_admin_email": "ada@acme.test"}  # US38.12: every new tenant gets a first admin
+    for body, reason in [({"slug": "A!", "host": "x.test", **admin}, "slug"),
+                         ({"slug": "test", "host": "new.test", **admin}, "exists"),
+                         ({"slug": "acme", "host": "testserver", **admin}, "already reaches"),
+                         ({"slug": "acme", "host": "ops.localhost", **admin}, "host name of its own"),
+                         ({"slug": "acme", "host": "acme.test"}, "first admin gets in")]:
         refused = ops.post("/api/operator/tenants", json=body)
         assert refused.status_code == 400 and reason in refused.json()["detail"], refused.text
-    created = ops.post("/api/operator/tenants", json={"slug": "acme", "display_name": "Acme Corp", "host": "Acme.Test:443"})
+    created = ops.post("/api/operator/tenants",
+                       json={"slug": "acme", "display_name": "Acme Corp", "host": "Acme.Test:443", **admin})
     assert created.status_code == 201, created.text
-    acme = created.json()
+    acme = created.json()["tenant"]
     assert acme["hosts"] == ["acme.test"] and acme["status"] == "active"
     assert TestClient(app, base_url="http://acme.test").get("/api/host").json()["name"] == "Acme Corp"
 

@@ -79,7 +79,8 @@ def hosts(platform_db: Session, tenant_id: str) -> list[str]:
     return sorted(platform_db.scalars(select(TenantDomainModel.host).where(TenantDomainModel.tenant_id == tenant_id)))
 
 
-def create(platform_db: Session, *, slug: str, display_name: str, host: str, region: str | None) -> TenantModel:
+def create(platform_db: Session, *, slug: str, display_name: str, host: str, region: str | None,
+           created_via: str = "console") -> TenantModel:
     slug = slug.strip().lower()
     if not SLUG.match(slug):
         raise TenantError("The slug is 2-40 lowercase letters, digits and hyphens, starting with a letter")
@@ -91,7 +92,7 @@ def create(platform_db: Session, *, slug: str, display_name: str, host: str, reg
     if platform_db.get(TenantDomainModel, host) is not None:
         raise TenantError(f"Host '{host}' already reaches a tenant")
     tenant = TenantModel(id=new_id("ten"), slug=slug, display_name=display_name.strip() or slug.title(),
-                         region=(region or "").strip() or None)
+                         region=(region or "").strip() or None, created_via=created_via)
     platform_db.add(tenant)
     platform_db.flush()
     platform_db.add(TenantDomainModel(host=host, tenant_id=tenant.id))
@@ -140,7 +141,7 @@ def grants_for(tenant_id: str, operator_email: str | None) -> list[SupportGrantM
         return [g for g in support.active_grants(db) if support.allows(g, operator_email)]
 
 
-def entry_url(tenant_hosts: list[str], token: str) -> str:
+def tenant_api_url(tenant_hosts: list[str], path: str) -> str:
     """On the tenant's own host -- preferring one under the same parent
     domain as the console (`ops.localhost` -> `northwind.localhost`), so
     the browser's cookie lands where the tenant's frontend calls."""
@@ -148,7 +149,16 @@ def entry_url(tenant_hosts: list[str], token: str) -> str:
     suffixes = {"." + h.split(".", 1)[1] for h in settings.operator_host_set if "." in h}
     preferred = [h for h in tenant_hosts if any(h.endswith(s) for s in suffixes)]
     host = (preferred or tenant_hosts)[0]
-    return with_host(settings.api_public_url, host) + f"/api/auth/support/enter?token={token}"
+    return with_host(settings.api_public_url, host) + path
+
+
+def entry_url(tenant_hosts: list[str], token: str) -> str:
+    return tenant_api_url(tenant_hosts, f"/api/auth/support/enter?token={token}")
+
+
+def invitation_url(tenant_hosts: list[str], token: str) -> str:
+    """US38.12: the first admin's one-time link."""
+    return tenant_api_url(tenant_hosts, f"/api/auth/invitation/accept?token={token}")
 
 
 def open_support(tenant_id: str, grant_id: str, *, operator_id: str, operator_name: str,

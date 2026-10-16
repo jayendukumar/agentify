@@ -66,6 +66,24 @@ class TenantOut(BaseModel):
     # what's in effect.
     limits: TenantLimitsIn
     effective_limits: TenantLimitsOut
+    # US38.12: tenants an operator created; how their first admin gets in.
+    created_via: str = "cli"
+    first_admin: FirstAdminOut | None = None
+
+
+class TenantIdp(BaseModel):
+    """US38.12: the new tenant's identity provider, and the IdP group whose
+    members are its admins. The client secret is a reference."""
+
+    issuer: str
+    discovery_url: str = ""
+    client_id: str
+    client_secret_ref: str = "secret://tenant/oidc_client_secret"
+    display_name: str = "single sign-on"
+    acr_values: str = ""
+    mfa_amr_values: list[str] = Field(default_factory=lambda: ["mfa", "otp", "hwk", "swk"])
+    mfa_acr_values: list[str] = Field(default_factory=list)
+    admin_group: str
 
 
 class TenantCreate(BaseModel):
@@ -73,6 +91,27 @@ class TenantCreate(BaseModel):
     display_name: str = ""
     host: str
     region: str | None = None
+    # US38.12: how its first admin gets in -- exactly one of these.
+    first_admin_email: str | None = None
+    idp: TenantIdp | None = None
+
+
+class FirstAdminOut(BaseModel):
+    # invited | expired | joined | sso | none
+    state: str
+    email: str | None = None
+    expires_at: datetime | None = None
+
+
+class TenantCreated(BaseModel):
+    tenant: TenantOut
+    # The first admin's one-time link, shown once (never stored).
+    invitation_url: str | None = None
+    invitation_expires_at: datetime | None = None
+
+
+class InvitationCreate(BaseModel):
+    email: str
 
 
 class SupportGrantForOperator(BaseModel):

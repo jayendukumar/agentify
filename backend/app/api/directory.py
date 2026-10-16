@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.db.models import ContextEntityModel, ScimTokenModel, SessionModel, SupportGrantModel, TenantIdentityModel
 from app.ids import new_id, utcnow
 from app.tenancy import identity
+from app.tenancy.context import current_tenant_id
 from app.schemas.directory import (
     ConnectionTestOut,
     IdentitySettingsIn,
@@ -107,6 +108,10 @@ def save_identity_settings(
     """Saves after testing the connection again: settings that can't reach
     the IdP would lock everyone out at their next sign-in. (An operator can
     undo a bad save: `python -m app.tenancy identity reset <slug>`.)"""
+    if body.auth_mode == "local" and identity.local_sign_in_barred(db, current_tenant_id() or ""):
+        # US38.12: its first admin came in by invitation to set up single sign-on.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            detail="This organization signs in through its identity provider; local sign-in isn't available")
     config = _candidate(db, body)
     if body.auth_mode == "oidc":
         check = oidc.check_connection(config, http=http)

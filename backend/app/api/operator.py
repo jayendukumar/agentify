@@ -23,6 +23,7 @@ from app.auth import oidc, support
 from app.config import get_settings
 from app.db.models import OperatorLoginRequestModel, OperatorSessionModel, PlatformAuditEventModel, TenantModel
 from app.db.session import get_platform_session_factory
+from app.ids import utcnow
 from app.operators import auth, tenants
 from app.schemas.operator import (
     HostKind,
@@ -33,11 +34,16 @@ from app.schemas.operator import (
     PlatformAuditEvent,
     SupportEntry,
     SupportGrantForOperator,
+    FirstAdminOut,
+    InvitationCreate,
     TenantCreate,
+    TenantCreated,
+    TenantIdp,
     TenantOut,
     TenantUsage,
 )
 from app.schemas.usage import TenantLimitsIn, TenantLimitsOut
+from app.tenancy import identity, onboarding
 from app.tenancy.hosts import normalize_host
 from app.tenancy.limits import limits_of
 
@@ -238,14 +244,15 @@ def operator_logout(record: OperatorSession, db: PlatformDb, request: Request, r
 
 
 def _tenant_out(db: Session, tenant: TenantModel, with_usage: bool = True) -> TenantOut:
-    usage = None
+    usage = first = None
     if with_usage and tenant.status != "deleting":
         u = tenants.usage(tenant.id)
         usage = TenantUsage(**u.__dict__)
+        first = FirstAdminOut(**onboarding.first_admin(tenant.id).__dict__)
     effective = limits_of(tenant)
     return TenantOut(id=tenant.id, slug=tenant.slug, display_name=tenant.display_name, status=tenant.status,
                      region=tenant.region, created_at=tenant.created_at, hosts=tenants.hosts(db, tenant.id),
-                     usage=usage,
+                     usage=usage, created_via=tenant.created_via, first_admin=first,
                      limits=TenantLimitsIn(**{name: getattr(tenant, name) for name in tenants.LIMIT_FIELDS}),
                      effective_limits=TenantLimitsOut(**{name: getattr(effective, name)
                                                          for name in tenants.LIMIT_FIELDS}))
@@ -264,19 +271,87 @@ def list_tenants(record: OperatorSession, db: PlatformDb) -> list[TenantOut]:
     return [_tenant_out(db, t) for t in db.scalars(select(TenantModel).order_by(TenantModel.slug))]
 
 
-@router.post("/tenants", response_model=TenantOut, status_code=201)
-def create_tenant(body: TenantCreate, record: OperatorSession, db: PlatformDb, request: Request) -> TenantOut:
-    """A tenant and its first host. Its first admin and IdP come with
-    US38.12; until then `python -m app.tenancy identity set`."""
+def _idp_values(idp: TenantIdp) -> dict:
+    return {
+        "auth_mode": "oidc", "issuer": idp.issuer.strip(), "discovery_url": idp.discovery_url.strip(),
+        "client_id": idp.client_id.strip(), "client_secret_ref": idp.client_secret_ref.strip(),
+        "display_name": idp.display_name, "scopes": "openid profile email", "acr_values": idp.acr_values,
+        "groups_claim": "groups", "jit_provisioning": True, "require_mfa": True,
+        "mfa_amr_values": idp.mfa_amr_values, "mfa_acr_values": idp.mfa_acr_values, "scim_link_claim": "sub",
+    }
+
+
+@router.post("/tenants", response_model=TenantCreated, status_code=201)
+def create_tenant(body: TenantCreate, record: OperatorSession, db: PlatformDb, request: Request) -> TenantCreated:
+    """US38.12: a tenant, its first host, and how its first admin gets in --
+    an invitation to their email, or the tenant's IdP with its admins group
+    mapped to Admin. Audited here and in the new tenant's own log."""
+    if (body.first_admin_email is None) == (body.idp is None):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            detail="Say how the first admin gets in: their email for an invitation, or the IdP setup")
+    operator = record.operator
+    if body.idp is not None:  # checked before anything is created
+        try:
+            identity.validate(_idp_values(body.idp), body.slug.strip().lower(), get_settings())
+        except identity.IdentityError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if not body.idp.admin_group.strip():
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Name the IdP group whose members are its admins")
+    elif "@" not in (body.first_admin_email or ""):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Give the first admin's email address")
     try:
         tenant = tenants.create(db, slug=body.slug, display_name=body.display_name, host=body.host, region=body.region)
     except tenants.TenantError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    auth.record(db, operator=record.operator, action="tenant_created", request=request, tenant_id=tenant.id,
-                detail={"slug": tenant.slug, "host": normalize_host(body.host), "region": tenant.region})
-    db.flush()
-    db.refresh(tenant)
-    return _tenant_out(db, tenant, with_usage=False)
+    first_admin = {"idp": body.idp.issuer, "admin_group": body.idp.admin_group} if body.idp else {
+        "email": body.first_admin_email}
+    auth.record(db, operator=operator, action="tenant_created", request=request, tenant_id=tenant.id,
+                detail={"slug": tenant.slug, "host": normalize_host(body.host), "region": tenant.region,
+                        "first_admin": first_admin})
+    # The tenant's own rows reference its `tenants` row, so that commits first.
+    db.commit()
+    onboarding.record_created(tenant.id, operator_name=operator.name,
+                              detail={"slug": tenant.slug, "host": normalize_host(body.host)})
+    created = TenantCreated(tenant=_tenant_out(db, tenant, with_usage=False))
+    try:
+        if body.idp is not None:
+            onboarding.configure_idp(tenant.id, tenant.slug, _idp_values(body.idp), admin_group=body.idp.admin_group,
+                                     operator_name=operator.name)
+            auth.record(db, operator=operator, action="tenant_idp_configured", request=request, tenant_id=tenant.id,
+                        detail={"slug": tenant.slug, **first_admin})
+        else:
+            token = onboarding.invite(tenant.id, body.first_admin_email or "", operator_name=operator.name)
+            created.invitation_url = tenants.invitation_url(tenants.hosts(db, tenant.id), token)
+            created.invitation_expires_at = utcnow().replace(tzinfo=None) + onboarding.INVITATION_LIFETIME
+            auth.record(db, operator=operator, action="first_admin_invited", request=request, tenant_id=tenant.id,
+                        detail={"slug": tenant.slug, **first_admin})
+    except onboarding.OnboardingError as exc:
+        # The tenant exists; the operator can send an invitation from the list.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Created {tenant.slug}, but: {exc}") from exc
+    return created
+
+
+@router.post("/tenants/{tenant_id}/invitation", response_model=TenantCreated)
+def invite_first_admin(tenant_id: str, body: InvitationCreate, record: OperatorSession, db: PlatformDb,
+                       request: Request) -> TenantCreated:
+    """US38.12: a new one-time link for the first admin (the earlier one
+    stops working). Only while the tenant has no single sign-on and no admin."""
+    tenant = _tenant(db, tenant_id)
+    if tenant.status != "active":
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=f"The tenant is {tenant.status}")
+    try:
+        token = onboarding.invite(tenant.id, body.email, operator_name=record.operator.name)
+    except onboarding.OnboardingError as exc:
+        auth.record(db, operator=record.operator, action="first_admin_invited", outcome="refused", request=request,
+                    tenant_id=tenant.id, detail={"email": body.email, "reason": str(exc)})
+        db.commit()
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    auth.record(db, operator=record.operator, action="first_admin_invited", request=request, tenant_id=tenant.id,
+                detail={"slug": tenant.slug, "email": body.email})
+    return TenantCreated(
+        tenant=_tenant_out(db, tenant), invitation_url=tenants.invitation_url(tenants.hosts(db, tenant.id), token),
+        invitation_expires_at=utcnow().replace(tzinfo=None) + onboarding.INVITATION_LIFETIME,
+    )
 
 
 @router.post("/tenants/{tenant_id}/{action}", response_model=TenantOut)

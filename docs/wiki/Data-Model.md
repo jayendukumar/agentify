@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-16 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**72 tables, 777 columns (94 JSON), 169 foreign keys, 39 Alembic migrations.**
+**73 tables, 787 columns (94 JSON), 170 foreign keys, 40 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -575,6 +575,9 @@ erDiagram
     support_entries {
         string token_hash PK
         string grant_id FK
+    }
+    tenant_invitations {
+        string id PK
     }
     contributions {
         bigint seq PK
@@ -1685,6 +1688,21 @@ Epic 38, US38.8: the one-time link that takes an operator from the console into 
 | `created_at` | datetime | no |  |
 | `expires_at` | datetime | no |  |
 
+#### `tenant_invitations` (TenantInvitationModel)
+
+Epic 38, US38.12: the one-time link that lets a new tenant's first admin in, to set up single sign-on. Made by an operator in the console, valid for 24 hours, used once, and only while the tenant has neither single sign-on nor an admin. Only the hash is stored.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `token_hash` | string | no |  |
+| `email` | string | no |  |
+| `invited_by` | string | no |  |
+| `created_at` | datetime | no |  |
+| `expires_at` | datetime | no |  |
+| `redeemed_at` | datetime | yes |  |
+| `redeemed_by_user_id` | string | yes |  |
+
 #### `contributions` (ContributionModel)
 
 Epic 37, US37.3: who changed a process or an agent, how, and at what risk tier. `seq` orders contributions globally; a change set awaiting approval is "this object's contributions after the last approved one" (app/auth/sod.py), which is what decides who may approve it.
@@ -1777,6 +1795,7 @@ Epic 38, US38.1: one customer of this deployment. Every other table is the tenan
 | `max_concurrent_jobs` | int | yes |  |
 | `llm_requests_per_minute` | int | yes |  |
 | `llm_monthly_budget_usd` | float | yes |  |
+| `created_via` | string | no |  |
 
 #### `tenant_domains` (TenantDomainModel)
 

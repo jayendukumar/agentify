@@ -21,6 +21,7 @@ from app.schemas.auth import (
     SignedInUser,
     SupportSessionInfo,
 )
+from app.tenancy import onboarding
 from app.tenancy.identity import IdentityConfig, get_identity
 
 from .deps import CurrentSessionDep, DbDep
@@ -189,6 +190,24 @@ def support_enter(token: str, db: DbDep, request: Request, config: IdentityDep) 
         return RedirectResponse(f"{frontend}/?auth_error=support_refused", status.HTTP_302_FOUND)
     response = RedirectResponse(f"{frontend}/", status.HTTP_302_FOUND)
     sessions.set_cookies(response, entered.issued)
+    return response
+
+
+@router.get("/invitation/accept")
+def accept_invitation(token: str, db: DbDep, request: Request, config: IdentityDep) -> Response:
+    """Epic 38, US38.12: a new organization's first admin arrives with the
+    one-time link the hosting company sent, and is signed in as Admin to set
+    up single sign-on. Refusals redirect to the sign-in page and are
+    audited here."""
+    frontend = config.frontend_url.rstrip("/")
+    try:
+        issued = onboarding.redeem(db, token, request)
+    except onboarding.InvitationRefused as exc:
+        audit.record(db, actor=None, actor_name="invitation", action="first_admin_joined", outcome="refused",
+                     request=request, detail={"reason": str(exc)})
+        return RedirectResponse(f"{frontend}/?auth_error=invitation_refused", status.HTTP_302_FOUND)
+    response = RedirectResponse(f"{frontend}/directory", status.HTTP_302_FOUND)
+    sessions.set_cookies(response, issued)
     return response
 
 

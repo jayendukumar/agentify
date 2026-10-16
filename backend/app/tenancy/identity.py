@@ -12,6 +12,8 @@ current request:
   before Epic 38, with their URLs as configured.
 - **No row, any other tenant:** no single sign-on. Local sign-in outside
   production; in production nobody can sign in until it's configured.
+  US38.12: a tenant created in the operator console never gets local
+  sign-in -- its first admin comes in by invitation (app/tenancy/onboarding.py).
 
 The client secret is never stored: a tenant holds a *reference*,
 `secret://tenant/<name>`, resolved in its own secrets store when it's
@@ -218,11 +220,25 @@ def _resolve(db: Session, settings: Settings, tenant_id: str, host: str) -> Iden
         return from_row(row, settings, host, _slug(db, tenant_id))
     if _slug(db, tenant_id) == settings.tenant_default_slug:
         return from_settings(settings, tenant_id)
+    no_local = settings.environment == "production" or local_sign_in_barred(db, tenant_id)
     return IdentityConfig(
-        auth_mode="none" if settings.environment == "production" else "local", source="unset", tenant_id=tenant_id,
+        auth_mode="none" if no_local else "local", source="unset", tenant_id=tenant_id,
         redirect_uri=with_host(settings.api_public_url, host) + "/api/auth/oidc/callback",
         frontend_url=with_host(settings.frontend_url, host), api_url=with_host(settings.api_public_url, host),
     )
+
+
+_created_via: dict[str, str] = {}
+
+
+def local_sign_in_barred(db: Session, tenant_id: str) -> bool:
+    """US38.12: created in the operator console, so never local sign-in."""
+    if tenant_id not in _created_via:
+        value = db.scalar(select(TenantModel.created_via).where(TenantModel.id == tenant_id))
+        if value is None:
+            return False
+        _created_via[tenant_id] = value  # never changes
+    return _created_via[tenant_id] == "console"
 
 
 def tenant_slug(db: Session, tenant_id: str) -> str | None:

@@ -6,7 +6,9 @@ boundary. Step 2 in progress: US38.6 (each tenant's own IdP) implemented
 (operator console, support access) 2026-10-16. Step 2 is complete.
 Step 3 complete: US38.9 (fair share, limits, usage), US38.10 (secrets,
 files, logs per tenant) and US38.11 (model policy, registries, provider
-key per tenant) implemented 2026-10-16; open: US38.12-38.15. Decisions confirmed 2026-10-15
+key per tenant) implemented 2026-10-16. Step 4 in progress: US38.12
+(create a tenant and its first admin) implemented 2026-10-16; open:
+US38.13-38.15. Decisions confirmed 2026-10-15
 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
@@ -285,7 +287,7 @@ Deviations and decisions:
   Docker Compose sets `local` (a name, for development; refused in
   production) and `-Sso` sets `oidc`.
 - **Creating a tenant doesn't yet hand it to a first admin**; that's
-  US38.12. Until then `python -m app.tenancy identity set`.
+  US38.12 (since built: see below).
 
 ## US38.9 as built
 
@@ -438,6 +440,56 @@ Deviations and decisions:
   the default. Entries pushed to a removed registry stay, unsearched.
 - **No registry types beyond `local`** yet; config and secret references
   are in place for the first external one.
+
+## US38.12 as built
+
+- **The console's Create a tenant** takes the slug, name, host and region,
+  and exactly one way in for the first admin (`TenantCreate`
+  `first_admin_email` or `idp`). An IdP setup is validated before
+  anything is created.
+- **By invitation** (`app/tenancy/onboarding.py`): a one-time link on the
+  tenant's own host (`/api/auth/invitation/accept`), valid 24 hours,
+  shown once in the console and stored as a hash (`tenant_invitations`).
+  It signs the first admin in as Admin and lands them on the Directory
+  page to set up single sign-on. "New invitation" replaces an unused
+  link.
+- **No local sign-in, ever,** for console-created tenants
+  (`tenants.created_via = 'console'`, migration `a0b1c2d3e4f5`): until
+  SSO is set up their sign-in mode is `none`, in development too, and
+  the Directory page refuses to save local sign-in.
+- **Through an IdP:** the tenant's identity settings are saved (not
+  tested against the IdP: it may not trust the new host yet; the
+  Directory page's test does that) and its admins group is mapped to
+  Admin, as `python -m app.tenancy identity set --admin-group` does.
+- **Audit:** the platform log has `tenant_created` and
+  `first_admin_invited` or `tenant_idp_configured`; the tenant's log has
+  `tenant_created`, `first_admin_invited` or `identity_settings_changed`
+  (by the operator), and `first_admin_joined` when the link is used.
+- **The console** shows each tenant's first admin (invited, expired,
+  joined, through its IdP) and offers a new invitation while nobody has
+  joined.
+- **Tests.** `tests/test_tenant_onboarding.py` (11). Live:
+  `testing/tenancy/smoke_onboarding.py` (15/15).
+
+Deviations and decisions:
+
+- **No standing access through invitations.** A link can only be made,
+  and only works, while the tenant has neither single sign-on nor an
+  active admin; otherwise an operator could invite themselves into any
+  tenant. Once the first admin has joined, the tenant's own admins add
+  people.
+- **The operator sends the link;** the product doesn't send email yet.
+  The operator could use the link themselves before the admin does:
+  the join is audited with its IP in the tenant's log, and the admin
+  would find the link already used.
+- **The link is a GET with the token in the query**, so it works from an
+  email; it may appear in access logs until it's used or expires.
+- **Not tested live with a real IdP sign-in** (Keycloak wasn't running):
+  the IdP path is checked up to the tenant's sign-in page offering its
+  SSO; the sign-in itself is US38.6's, tested there.
+- **If the tenant is created but its first admin step fails**, the tenant
+  stays (its row is committed first, because the tenant's own rows
+  reference it) and the console offers a new invitation.
 
 ## User Stories
 

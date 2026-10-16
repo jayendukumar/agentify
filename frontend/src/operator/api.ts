@@ -35,6 +35,39 @@ export interface TenantLimits {
   llm_monthly_budget_usd: number | null
 }
 
+// US38.12: how a tenant's first admin gets in.
+export interface FirstAdmin {
+  state: 'invited' | 'expired' | 'joined' | 'sso' | 'none'
+  email: string | null
+  expires_at: string | null
+}
+
+export interface TenantIdp {
+  issuer: string
+  discovery_url: string
+  client_id: string
+  client_secret_ref: string
+  display_name: string
+  acr_values: string
+  mfa_acr_values: string[]
+  admin_group: string
+}
+
+export interface TenantCreate {
+  slug: string
+  display_name: string
+  host: string
+  region: string | null
+  first_admin_email?: string
+  idp?: TenantIdp
+}
+
+export interface TenantCreated {
+  tenant: Tenant
+  invitation_url: string | null
+  invitation_expires_at: string | null
+}
+
 export interface Tenant {
   id: string
   slug: string
@@ -46,6 +79,8 @@ export interface Tenant {
   usage: TenantUsage | null
   limits: TenantLimits
   effective_limits: TenantLimits
+  created_via: string
+  first_admin: FirstAdmin | null
 }
 
 export interface OperatorGrant {
@@ -95,8 +130,9 @@ export const operatorApi = {
     call<Operator>('/login', { method: 'POST', body: JSON.stringify({ name, email: email || null }) }),
   logout: () => call<{ logout_url: string | null }>('/logout', { method: 'POST' }),
   tenants: () => call<Tenant[]>('/tenants'),
-  createTenant: (body: { slug: string; display_name: string; host: string; region: string | null }) =>
-    call<Tenant>('/tenants', { method: 'POST', body: JSON.stringify(body) }),
+  createTenant: (body: TenantCreate) => call<TenantCreated>('/tenants', { method: 'POST', body: JSON.stringify(body) }),
+  invite: (tenantId: string, email: string) =>
+    call<TenantCreated>(`/tenants/${tenantId}/invitation`, { method: 'POST', body: JSON.stringify({ email }) }),
   changeStatus: (tenantId: string, action: 'suspend' | 'activate' | 'delete') =>
     call<Tenant>(`/tenants/${tenantId}/${action}`, { method: 'POST' }),
   setLimits: (tenantId: string, limits: TenantLimits) =>
