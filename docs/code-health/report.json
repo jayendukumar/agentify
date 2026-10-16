@@ -1,17 +1,17 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1289,
+   "functions": 1300,
    "mean_cyclomatic": 4.63,
    "mean_cognitive": 4.44,
    "max_cognitive": 98,
-   "over_cognitive_limit": 87,
-   "over_cyclomatic_limit": 128
+   "over_cognitive_limit": 89,
+   "over_cyclomatic_limit": 129
   },
   "frontend": {
-   "functions": 625,
-   "mean_cyclomatic": 4.73,
-   "mean_cognitive": 4.8,
+   "functions": 634,
+   "mean_cyclomatic": 4.71,
+   "mean_cognitive": 4.79,
    "max_cognitive": 93,
    "over_cognitive_limit": 50,
    "over_cyclomatic_limit": 69
@@ -297,7 +297,7 @@
  },
  "duplication": {
   "backend": {
-   "loc": 27051,
+   "loc": 27289,
    "duplicated_lines": 74,
    "percent": 0.27,
    "clones": [
@@ -333,7 +333,7 @@
     }
    ],
    "clone_count": 3,
-   "structural_percent": 3.36,
+   "structural_percent": 3.33,
    "structural_clone_count": 36,
    "structural_clones": [
     {
@@ -357,6 +357,16 @@
      "lines": 34
     },
     {
+     "tokens": 191,
+     "a_file": "backend/app/main.py",
+     "a_start": 143,
+     "a_end": 168,
+     "b_file": "backend/app/main.py",
+     "b_start": 157,
+     "b_end": 183,
+     "lines": 27
+    },
+    {
      "tokens": 185,
      "a_file": "backend/app/db/repository.py",
      "a_start": 1693,
@@ -365,16 +375,6 @@
      "b_start": 2088,
      "b_end": 2120,
      "lines": 33
-    },
-    {
-     "tokens": 183,
-     "a_file": "backend/app/main.py",
-     "a_start": 143,
-     "a_end": 167,
-     "b_file": "backend/app/main.py",
-     "b_start": 157,
-     "b_end": 182,
-     "lines": 26
     },
     {
      "tokens": 149,
@@ -511,9 +511,9 @@
    ]
   },
   "frontend": {
-   "loc": 16389,
+   "loc": 16574,
    "duplicated_lines": 14,
-   "percent": 0.09,
+   "percent": 0.08,
    "clones": [
     {
      "tokens": 81,
@@ -702,8 +702,8 @@
    {
     "node": "app.registry",
     "afferent": 2,
-    "efferent": 3,
-    "instability": 0.6
+    "efferent": 4,
+    "instability": 0.67
    },
    {
     "node": "app.request_context",
@@ -737,9 +737,9 @@
    },
    {
     "node": "app.tenancy",
-    "afferent": 12,
+    "afferent": 13,
     "efferent": 4,
-    "instability": 0.25
+    "instability": 0.24
    },
    {
     "node": "app.twin",
@@ -757,7 +757,13 @@
    },
    {
     "node": "app.db.models",
-    "afferent": 57,
+    "afferent": 59,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.ids",
+    "afferent": 40,
     "efferent": 0,
     "instability": 0.0
    },
@@ -780,15 +786,9 @@
     "instability": 0.0
    },
    {
-    "node": "app.ids",
-    "afferent": 39,
-    "efferent": 0,
-    "instability": 0.0
-   },
-   {
     "node": "app.api.organization",
     "afferent": 1,
-    "efferent": 20,
+    "efferent": 21,
     "instability": 0.95
    },
    {
@@ -798,10 +798,22 @@
     "instability": 0.29
    },
    {
+    "node": "app.db.session",
+    "afferent": 19,
+    "efferent": 2,
+    "instability": 0.1
+   },
+   {
     "node": "app.jobs.worker",
     "afferent": 8,
     "efferent": 13,
     "instability": 0.62
+   },
+   {
+    "node": "app.tenancy.identity",
+    "afferent": 16,
+    "efferent": 5,
+    "instability": 0.24
    },
    {
     "node": "app.llm",
@@ -816,28 +828,16 @@
     "instability": 0.0
    },
    {
-    "node": "app.db.session",
-    "afferent": 17,
-    "efferent": 2,
-    "instability": 0.11
-   },
-   {
-    "node": "app.tenancy.identity",
+    "node": "app.auth.audit",
     "afferent": 14,
-    "efferent": 5,
-    "instability": 0.26
+    "efferent": 3,
+    "instability": 0.18
    },
    {
     "node": "app.context.resolver",
     "afferent": 9,
     "efferent": 8,
     "instability": 0.47
-   },
-   {
-    "node": "app.oracles.service",
-    "afferent": 3,
-    "efferent": 14,
-    "instability": 0.82
    }
   ],
   "frontend_dirs": [
@@ -911,27 +911,27 @@
   "frontend_files_top": [
    {
     "node": "frontend/src/api/types.ts",
-    "afferent": 70,
+    "afferent": 71,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "frontend/src/api/client.ts",
-    "afferent": 52,
+    "afferent": 53,
     "efferent": 1,
     "instability": 0.02
+   },
+   {
+    "node": "frontend/src/auth/AuthContext.tsx",
+    "afferent": 20,
+    "efferent": 2,
+    "instability": 0.09
    },
    {
     "node": "frontend/src/App.tsx",
     "afferent": 1,
     "efferent": 20,
     "instability": 0.95
-   },
-   {
-    "node": "frontend/src/auth/AuthContext.tsx",
-    "afferent": 19,
-    "efferent": 2,
-    "instability": 0.1
    },
    {
     "node": "frontend/src/pages/BlueprintPage.tsx",
@@ -1048,7 +1048,7 @@
     "frontend/src/components"
    ]
   ],
-  "deferred_import_count": 59
+  "deferred_import_count": 63
  },
  "dead_code": {
   "python": [
@@ -1064,6 +1064,13 @@
     "line": 424,
     "name": "structure_process_from_image",
     "kind": "function",
+    "status": "test-only"
+   },
+   {
+    "file": "backend/app/llm/client.py",
+    "line": 97,
+    "name": "_client_for",
+    "kind": "method",
     "status": "test-only"
    },
    {
@@ -1162,13 +1169,6 @@
     "line": 144,
     "name": "grand_total_cost_usd",
     "kind": "method",
-    "status": "unused"
-   },
-   {
-    "file": "backend/app/registry/manager.py",
-    "line": 45,
-    "name": "get_registry",
-    "kind": "function",
     "status": "unused"
    },
    {
@@ -1700,14 +1700,14 @@
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2139,
+    "line": 2140,
     "name": "OperationUsage",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2148,
+    "line": 2150,
     "name": "MonthUsage",
     "kind": "export",
     "status": "export-unneeded"
@@ -1762,6 +1762,13 @@
     "status": "test-only"
    },
    {
+    "file": "frontend/src/components/org/GovernancePanel.tsx",
+    "line": 93,
+    "name": "ProviderKeyForm",
+    "kind": "export",
+    "status": "test-only"
+   },
+   {
     "file": "frontend/src/lib/twinSituations.ts",
     "line": 36,
     "name": "emptyReviewer",
@@ -1777,70 +1784,70 @@
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 499,
+    "line": 519,
     "name": "updateAgentGovernance",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 633,
+    "line": 653,
     "name": "pushToRegistry",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 735,
+    "line": 755,
     "name": "cancelTwinRun",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 739,
+    "line": 759,
     "name": "resumeTwinRun",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 904,
+    "line": 924,
     "name": "updateOrganization",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 976,
+    "line": 996,
     "name": "listPolicyPassages",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 989,
+    "line": 1009,
     "name": "getProcessScope",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1002,
+    "line": 1022,
     "name": "previewContextPack",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1129,
+    "line": 1149,
     "name": "getDataset",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1143,
+    "line": 1163,
     "name": "addDatasetRows",
     "kind": "export",
     "status": "unused"
@@ -1889,7 +1896,7 @@
    "commits": 27,
    "lines_changed": 1581,
    "cognitive": 67,
-   "loc": 1144,
+   "loc": 1160,
    "score": 1809
   },
   {
@@ -1933,12 +1940,28 @@
    "score": 544
   },
   {
+   "file": "backend/app/context/ingestion.py",
+   "commits": 3,
+   "lines_changed": 665,
+   "cognitive": 175,
+   "loc": 553,
+   "score": 525
+  },
+  {
    "file": "frontend/src/components/OrchestrationPanel.tsx",
    "commits": 5,
    "lines_changed": 525,
    "cognitive": 103,
    "loc": 461,
    "score": 515
+  },
+  {
+   "file": "backend/app/llm/client.py",
+   "commits": 5,
+   "lines_changed": 330,
+   "cognitive": 81,
+   "loc": 306,
+   "score": 405
   },
   {
    "file": "backend/app/batches/results.py",
@@ -1950,11 +1973,11 @@
   },
   {
    "file": "backend/app/config.py",
-   "commits": 13,
-   "lines_changed": 323,
+   "commits": 14,
+   "lines_changed": 333,
    "cognitive": 28,
    "loc": 273,
-   "score": 364
+   "score": 392
   },
   {
    "file": "backend/app/twin/test_builder.py",
@@ -1965,12 +1988,12 @@
    "score": 354
   },
   {
-   "file": "backend/app/context/ingestion.py",
-   "commits": 2,
-   "lines_changed": 662,
-   "cognitive": 175,
-   "loc": 553,
-   "score": 350
+   "file": "backend/app/api/organization.py",
+   "commits": 3,
+   "lines_changed": 627,
+   "cognitive": 117,
+   "loc": 526,
+   "score": 351
   },
   {
    "file": "frontend/src/components/TwinTestBuilder.tsx",
@@ -1987,14 +2010,6 @@
    "cognitive": 158,
    "loc": 335,
    "score": 316
-  },
-  {
-   "file": "backend/app/llm/client.py",
-   "commits": 4,
-   "lines_changed": 305,
-   "cognitive": 76,
-   "loc": 279,
-   "score": 304
   },
   {
    "file": "frontend/src/pages/UsersPage.tsx",
@@ -2019,14 +2034,6 @@
    "cognitive": 91,
    "loc": 215,
    "score": 273
-  },
-  {
-   "file": "frontend/src/App.tsx",
-   "commits": 16,
-   "lines_changed": 295,
-   "cognitive": 17,
-   "loc": 174,
-   "score": 272
   }
  ],
  "growth": [
@@ -2599,6 +2606,16 @@
    "endpoints": 236,
    "stories": 269,
    "stories_implemented": 241
+  },
+  {
+   "commit": "b59b1a9",
+   "date": "2026-10-16",
+   "subject": "Build Epic 38 US38.10: per-tenant secrets, files and log lines",
+   "prod_loc": 43439,
+   "test_loc": 14491,
+   "endpoints": 236,
+   "stories": 269,
+   "stories_implemented": 241
   }
  ],
  "mutation": {
@@ -2928,9 +2945,9 @@
   }
  },
  "size": {
-  "backend_prod_loc": 27051,
-  "backend_test_loc": 11075,
-  "frontend_prod_loc": 16389,
-  "frontend_test_loc": 3416
+  "backend_prod_loc": 27289,
+  "backend_test_loc": 11225,
+  "frontend_prod_loc": 16574,
+  "frontend_test_loc": 3472
  }
 }

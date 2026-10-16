@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
 from app.db.models import JobModel, LlmUsageMonthlyModel
+from app.llm import keys as llm_keys
 from app.llm import metering
 from app.schemas.usage import BudgetOut, MonthUsage, OperationUsage, TenantLimitsOut, UsageOverview
 from app.tenancy.context import current_tenant_id
@@ -35,7 +36,7 @@ def usage_overview(db: DbDep, user: OrgAdminDep, months: int = Query(default=12,
                                llm_monthly_budget_usd=limits.llm_monthly_budget_usd),
         budget=BudgetOut(
             month=metering.month_of(metering.utcnow()), spent_usd=round(state.spent_usd, 6),
-            budget_usd=state.budget_usd, status=state.status,
+            budget_usd=state.budget_usd, status=state.status, own_key=bool(llm_keys.tenant_key_ref()),
             warn_at_usd=round(BUDGET_WARN_RATIO * state.budget_usd, 2) if state.budget_usd is not None else None,
         ),
         jobs_running=jobs.get("running", 0),
@@ -49,7 +50,8 @@ def usage_overview(db: DbDep, user: OrgAdminDep, months: int = Query(default=12,
                 total_tokens=sum(r.total_tokens for r in group),
                 cost_usd=round(sum(r.cost_usd for r in group), 6),
                 calls_without_cost=sum(r.calls_without_cost for r in group),
-                operations=[OperationUsage(operation=r.operation, model=r.model, calls=r.calls,
+                own_key_cost_usd=round(sum(r.cost_usd for r in group if r.key_source == "tenant"), 6),
+                operations=[OperationUsage(operation=r.operation, model=r.model, key_source=r.key_source, calls=r.calls,
                                            total_tokens=r.total_tokens, cost_usd=round(r.cost_usd, 6),
                                            calls_without_cost=r.calls_without_cost) for r in group],
             )

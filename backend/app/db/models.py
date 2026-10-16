@@ -1496,6 +1496,24 @@ class JobModel(TenantScoped, Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
+class RegistryModel(TenantScoped, Base):
+    """Epic 38, US38.11: an agent registry this tenant publishes to and
+    searches (Epic 13), set by its admins. Without rows, the first tenant
+    uses the REGISTRIES environment variable and any other tenant the
+    built-in local registry (app/registry/manager.py). `config` holds no
+    secret, only references (`secret://tenant/<name>`)."""
+
+    __tablename__ = "registries"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_registries_tenant_name"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
 class LlmUsageEventModel(TenantScoped, Base):
     """Epic 38, US38.9: one LLM call -- what the JSONL usage log holds,
     as the tenant's row. The input to billing (out of scope here)."""
@@ -1511,6 +1529,9 @@ class LlmUsageEventModel(TenantScoped, Base):
     output_tokens: Mapped[int] = mapped_column(nullable=False)
     total_tokens: Mapped[int] = mapped_column(nullable=False)
     estimated_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    # US38.11: whose provider key paid -- `platform` (the hosting company's)
+    # or `tenant` (the tenant's own key, or its self-hosted endpoint).
+    key_source: Mapped[str] = mapped_column(String, nullable=False, default="platform", server_default="platform")
 
 
 class LlmUsageMonthlyModel(TenantScoped, Base):
@@ -1521,11 +1542,13 @@ class LlmUsageMonthlyModel(TenantScoped, Base):
     `cost_usd`)."""
 
     __tablename__ = "llm_usage_monthly"
-    __table_args__ = (PrimaryKeyConstraint("tenant_id", "month", "operation", "model"),)
+    __table_args__ = (PrimaryKeyConstraint("tenant_id", "month", "operation", "model", "key_source"),)
 
     month: Mapped[str] = mapped_column(String(7), nullable=False)
     operation: Mapped[str] = mapped_column(String, nullable=False)
     model: Mapped[str] = mapped_column(String, nullable=False)
+    # US38.11: as on llm_usage_events. The monthly budget counts `platform` only.
+    key_source: Mapped[str] = mapped_column(String, nullable=False, default="platform", server_default="platform")
     calls: Mapped[int] = mapped_column(nullable=False)
     input_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
     output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)

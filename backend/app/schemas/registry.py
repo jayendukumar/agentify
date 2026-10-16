@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RegistryStatus(BaseModel):
@@ -40,3 +40,22 @@ class RegistryPushRequest(BaseModel):
     tags: list[str] = []
     source_process_id: str | None = None
     source_node_ids: list[str] = []
+
+
+# ---- Epic 38, US38.11: the tenant's own registries ------------------------------------
+
+
+class RegistrySetting(BaseModel):
+    """One registry an admin configures. `config` holds no secret, only
+    references (`*_ref`: `secret://tenant/<name>`)."""
+
+    name: str = Field(min_length=1, max_length=60, pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.-]*$")
+    type: str
+    config: dict = {}
+
+
+class RegistrySettings(BaseModel):
+    registries: list[RegistrySetting]
+    # tenant (saved here) | environment (the first organization's default) | default
+    source: str = "tenant"
+    types: list[str] = []

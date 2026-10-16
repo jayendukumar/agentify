@@ -1,11 +1,24 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import UserModel
+from app import secret_store
+from app.auth import audit
+from app.db.models import RegistryModel, UserModel
+from app.ids import new_id
+from app.registry import manager
 from app.registry.base import RegistryAuthError, RegistryConnectorError, RegistryEntry, RegistryUnreachableError
-from app.schemas.registry import RegistryEntryOut, RegistryPushRequest, RegistrySearchResult, RegistryStatus
+from app.schemas.registry import (
+    RegistryEntryOut,
+    RegistryPushRequest,
+    RegistrySearchResult,
+    RegistrySetting,
+    RegistrySettings,
+    RegistryStatus,
+)
+from app.tenancy.identity import current_slug
 
-from .deps import AgentPublishDep, CurrentUserDep, DbDep, RegistriesDep
+from .deps import AgentPublishDep, CurrentUserDep, DbDep, OrgAdminDep, RegistriesDep
 
 # Top-level, not nested under /api/processes/{process_id} -- a registry is
 # explicitly cross-process (US13.5: search across everything registered,
@@ -97,3 +110,60 @@ def push_to_registry(
         ) from exc
 
     return _entry_out(entry, db)
+
+
+# ---- Epic 38, US38.11: which registries this organization uses ------------------------
+
+admin_router = APIRouter(prefix="/api/organization/registries", tags=["registries"])
+
+_SECRET_WORDS = ("token", "password", "secret", "api_key", "apikey", "credential")
+
+
+def _settings_out(db: Session) -> RegistrySettings:
+    configs, source = manager.configured(db)
+    rows = {r.name: r for r in db.scalars(select(RegistryModel))}
+    return RegistrySettings(
+        registries=[RegistrySetting(name=c.name, type=c.type, config=rows[c.name].config if c.name in rows else {})
+                    for c in configs],
+        source=source, types=sorted(manager.CONNECTOR_TYPES),
+    )
+
+
+@admin_router.get("", response_model=RegistrySettings)
+def get_registry_settings(db: DbDep, user: OrgAdminDep) -> RegistrySettings:
+    del user
+    return _settings_out(db)
+
+
+@admin_router.put("", response_model=RegistrySettings)
+def set_registry_settings(body: RegistrySettings, db: DbDep, user: OrgAdminDep, request: Request) -> RegistrySettings:
+    """Replaces this organization's registries. An empty list goes back to
+    the default. Entries already pushed to a removed registry stay, but
+    aren't searched."""
+    names = [r.name for r in body.registries]
+    if len(set(names)) != len(names):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Each registry needs its own name")
+    slug = current_slug() or ""
+    for registry in body.registries:
+        if registry.type not in manager.CONNECTOR_TYPES:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                detail=f"Unknown registry type '{registry.type}' (known: {', '.join(sorted(manager.CONNECTOR_TYPES))})")
+        for key, value in registry.config.items():
+            if key.endswith("_ref"):
+                try:
+                    secret_store.check_ref(str(value), slug, example="secret://tenant/registry_token")
+                except secret_store.SecretRefError as exc:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"{registry.name}: {key}: {exc}") from exc
+            elif any(word in key.lower() for word in _SECRET_WORDS):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                    detail=f"{registry.name}: don't store '{key}' -- reference the secret as "
+                                           f"{key}_ref, like secret://tenant/registry_token")
+    before = [r.name for r in db.scalars(select(RegistryModel))]
+    db.execute(delete(RegistryModel))
+    for registry in body.registries:
+        db.add(RegistryModel(id=new_id("reg"), name=registry.name, type=registry.type, config=registry.config,
+                             created_by=user.id))
+    db.flush()
+    audit.record(db, actor=user, action="registries_changed", request=request,
+                 detail={"from": before, "to": names})
+    return _settings_out(db)

@@ -6,6 +6,8 @@ import RegistriesPage from './RegistriesPage'
 
 const listRegistries = vi.fn()
 const searchRegistries = vi.fn()
+const getRegistrySettings = vi.fn()
+const saveRegistrySettings = vi.fn()
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
@@ -17,6 +19,8 @@ vi.mock('../api/client', () => ({
   },
   listRegistries: (...args: unknown[]) => listRegistries(...args),
   searchRegistries: (...args: unknown[]) => searchRegistries(...args),
+  getRegistrySettings: (...args: unknown[]) => getRegistrySettings(...args),
+  saveRegistrySettings: (...args: unknown[]) => saveRegistrySettings(...args),
 }))
 
 const registries: RegistryStatus[] = [
@@ -38,6 +42,7 @@ const entry: RegistryEntry = {
 
 describe('RegistriesPage', () => {
   beforeEach(() => {
+    getRegistrySettings.mockResolvedValue({ registries: [{ name: 'local', type: 'local' }], source: 'default', types: ['local'] })
     listRegistries.mockResolvedValue(registries)
     searchRegistries.mockResolvedValue({ entries: [entry], registry_errors: {} })
   })
@@ -84,5 +89,21 @@ describe('RegistriesPage', () => {
 
     await user.click(screen.getByRole('button', { name: /view definition/i }))
     expect(screen.getByText(/"name": "Invoice Fetcher Agent"/)).toBeInTheDocument()
+  })
+
+  it("lets an admin set the organization's own registries (Epic 38, US38.11)", async () => {
+    listRegistries.mockResolvedValue(registries)
+    searchRegistries.mockResolvedValue({ entries: [], registry_errors: {} })
+    saveRegistrySettings.mockResolvedValue({
+      registries: [{ name: 'local', type: 'local' }, { name: 'claims-team', type: 'local' }], source: 'tenant', types: ['local'],
+    })
+    render(<RegistriesPage />)
+    expect(await screen.findByText(/The built-in registry/)).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Registry name'), 'claims-team')
+    await userEvent.click(screen.getByRole('button', { name: 'Add registry' }))
+    await waitFor(() =>
+      expect(saveRegistrySettings).toHaveBeenCalledWith([{ name: 'local', type: 'local' }, { name: 'claims-team', type: 'local' }]),
+    )
+    expect(await screen.findByText('Set by your organization.')).toBeInTheDocument()
   })
 })

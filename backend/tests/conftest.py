@@ -46,9 +46,11 @@ from sqlalchemy import text  # noqa: E402
 
 from app.db.models import Base  # noqa: E402
 from app.db.session import get_owner_engine, isolation_enforced  # noqa: E402
+from app.llm import keys as llm_keys  # noqa: E402
 from app.llm.client import get_llm_client  # noqa: E402
 from app.main import app  # noqa: E402
 from app.tenancy.context import reset_current_tenant, set_current_tenant  # noqa: E402
+from app.tenancy.limits import forget_cached_limits  # noqa: E402
 
 ALL_ROLES = ["analyst", "architect", "process_owner", "approver", "auditor", "admin"]
 
@@ -104,6 +106,9 @@ def _clean_db():
     with get_owner_engine().begin() as conn:
         conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))
     make_tenant(TEST_TENANT_ID, "test", [TEST_HOST])
+    # Epic 38: per-process caches of tenant settings, emptied with the tables.
+    forget_cached_limits()
+    llm_keys.forget()
     # Code a test calls directly (repositories, background tasks, the job
     # worker's run_pending) runs as the test tenant; requests resolve their
     # own tenant from the host, as in production.

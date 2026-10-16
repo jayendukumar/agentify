@@ -70,6 +70,7 @@ def usage(tenant_id: str) -> Usage:
                 select(func.coalesce(func.sum(LlmUsageMonthlyModel.calls), 0))
                 .where(LlmUsageMonthlyModel.month == metering.month_of(metering.utcnow()))
             ),
+            # US38.11: on the platform's key -- what the hosting company pays.
             llm_cost_this_month_usd=round(metering.month_spend(db), 4),
         )
 

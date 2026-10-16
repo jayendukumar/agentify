@@ -25,7 +25,9 @@ OpenRouter by default (`LLM_MODEL=qwen/qwen3.7-flash`, chosen for cost; see
    stable prefixes for **prompt caching** (Epic 34).
 5. **Accounts** tokens and estimated cost per `operation` into the usage
    log (`llm/usage.py`), and as the tenant's usage (`llm_usage_events`,
-   `llm_usage_monthly`). This is how every run, batch and process twin
+   `llm_usage_monthly`), marked as on the platform's key or the tenant's
+   own (US38.11: an organization may call the default provider on its own
+   key, `llm/keys.py`). This is how every run, batch and process twin
    reports its cost, and how a tenant's admin sees cost per month.
 
 Callers ask for JSON (`response_format={"type": "json_object"}`) wherever

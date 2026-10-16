@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-16 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**71 tables, 768 columns (93 JSON), 168 foreign keys, 38 Alembic migrations.**
+**72 tables, 777 columns (94 JSON), 169 foreign keys, 39 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -46,8 +46,9 @@ the database stores their paths.
 - **Usage is kept twice (Epic 38, US38.9).** `llm_usage_events` has one
   row per LLM call; `llm_usage_monthly` sums them per month, operation and
   model, upserted with each call, so the budget check before every call
-  reads a few rows. Each tenant's limits are columns on `tenants`, set by
-  operators.
+  reads a few rows. Both say whose key paid (`key_source`: `platform` or
+  `tenant`); the budget counts the platform's. Each tenant's limits are
+  columns on `tenants`, set by operators.
 - **Everything hangs off a process.** Most tables have `process_id` with
   `ON DELETE CASCADE`, so deleting a process removes its whole tree.
   Organization context is the exception: it is organization-wide and
@@ -171,6 +172,11 @@ erDiagram
         string generated_by FK
         string approved_by FK
         json release_criteria
+    }
+    registries {
+        string id PK
+        string name
+        json config
     }
     registry_entries {
         string id PK
@@ -630,6 +636,7 @@ erDiagram
         string month PK
         string operation PK
         string model PK
+        string key_source PK
     }
     tenants ||--o{ tenant_domains : "tenant_id"
     operators ||--o{ operator_sessions : "operator_id"
@@ -858,6 +865,19 @@ Epic 12: a generated, portable agent definition for one blueprint node or a cons
 | `approved_through_seq` | bigint | yes |  |
 | `context_pack_id` | string | yes |  |
 | `release_criteria` | json | yes |  |
+
+#### `registries` (RegistryModel)
+
+Epic 38, US38.11: an agent registry this tenant publishes to and searches (Epic 13), set by its admins. Without rows, the first tenant uses the REGISTRIES environment variable and any other tenant the built-in local registry (app/registry/manager.py). `config` holds no secret, only references (`secret://tenant/<name>`).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `name` | string | no |  |
+| `type` | string | no |  |
+| `config` | json | no |  |
+| `created_at` | datetime | no |  |
+| `created_by` | string | yes |  |
 
 #### `registry_entries` (RegistryEntryModel)
 
@@ -1838,6 +1858,7 @@ Epic 38, US38.9: one LLM call -- what the JSONL usage log holds, as the tenant's
 | `output_tokens` | int | no |  |
 | `total_tokens` | int | no |  |
 | `estimated_cost_usd` | float | yes |  |
+| `key_source` | string | no |  |
 
 #### `llm_usage_monthly` (LlmUsageMonthlyModel)
 
@@ -1848,6 +1869,7 @@ Epic 38, US38.9: LLM usage summed per month (`YYYY-MM`, UTC), operation and mode
 | `month` | string | no | primary key |
 | `operation` | string | no | primary key |
 | `model` | string | no | primary key |
+| `key_source` | string | no | primary key |
 | `calls` | int | no |  |
 | `input_tokens` | bigint | no |  |
 | `output_tokens` | bigint | no |  |

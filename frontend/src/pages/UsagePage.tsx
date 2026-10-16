@@ -58,6 +58,12 @@ export default function UsagePage() {
         <p className={budget.status === 'warning' || budget.status === 'stopped' ? 'error' : 'meta'} role={budget.status === 'stopped' ? 'alert' : undefined}>
           {BUDGET_TEXT[budget.status]}
         </p>
+        {budget.own_key && (
+          <p className="meta">
+            Calls to the model provider use your own key: the budget counts the hosting company's key only, so it no
+            longer limits them.
+          </p>
+        )}
         <dl className="usage-limits">
           <dt>Monthly LLM budget</dt><dd>{limitText(limits, 'llm_monthly_budget_usd')}</dd>
           <dt>LLM requests per minute</dt><dd>{limitText(limits, 'llm_requests_per_minute')}</dd>
@@ -87,6 +93,9 @@ export default function UsagePage() {
                     <td>{tokens(month.output_tokens)}</td>
                     <td>
                       {usd(month.cost_usd)}
+                      {month.own_key_cost_usd > 0 && (
+                        <span className="meta"> ({usd(month.own_key_cost_usd)} on your own key)</span>
+                      )}
                       {month.calls_without_cost > 0 && (
                         <span className="meta" title="Calls to a model with no known price add nothing to the cost">
                           {' '}+ {month.calls_without_cost} call(s) without a price
@@ -104,7 +113,12 @@ export default function UsagePage() {
                       <tr key={`${month.month}-${op.operation}-${op.model}`} className="usage-operation">
                         <td />
                         <td>{op.calls}</td>
-                        <td colSpan={2}>{op.operation} <span className="meta">({op.model}, {tokens(op.total_tokens)} tokens)</span></td>
+                        <td colSpan={2}>
+                          {op.operation}{' '}
+                          <span className="meta">
+                            ({op.model}, {tokens(op.total_tokens)} tokens{op.key_source === 'tenant' ? ', your own key' : ''})
+                          </span>
+                        </td>
                         <td>{usd(op.cost_usd)}</td>
                         <td />
                       </tr>

@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**245 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**249 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -280,6 +280,8 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | POST | `/api/organization/entities/{entity_id}/rerun-affected` | `context.edit` |  |
 | GET | `/api/organization/entities/{entity_id}/versions` | signed in |  |
 | PUT | `/api/organization/llm-policy` | `org.admin` | Epic 31, US31.8: the organization-wide model policy, used where a business unit has none of its own. |
+| GET | `/api/organization/llm-provider-key` | `org.admin` | Epic 38, US38.11: whose key the default model provider is called with. |
+| PUT | `/api/organization/llm-provider-key` | `org.admin` | Use the organization's own key for the default model provider (a reference to its secret), or the hosting company's (null). Usage is the org |
 | GET | `/api/organization/members` | signed in | US31.7: who belongs to which business unit. |
 | PUT | `/api/organization/members/{user_id}` | `org.admin` | Only group-level (unrestricted) editors manage memberships. An empty list makes the user unrestricted again. |
 | POST | `/api/organization/profile` | `context.edit` |  |
@@ -323,6 +325,8 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 
 | Method | Path | Access | What it does |
 |---|---|---|---|
+| GET | `/api/organization/registries` | `org.admin` |  |
+| PUT | `/api/organization/registries` | `org.admin` | Replaces this organization's registries. An empty list goes back to the default. Entries already pushed to a removed registry stay, but aren |
 | GET | `/api/registries` | signed in |  |
 | GET | `/api/registries/search` | signed in |  |
 | POST | `/api/registries/{registry_name}/push` | `agent.publish` |  |

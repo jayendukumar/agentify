@@ -64,8 +64,10 @@ fixable without rethinking the product.
    can't read tenant tables, and enter a tenant only as support under a
    grant its admin gave. Each tenant's secrets are references into its own store
    (`secret://tenant/<name>`), its uploads live in a directory of its own,
-   and every log line names its tenant. Still shared per deployment:
-   registries, the model provider's key and the log files themselves.
+   and every log line names its tenant. Its model policy and registries
+   are its own, and it may call the model provider on its own key. Still
+   shared per deployment: the default provider and model, and the log
+   files themselves.
    The job queue shares free
    capacity round-robin across tenants, and each tenant has its own
    limits (concurrent jobs, LLM requests per minute, a monthly LLM

@@ -1,15 +1,25 @@
 import { useEffect, useState } from 'react'
 import {
   ApiError,
+  getProviderKey,
   listAuditLog,
   listContextChanges,
   listMembers,
   rerunAffectedSuites,
   setMemberships,
   setOrganizationLlmPolicy,
+  setProviderKey,
   updateContextEntity,
 } from '../../api/client'
-import type { AccessLogEntry, ContextChange, ContextEntity, LlmPolicy, MemberAccess, Organization } from '../../api/types'
+import type {
+  AccessLogEntry,
+  ContextChange,
+  ContextEntity,
+  LlmPolicy,
+  MemberAccess,
+  Organization,
+  ProviderKeyStatus,
+} from '../../api/types'
 
 const EMPTY_POLICY: LlmPolicy = {
   allowed_providers: [],
@@ -78,6 +88,55 @@ function PolicyForm({ policy, onSave, label }: { policy: LlmPolicy; onSave: (p: 
 
 /** Epic 31, US31.7-US31.10: who stewards what, model policy, recent
  * changes and their impact, and the context access log. */
+// Epic 38, US38.11: call the default model provider on this organization's
+// own key instead of the hosting company's.
+export function ProviderKeyForm() {
+  const [status, setStatus] = useState<ProviderKeyStatus | null>(null)
+  const [ref, setRef] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getProviderKey()
+      .then((s) => {
+        setStatus(s)
+        setRef(s.key_ref ?? '')
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'Could not load the provider key'))
+  }, [])
+
+  async function save(value: string | null) {
+    setError(null)
+    try {
+      const saved = await setProviderKey(value)
+      setStatus(saved)
+      setRef(saved.key_ref ?? '')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save the provider key')
+    }
+  }
+
+  if (status === null) return error ? <p className="error" role="alert">{error}</p> : null
+  return (
+    <div className="identity-form" aria-label="Model provider key">
+      <p className="meta">
+        {status.key_ref
+          ? `Calls to ${status.provider} use your own key${status.key_set ? '' : ', which is not set yet -- they are refused until it is'}. The hosting company stores it as ${status.location}.`
+          : `Calls to ${status.provider} use the hosting company's key, within your monthly budget.`}{' '}
+        Usage is recorded for your organization either way; the monthly budget only counts the hosting company's key.
+      </p>
+      <label>
+        Your own provider key (reference)
+        <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="secret://tenant/llm_provider_key" />
+      </label>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="registry-entry-actions">
+        <button type="button" onClick={() => save(ref.trim() || null)}>Use this key</button>{' '}
+        {status.key_ref && <button type="button" className="button-secondary" onClick={() => save(null)}>Use the hosting company's key</button>}
+      </div>
+    </div>
+  )
+}
+
 export default function GovernancePanel({
   organization,
   businessUnits,
@@ -205,6 +264,7 @@ export default function GovernancePanel({
 
       <h2>Model policy</h2>
       <p className="meta">Where this organization's context may be sent. A business unit's own policy overrides this one.</p>
+      {canEdit && <ProviderKeyForm />}
       {canEdit && <PolicyForm label="Organization-wide model policy" policy={orgPolicy} onSave={async (p) => { await setOrganizationLlmPolicy(p); onChanged() }} />}
       {canEdit &&
         businessUnits.map((unit) => (

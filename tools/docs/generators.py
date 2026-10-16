@@ -39,7 +39,7 @@ DOMAINS: dict[str, list[str]] = {
         "document_embeddings", "process_schema_changes", "bpmn_drafts", "chat_messages", "versions", "gap_findings",
     ],
     "Blueprint and agents (Epics 7, 12-15, 20, 23)": [
-        "blueprint_overlays", "agent_artifacts", "registry_entries", "agent_publications",
+        "blueprint_overlays", "agent_artifacts", "registries", "registry_entries", "agent_publications",
     ],
     "Digital twin runs (Epics 14, 16-22)": [
         "twin_tool_schemas", "twin_baselines", "twin_environments", "twin_scenarios", "twin_runs",

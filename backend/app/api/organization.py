@@ -26,6 +26,7 @@ from app.db.models import ContextDocumentModel, ContextEntityModel, ContextEntit
 from app.ids import new_id
 from app.jobs import queue
 from app.llm import LLMClient
+from app.llm import keys as llm_keys
 from app.schemas.context import (
     AppliesTo,
     ApplicableContext,
@@ -40,6 +41,8 @@ from app.schemas.context import (
     ContextImpact,
     ContextPack,
     LlmPolicy,
+    ProviderKeySetting,
+    ProviderKeyStatus,
     Organization,
     OrganizationProfileAnswers,
     OrganizationUpdate,
@@ -111,6 +114,41 @@ def set_llm_policy(body: LlmPolicy, db: DbDep, user: OrgAdminDep) -> Organizatio
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"api_key_env: {exc}") from exc
     repository.set_organization_profile_value(db, "llm_policy", body.model_dump())
     return repository.get_organization(db)
+
+
+def _provider_key_status(db) -> ProviderKeyStatus:
+    ref = (repository.get_organization_model(db).profile or {}).get(llm_keys.PROFILE_KEY) or None
+    slug = current_slug() or ""
+    return ProviderKeyStatus(
+        key_ref=ref, key_set=bool(ref and secret_store.resolve(ref, slug)),
+        location=secret_store.where_to_put(ref, slug) if ref else None, provider=get_settings().llm_provider_name,
+    )
+
+
+@router.get("/llm-provider-key", response_model=ProviderKeyStatus)
+def get_provider_key(db: DbDep, user: OrgAdminDep) -> ProviderKeyStatus:
+    """Epic 38, US38.11: whose key the default model provider is called with."""
+    del user
+    return _provider_key_status(db)
+
+
+@router.put("/llm-provider-key", response_model=ProviderKeyStatus)
+def set_provider_key(body: ProviderKeySetting, db: DbDep, user: OrgAdminDep, request: Request) -> ProviderKeyStatus:
+    """Use the organization's own key for the default model provider (a
+    reference to its secret), or the hosting company's (null). Usage is the
+    organization's either way; the monthly budget counts the hosting
+    company's key only."""
+    ref = (body.key_ref or "").strip() or None
+    if ref is not None:
+        try:
+            secret_store.check_ref(ref, current_slug() or "", example="secret://tenant/llm_provider_key")
+        except secret_store.SecretRefError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    repository.set_organization_profile_value(db, llm_keys.PROFILE_KEY, ref)
+    auth_audit.record(db, actor=user, action="llm_provider_key_changed", request=request,
+                      detail={"key_ref": ref})
+    llm_keys.forget()
+    return _provider_key_status(db)
 
 
 @router.post("/profile", response_model=ProfileResult)

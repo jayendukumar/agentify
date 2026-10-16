@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { ApiError, listRegistries, searchRegistries } from '../api/client'
 import type { RegistryEntry, RegistryStatus } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
+import RegistrySettingsSection from '../components/RegistrySettingsSection'
 import { downloadText } from '../lib/exportPng'
 
 export default function RegistriesPage() {
+  const { can } = useAuth()
   const [registries, setRegistries] = useState<RegistryStatus[]>([])
   const [query, setQuery] = useState('')
   const [entries, setEntries] = useState<RegistryEntry[]>([])
@@ -96,6 +99,10 @@ export default function RegistriesPage() {
           </div>
         ))}
       </div>
+
+      {can('org.admin') && (
+        <RegistrySettingsSection onSaved={() => listRegistries().then(setRegistries).catch(() => undefined)} />
+      )}
 
       <form className="create-form" onSubmit={handleSubmit}>
         <label>

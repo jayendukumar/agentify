@@ -3697,3 +3697,24 @@ Found live: the smoke tests' processes were deleted but their upload
 directories stayed. Rows went with the process (cascade), files didn't.
 The delete now removes the process's directory in the tenant's tree.
 
+## 2026-10-16 -- Epic 38, US38.11: model policy, registries and the provider key per tenant
+
+### The monthly budget counts the platform's key only
+
+With a tenant able to call the provider on its own key, the US38.9
+budget could have limited all spend or only the platform's. Operators set
+it as the hosting company's quota on its own key, so usage rows now carry
+`key_source` and the budget, the batch gate and the console's cost count
+`platform` only. Usage is still recorded for the tenant either way. If
+the tenant's key is referenced but missing, calls are refused: falling
+back to the platform's key would put a tenant's spend on the hosting
+company's bill without anyone choosing it.
+
+### A clashing Alembic revision id
+
+Found by running the migration: the new migration's id followed the
+repo's sequential hex pattern and landed on `e7f8a9b0c1d2`, which Epic
+27's organization-context migration already uses; Alembic reported a
+cycle. Renamed to `f9a0b1c2d3e4`. Worth checking `grep "^revision"` before
+picking the next id in that pattern.
+

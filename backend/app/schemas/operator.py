@@ -47,7 +47,8 @@ class TenantUsage(BaseModel):
     jobs_waiting: int
     last_sign_in_at: datetime | None
     support_grants_active: int
-    # US38.9: this month's LLM calls and their estimated cost.
+    # US38.9: this month's LLM calls (all) and their estimated cost on the
+    # platform's key (US38.11: not what a tenant spends on its own key).
     llm_calls_this_month: int
     llm_cost_this_month_usd: float
 

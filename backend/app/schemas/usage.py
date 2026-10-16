@@ -29,11 +29,15 @@ class BudgetOut(BaseModel):
     budget_usd: float | None
     warn_at_usd: float | None
     status: Literal["unlimited", "ok", "warning", "stopped"]
+    # US38.11: calls to the default provider use the organization's own key,
+    # which the budget (on the hosting company's key) doesn't limit.
+    own_key: bool = False
 
 
 class OperationUsage(BaseModel):
     operation: str
     model: str
+    key_source: Literal["platform", "tenant"] = "platform"
     calls: int
     total_tokens: int
     cost_usd: float
@@ -48,6 +52,8 @@ class MonthUsage(BaseModel):
     total_tokens: int
     cost_usd: float
     calls_without_cost: int
+    # US38.11: the part of cost_usd on the organization's own key or endpoint.
+    own_key_cost_usd: float = 0.0
     operations: list[OperationUsage]
 
 

@@ -103,6 +103,9 @@ import type {
   SupportGrant,
   SupportGrantInput,
   UsageOverview,
+  ProviderKeyStatus,
+  RegistrySetting,
+  RegistrySettings,
   KnownGroup,
   RoleChange,
   ScimSetup,
@@ -321,6 +324,23 @@ export function grantSupport(grant: SupportGrantInput): Promise<SupportGrant> {
 
 export function revokeSupport(grantId: string): Promise<SupportGrant> {
   return request(`/api/directory/support-grants/${grantId}/revoke`, { method: 'POST' })
+}
+
+// Epic 38, US38.11: this organization's registries and model provider key.
+export function getRegistrySettings(): Promise<RegistrySettings> {
+  return request('/api/organization/registries')
+}
+
+export function saveRegistrySettings(registries: RegistrySetting[]): Promise<RegistrySettings> {
+  return request('/api/organization/registries', { method: 'PUT', body: JSON.stringify({ registries }) })
+}
+
+export function getProviderKey(): Promise<ProviderKeyStatus> {
+  return request('/api/organization/llm-provider-key')
+}
+
+export function setProviderKey(keyRef: string | null): Promise<ProviderKeyStatus> {
+  return request('/api/organization/llm-provider-key', { method: 'PUT', body: JSON.stringify({ key_ref: keyRef }) })
 }
 
 // Epic 38, US38.9: this organization's LLM usage and cost per month, and its limits.

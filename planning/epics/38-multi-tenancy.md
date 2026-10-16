@@ -4,9 +4,9 @@
 boundary. Step 2 in progress: US38.6 (each tenant's own IdP) implemented
 2026-10-15, US38.7 (SCIM and logout stay inside the tenant) and US38.8
 (operator console, support access) 2026-10-16. Step 2 is complete.
-Step 3 in progress: US38.9 (fair share, limits, usage) and US38.10
-(secrets, files, logs per tenant) implemented 2026-10-16; open:
-US38.11-38.15. Decisions confirmed 2026-10-15
+Step 3 complete: US38.9 (fair share, limits, usage), US38.10 (secrets,
+files, logs per tenant) and US38.11 (model policy, registries, provider
+key per tenant) implemented 2026-10-16; open: US38.12-38.15. Decisions confirmed 2026-10-15
 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
@@ -401,6 +401,43 @@ Deviations and decisions:
   being migrated when they aren't the tenant's own `TENANT_<SLUG>_*`
   variable: the connector or sign-in says which secret to set.
 - **Per-tenant encryption keys** wait for object storage (weakness 4).
+
+## US38.11 as built
+
+- **Model policy:** already the tenant's. `organizations` is a tenant
+  table since step 1, so the organization-wide `llm_policy` and each
+  business unit's are the tenant's own, inherited as before. A test now
+  shows one tenant's policy never applies to another's calls.
+- **Registries** are tenant records (`registries`, migration
+  `f9a0b1c2d3e4`), set by admins on the Registries page
+  (`GET/PUT /api/organization/registries`, audited). Without rows, the
+  first tenant keeps `REGISTRIES` and any other tenant gets the built-in
+  local registry, whose entries are tenant rows anyway. A registry's
+  config holds only secret references (`*_ref`).
+- **Provider key:** an admin can point the default provider at the
+  organization's own key (`PUT /api/organization/llm-provider-key`, a
+  `secret://tenant/<name>` reference, on the Organization page's
+  governance panel). Set but missing, calls are refused rather than put
+  on the platform's key. Clients are cached per key value, so a rotated
+  key gets a new one.
+- **Attribution:** usage rows carry `key_source` (`platform` or
+  `tenant`; a self-hosted endpoint counts as the tenant's). Usage is the
+  tenant's either way. The monthly budget, the batch budget gate and the
+  operator console's cost count the platform's key only; the Usage page
+  shows what was spent on the tenant's own key.
+- **Tests.** `tests/test_tenant_model_policy.py` (10). Live:
+  `testing/tenancy/smoke_model_policy.py` (12/12), including a real call
+  on Northwind's own key from inside the API container.
+
+Deviations and decisions:
+
+- **The budget is the platform's quota**, so calls on a tenant's own key
+  aren't held to it (requests per minute still apply). A tenant wanting a
+  cap on its own key's spend is a later option.
+- **Registries replace as a list** (PUT), and an empty list returns to
+  the default. Entries pushed to a removed registry stay, unsearched.
+- **No registry types beyond `local`** yet; config and secret references
+  are in place for the first external one.
 
 ## User Stories
 

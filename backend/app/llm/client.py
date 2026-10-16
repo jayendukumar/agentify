@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from functools import lru_cache
@@ -13,7 +14,7 @@ from app.config import Settings, get_settings
 from app.tenancy.context import current_tenant_id
 from app.tenancy.identity import current_slug
 
-from . import metering
+from . import keys, metering
 from .exceptions import (
     LLMAuthenticationError,
     LLMBadRequestError,
@@ -57,11 +58,12 @@ class LLMClient:
         if self._settings.llm_app_name:
             default_headers["X-Title"] = self._settings.llm_app_name
 
+        self._default_headers = default_headers or None
         self._client = openai.AsyncOpenAI(
             api_key=self._settings.openrouter_api_key,
             base_url=self._settings.llm_base_url,
             timeout=self._settings.llm_request_timeout_seconds,
-            default_headers=default_headers or None,
+            default_headers=self._default_headers,
         )
 
         log_path = self._settings.usage_log_path if self._settings.llm_usage_log_enabled else None
@@ -93,15 +95,21 @@ class LLMClient:
             first["content"] = [{"type": "text", "text": first["content"], "cache_control": {"type": "ephemeral"}}]
 
     def _client_for(self, route: LlmRoute | None) -> openai.AsyncOpenAI:
+        return self._client_and_payer(route)[0]
+
+    def _client_and_payer(self, route: LlmRoute | None) -> tuple[openai.AsyncOpenAI, keys.KeySource]:
         """Epic 31, US31.8: a self-hosted OpenAI-compatible endpoint when the
         business unit's policy names one, else the default provider.
 
         Epic 38, US38.10: the endpoint's key is the tenant's own secret
         (`secret://tenant/<name>`); an environment variable's name only
         works for the first tenant, or the platform's own key could be sent
-        to an endpoint a tenant's admin chose."""
+        to an endpoint a tenant's admin chose.
+
+        US38.11: also says whose key pays -- the platform's, or the
+        tenant's (its own key for the default provider, or its endpoint)."""
         if route is None or not route.base_url:
-            return self._client
+            return self._default_for_tenant()
         ref = route.api_key_env or ""
         if ref and not secret_store.is_ref(ref):
             ref = f"env:{ref}"
@@ -118,7 +126,28 @@ class LLMClient:
                 base_url=route.base_url,
                 timeout=self._settings.llm_request_timeout_seconds,
             )
-        return self._routed_clients[key]
+        return self._routed_clients[key], "tenant" if scope != secret_store.PLATFORM else "platform"
+
+    def _default_for_tenant(self) -> tuple[openai.AsyncOpenAI, keys.KeySource]:
+        """The default provider, on the tenant's own key if it set one."""
+        ref = keys.tenant_key_ref()
+        if not ref:
+            return self._client, "platform"
+        slug = current_slug()
+        value = secret_store.resolve(ref, slug)
+        if not value:
+            raise LLMPolicyError(
+                "Your organization uses its own model provider key, and it isn't set: the hosting company stores it as "
+                + secret_store.where_to_put(ref, slug or "")
+            )
+        # Keyed by the value, so a rotated key gets a new client.
+        cache_key = (self._settings.llm_base_url, slug, hashlib.sha256(value.encode()).hexdigest())
+        if cache_key not in self._routed_clients:
+            self._routed_clients[cache_key] = openai.AsyncOpenAI(
+                api_key=value, base_url=self._settings.llm_base_url,
+                timeout=self._settings.llm_request_timeout_seconds, default_headers=self._default_headers,
+            )
+        return self._routed_clients[cache_key], "tenant"
 
     @staticmethod
     def _redacted(messages: list[ChatMessage]) -> list[ChatMessage]:
@@ -161,13 +190,14 @@ class LLMClient:
         route = current_route.get()
         if route is not None and route.blocked_reason:
             raise LLMPolicyError(route.blocked_reason)
-        # Epic 38, US38.9: the tenant's budget and requests per minute.
-        await metering.admit()
+        # Epic 38, US38.11: whose key pays; US38.9: the tenant's budget (on
+        # the platform's key) and requests per minute.
+        client, payer = self._client_and_payer(route)
+        await metering.admit(payer)
         if route is not None and route.redact_pii:
             messages = self._redacted(messages)
         if route is not None and route.model:
             model = route.model
-        client = self._client_for(route)
         payload = self._build_payload(
             messages,
             tools=tools,
@@ -185,7 +215,7 @@ class LLMClient:
                 async with slot:
                     response = await client.chat.completions.create(**payload)
                 result = self._parse_response(response, operation=operation)
-                await metering.record(operation=operation, model=result.model, usage=result.usage)
+                await metering.record(operation=operation, model=result.model, usage=result.usage, key_source=payer)
                 return result
             except openai.AuthenticationError as exc:
                 raise LLMAuthenticationError(str(exc)) from exc

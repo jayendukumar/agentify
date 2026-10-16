@@ -2134,11 +2134,13 @@ export interface BudgetState {
   budget_usd: number | null
   warn_at_usd: number | null
   status: 'unlimited' | 'ok' | 'warning' | 'stopped'
+  own_key: boolean
 }
 
 export interface OperationUsage {
   operation: string
   model: string
+  key_source: 'platform' | 'tenant'
   calls: number
   total_tokens: number
   cost_usd: number
@@ -2153,6 +2155,7 @@ export interface MonthUsage {
   total_tokens: number
   cost_usd: number
   calls_without_cost: number
+  own_key_cost_usd: number
   operations: OperationUsage[]
 }
 
@@ -2162,4 +2165,25 @@ export interface UsageOverview {
   jobs_running: number
   jobs_queued: number
   months: MonthUsage[]
+}
+
+// Epic 38, US38.11: this organization's agent registries, and its own key
+// for the default model provider.
+export interface RegistrySetting {
+  name: string
+  type: string
+  config?: Record<string, unknown>
+}
+
+export interface RegistrySettings {
+  registries: RegistrySetting[]
+  source: 'tenant' | 'environment' | 'default'
+  types: string[]
+}
+
+export interface ProviderKeyStatus {
+  key_ref: string | null
+  key_set: boolean
+  location: string | null
+  provider: string
 }

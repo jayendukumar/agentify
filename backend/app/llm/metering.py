@@ -58,12 +58,15 @@ def month_start(moment: datetime) -> datetime:
     return moment.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def month_spend(session: Session, month: str | None = None) -> float:
+def month_spend(session: Session, month: str | None = None, *, key_source: str | None = "platform") -> float:
     """What this tenant's LLM calls cost this month (UTC), as far as prices
-    are known."""
+    are known. US38.11: on the platform's key by default -- what the budget
+    limits; `key_source=None` for every call, whoever paid."""
     month = month or month_of(utcnow())
-    total = session.scalar(select(func.sum(LlmUsageMonthlyModel.cost_usd)).where(LlmUsageMonthlyModel.month == month))
-    return float(total or 0.0)
+    query = select(func.sum(LlmUsageMonthlyModel.cost_usd)).where(LlmUsageMonthlyModel.month == month)
+    if key_source is not None:
+        query = query.where(LlmUsageMonthlyModel.key_source == key_source)
+    return float(session.scalar(query) or 0.0)
 
 
 @dataclass(frozen=True)
@@ -89,6 +92,10 @@ def budget_reached(session: Session) -> bool:
     one, once the tenant's month is spent."""
     tenant_id = current_tenant_id()
     if tenant_id is None:
+        return False
+    from .keys import tenant_key_ref
+
+    if tenant_key_ref():  # US38.11: on its own key, the platform's quota doesn't apply
         return False
     return budget_state(session, limits_for(tenant_id).llm_monthly_budget_usd).status == "stopped"
 
@@ -156,12 +163,15 @@ async def _within_rate(tenant_id: str, per_minute: int) -> None:
         await asyncio.sleep(_WINDOW_SECONDS - (now - calls[0]) + 0.01)
 
 
-async def admit() -> None:
-    """Before an LLM call: refuses it over budget, and waits out the rate."""
+async def admit(key_source: str = "platform") -> None:
+    """Before an LLM call: refuses it over budget, and waits out the rate.
+    US38.11: the budget is the platform's quota, so a call on the tenant's
+    own key isn't held to it; the rate still applies."""
     tenant_id = current_tenant_id()
     if tenant_id is None:
         return
-    await asyncio.to_thread(_check_budget, tenant_id)
+    if key_source == "platform":
+        await asyncio.to_thread(_check_budget, tenant_id)
     per_minute = limits_for(tenant_id).llm_requests_per_minute
     if per_minute is not None:
         await _within_rate(tenant_id, per_minute)
@@ -170,7 +180,7 @@ async def admit() -> None:
 # ---- recording ----------------------------------------------------------------------
 
 
-def _record(tenant_id: str, operation: str, model: str, usage: Usage) -> None:
+def _record(tenant_id: str, operation: str, model: str, usage: Usage, key_source: str) -> None:
     from app.db.session import get_session_factory
 
     cost = estimate_cost_usd(model, usage)
@@ -179,9 +189,10 @@ def _record(tenant_id: str, operation: str, model: str, usage: Usage) -> None:
         session.add(LlmUsageEventModel(
             occurred_at=now, operation=operation, model=model, input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens, total_tokens=usage.total_tokens, estimated_cost_usd=cost,
+            key_source=key_source,
         ))
         row = {
-            "month": month_of(now), "operation": operation, "model": model, "calls": 1,
+            "month": month_of(now), "operation": operation, "model": model, "key_source": key_source, "calls": 1,
             "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
             "total_tokens": usage.total_tokens, "cost_usd": cost or 0.0, "calls_without_cost": 1 if cost is None else 0,
         }
@@ -189,19 +200,19 @@ def _record(tenant_id: str, operation: str, model: str, usage: Usage) -> None:
         statement = insert(table).values(**row)
         summed = ("calls", "input_tokens", "output_tokens", "total_tokens", "cost_usd", "calls_without_cost")
         session.execute(statement.on_conflict_do_update(
-            index_elements=["tenant_id", "month", "operation", "model"],
+            index_elements=["tenant_id", "month", "operation", "model", "key_source"],
             set_={name: table.c[name] + statement.excluded[name] for name in summed},
         ))
         session.commit()
 
 
-async def record(*, operation: str, model: str, usage: Usage) -> None:
+async def record(*, operation: str, model: str, usage: Usage, key_source: str = "platform") -> None:
     """After an LLM call. A failure to record is logged, not raised: the
     call has happened and its result is the caller's."""
     tenant_id = current_tenant_id()
     if tenant_id is None:
         return
     try:
-        await asyncio.to_thread(_record, tenant_id, operation, model, usage)
+        await asyncio.to_thread(_record, tenant_id, operation, model, usage, key_source)
     except Exception as exc:  # noqa: BLE001 -- recorded in the JSONL log regardless
         logger.warning("llm_usage_record_failed", extra={"tenant_id": tenant_id, "error": str(exc)})

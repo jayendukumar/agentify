@@ -531,3 +531,18 @@ class ThirdPartyRegisterRow(BaseModel):
     classifications: list[str] = []
     agents: list[dict[str, str]] = []
     processes: list[dict[str, str]] = []
+
+
+class ProviderKeySetting(BaseModel):
+    """Epic 38, US38.11: the organization's own key for the default model
+    provider, as a reference (`secret://tenant/<name>`). None: the hosting
+    company's key."""
+
+    key_ref: str | None = None
+
+
+class ProviderKeyStatus(ProviderKeySetting):
+    key_set: bool = False
+    # Where the hosting company stores the referenced key.
+    location: str | None = None
+    provider: str
