@@ -1,6 +1,6 @@
 # Prompts and LLM use
 
-Last reviewed: 2026-10-15 · Sources: `backend/app/llm`, `backend/app/blueprint/prompts.py`, `backend/app/chat/prompts.py`, `backend/app/gap_analysis/prompts.py`
+Last reviewed: 2026-10-16 · Sources: `backend/app/llm`, `backend/app/blueprint/prompts.py`, `backend/app/chat/prompts.py`, `backend/app/gap_analysis/prompts.py`
 
 ## How model calls are made
 
@@ -12,14 +12,21 @@ OpenRouter by default (`LLM_MODEL=qwen/qwen3.7-flash`, chosen for cost; see
 1. **Applies the business unit's model policy** (`llm/routing.py`). A
    process in a unit that requires EU hosting, a particular provider, or
    a self-hosted endpoint is routed there, or the call is refused with the
-   reason. PII is redacted first when the policy says so.
-2. **Retries** transient failures (`LLM_MAX_RETRIES`) with a timeout
+   reason. PII is redacted first when the policy says so. A self-hosted
+   endpoint's key is the tenant's own secret (`secret://tenant/<name>`,
+   Epic 38, US38.10); only the first tenant may name an environment
+   variable.
+2. **Holds the tenant to its limits** (`llm/metering.py`, Epic 38,
+   US38.9): refused once its monthly budget is spent (`LLMBudgetError`),
+   and held back to its requests per minute.
+3. **Retries** transient failures (`LLM_MAX_RETRIES`) with a timeout
    (`LLM_REQUEST_TIMEOUT_SECONDS`).
-3. **Throttles** to `LLM_MAX_CONCURRENCY` concurrent requests and marks
+4. **Throttles** to `LLM_MAX_CONCURRENCY` concurrent requests and marks
    stable prefixes for **prompt caching** (Epic 34).
-4. **Accounts** tokens and estimated cost per `operation` into the usage
-   log (`llm/usage.py`). This is how every run, batch and process twin
-   reports its cost.
+5. **Accounts** tokens and estimated cost per `operation` into the usage
+   log (`llm/usage.py`), and as the tenant's usage (`llm_usage_events`,
+   `llm_usage_monthly`). This is how every run, batch and process twin
+   reports its cost, and how a tenant's admin sees cost per month.
 
 Callers ask for JSON (`response_format={"type": "json_object"}`) wherever
 they parse the reply. The reply is validated with Pydantic, and malformed
@@ -32,9 +39,11 @@ flowchart LR
     caller[service code] -->|operation, messages,<br/>response_format, tools| client[LLMClient.complete]
     client --> route{business-unit<br/>policy}
     route -->|blocked| err[LLMPolicyError<br/>with the reason]
-    route -->|allowed| redact[redact PII<br/>if required]
+    route -->|allowed| limits{tenant budget<br/>and rate}
+    limits -->|budget spent| budget[LLMBudgetError]
+    limits -->|within| redact[redact PII<br/>if required]
     redact --> provider[OpenRouter or<br/>self-hosted endpoint]
-    provider --> usage[usage log:<br/>tokens, cost, operation]
+    provider --> usage[usage log and<br/>tenant usage rows]
     usage --> caller
 ```
 

@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app import secret_store
 from app.config import get_settings
 from app.connectors.sync import CONNECTOR_TYPES, connector_summary, run_sync
 from app.context import access as context_access
@@ -18,13 +19,15 @@ from app.context.audit import record
 from app.db.models import ConnectorModel, ConnectorRunModel, JobModel
 from app.ids import new_id
 from app.jobs import queue
+from app.tenancy.identity import current_slug
 
 from .deps import CurrentUserDep, DbDep, OrgAdminDep
 
 router = APIRouter(prefix="/api/organization/connectors", tags=["connectors"])
 
-# Secrets never go into stored config -- name an environment variable
-# with `token_env` instead.
+# Secrets never go into stored config -- reference one with `token_ref`
+# (`secret://tenant/<name>`, US38.10); the first tenant may still name an
+# environment variable with `token_env`.
 _SECRET_WORDS = ("token", "password", "secret", "api_key", "apikey", "client_secret")
 
 
@@ -64,11 +67,23 @@ def _validate(body: ConnectorConfig) -> None:
     if body.type not in CONNECTOR_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Unknown connector type '{body.type}'")
     for key in body.config:
-        if key != "token_env" and any(word in key.lower() for word in _SECRET_WORDS):
+        if key not in ("token_ref", "token_env") and any(word in key.lower() for word in _SECRET_WORDS):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail=f"Don't store '{key}' in connector config -- put it in an environment variable and set token_env",
+                detail=f"Don't store '{key}' in connector config -- reference the secret with token_ref, "
+                       "like secret://tenant/connector_token",
             )
+    slug = current_slug() or ""
+    for key, ref in (("token_ref", body.config.get("token_ref")), ("token_env", body.config.get("token_env"))):
+        if ref is None:
+            continue
+        try:
+            if not isinstance(ref, str):
+                raise secret_store.SecretRefError("it must be a string")
+            secret_store.check_ref(ref if key == "token_ref" else f"env:{ref}", slug,
+                              example="secret://tenant/connector_token")
+        except secret_store.SecretRefError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"{key}: {exc}") from exc
 
 
 def _to_run(run: ConnectorRunModel) -> ConnectorRun:

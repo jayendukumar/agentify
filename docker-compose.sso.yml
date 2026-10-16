@@ -55,7 +55,8 @@ services:
       OIDC_ACR_VALUES: mfa
       AUTH_MFA_ACR_VALUES: '["mfa"]'
       # Northwind's client secret, referenced from its settings as
-      # env:TENANT_NORTHWIND_OIDC_CLIENT_SECRET (a tenant may only name its own).
+      # secret://tenant/oidc_client_secret (US38.10: the env secrets backend
+      # reads TENANT_<SLUG>_<NAME>; a reference only reaches its own tenant).
       TENANT_NORTHWIND_OIDC_CLIENT_SECRET: northwind-dev-only-secret
       OPERATOR_AUTH_MODE: oidc
       OPERATOR_OIDC_ISSUER: http://localhost:8180/realms/platform

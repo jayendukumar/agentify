@@ -794,7 +794,7 @@ class TenantIdentityModel(TenantScoped, Base):
     page. One row per tenant. Without a row, the first tenant uses the
     OIDC_* / AUTH_MFA_* environment variables and any other tenant has no
     single sign-on (app/tenancy/identity.py). The client secret is held as
-    a reference (`env:TENANT_<SLUG>_...`), never as a value."""
+    a reference (`secret://tenant/<name>`, US38.10), never as a value."""
 
     __tablename__ = "tenant_identity"
 
@@ -1537,7 +1537,9 @@ class LlmUsageMonthlyModel(TenantScoped, Base):
 class ConnectorModel(TenantScoped, Base):
     """Epic 31, US31.2: a configured, read-only connector to a system of
     record. `config` never holds a secret -- only the *name* of the
-    environment variable that does (`token_env`)."""
+    environment variable that does (`token_env`). Epic 38, US38.10: a
+    reference to the tenant's own secret (`token_ref`,
+    `secret://tenant/<name>`); `token_env` only for the first tenant."""
 
     __tablename__ = "connectors"
 

@@ -27,7 +27,7 @@ const identity = {
   auth_mode: 'local', source: 'unset', issuer: '', discovery_url: '', client_id: '', client_secret_ref: '',
   display_name: 'single sign-on', scopes: 'openid profile email', acr_values: '', groups_claim: 'groups',
   jit_provisioning: true, require_mfa: true, mfa_amr_values: ['mfa', 'otp'], mfa_acr_values: [], scim_link_claim: 'sub',
-  secret_configured: false, secret_prefix: 'TENANT_NORTHWIND_',
+  secret_configured: false, secret_location: 'TENANT_NORTHWIND_OIDC_CLIENT_SECRET (environment variable)',
   redirect_uri: 'http://northwind.localhost:8000/api/auth/oidc/callback',
   post_logout_redirect_uri: 'http://northwind.localhost:3000/',
   backchannel_logout_url: 'http://northwind.localhost:8000/api/auth/oidc/backchannel-logout',
@@ -92,7 +92,7 @@ describe('Sign-in settings (Epic 38, US38.6)', () => {
     api.saveIdentitySettings.mockResolvedValue({ ...identity, auth_mode: 'oidc', source: 'tenant', updated_by: 'Nora' })
     render(<DirectoryPage />)
     expect(await screen.findByText('http://northwind.localhost:8000/api/auth/oidc/callback')).toBeInTheDocument()
-    expect(screen.getByLabelText(/Client secret reference/)).toHaveValue('env:TENANT_NORTHWIND_OIDC_CLIENT_SECRET')
+    expect(screen.getByLabelText(/Client secret reference/)).toHaveValue('secret://tenant/oidc_client_secret')
 
     const save = screen.getByRole('button', { name: 'Save sign-in settings' })
     fireEvent.change(screen.getByLabelText('Issuer'), { target: { value: 'http://localhost:8180/realms/northwind' } })

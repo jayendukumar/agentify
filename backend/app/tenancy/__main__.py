@@ -15,7 +15,7 @@ save that locked everyone out:
 
     python -m app.tenancy identity show northwind
     python -m app.tenancy identity set northwind --issuer http://localhost:8180/realms/northwind
-        --client-id axyntro --secret-ref env:TENANT_NORTHWIND_OIDC_CLIENT_SECRET --admin-group northwind-admins
+        --client-id axyntro --secret-ref secret://tenant/oidc_client_secret --admin-group northwind-admins
     python -m app.tenancy identity reset northwind     # back to its defaults
 """
 
@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> None:
     idp_set.add_argument("--issuer", default="")
     idp_set.add_argument("--discovery-url", default="")
     idp_set.add_argument("--client-id", default="")
-    idp_set.add_argument("--secret-ref", default="", help="env:TENANT_<SLUG>_...")
+    idp_set.add_argument("--secret-ref", default="", help="secret://tenant/<name> (the TENANT_<SLUG>_<NAME> variable with the env backend)")
     idp_set.add_argument("--display-name", default="single sign-on")
     idp_set.add_argument("--acr-values", default="")
     idp_set.add_argument("--mfa-acr", action="append", default=[], help="an acr value that counts as MFA (repeatable)")

@@ -14,17 +14,16 @@ current request:
   production; in production nobody can sign in until it's configured.
 
 The client secret is never stored: a tenant holds a *reference*,
-`env:TENANT_<SLUG>_<NAME>`, resolved when it's needed. The prefix stops one
-tenant's admin from pointing at a platform secret (the model provider's
-key, another tenant's secret) and having it sent to an IdP they control.
-US38.10 adds a real secrets store behind the same references.
+`secret://tenant/<name>`, resolved in its own secrets store when it's
+needed (US38.10, app/secret_store). A reference can't reach a platform secret
+(the model provider's key) or another tenant's, so an admin can't have
+one sent to an IdP they control. The first tenant may still name an
+environment variable (`env:OIDC_CLIENT_SECRET`), as before Epic 38.
 """
 
 from __future__ import annotations
 
 import ipaddress
-import os
-import re
 import socket
 from dataclasses import dataclass, field
 from typing import Annotated, Literal
@@ -34,6 +33,7 @@ from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import secret_store
 from app.config import Settings, get_settings
 from app.db.models import TenantIdentityModel, TenantModel
 from app.db.session import get_db
@@ -68,10 +68,13 @@ class IdentityConfig:
     redirect_uri: str = ""
     frontend_url: str = ""
     api_url: str = ""
+    # Whose secrets `client_secret_ref` reaches: the tenant's slug, or
+    # secret_store.PLATFORM for the operator console. None reaches nothing.
+    secret_scope: str | None = None
 
     @property
     def client_secret(self) -> str:
-        return resolve_secret(self.client_secret_ref)
+        return secret_store.resolve(self.client_secret_ref, self.secret_scope) or ""
 
     @property
     def scim_base_url(self) -> str:
@@ -94,24 +97,14 @@ class IdentityError(ValueError):
     """Settings an admin can't save, with the reason to show them."""
 
 
-def secret_prefix(slug: str) -> str:
-    return "TENANT_" + re.sub(r"[^A-Z0-9]", "_", slug.upper()) + "_"
+DEFAULT_SECRET_REF = "secret://tenant/oidc_client_secret"
 
 
 def check_secret_ref(ref: str, slug: str, settings: Settings) -> None:
-    name = ref.removeprefix("env:")
-    if not ref.startswith("env:") or not re.fullmatch(r"[A-Z0-9_]+", name):
-        raise IdentityError("The client secret must be a reference like env:" + secret_prefix(slug) + "OIDC_CLIENT_SECRET")
-    if slug == settings.tenant_default_slug and name == settings.oidc_client_secret_env:
-        return  # the first tenant keeps the secret the operator configured for it
-    if not name.startswith(secret_prefix(slug)):
-        raise IdentityError(f"This organization's secrets must be named {secret_prefix(slug)}..., not {name}")
-
-
-def resolve_secret(ref: str) -> str:
-    if ref.startswith("env:"):
-        return os.environ.get(ref.removeprefix("env:"), "")
-    return ""
+    try:
+        secret_store.check_ref(ref, slug, example=DEFAULT_SECRET_REF, first_tenant_slug=settings.tenant_default_slug)
+    except secret_store.SecretRefError as exc:
+        raise IdentityError(f"The client secret: {exc}") from exc
 
 
 # ---- URLs ----------------------------------------------------------------------------
@@ -175,11 +168,11 @@ def from_settings(settings: Settings, tenant_id: str | None = None) -> IdentityC
         mfa_amr_values=tuple(settings.auth_mfa_amr_values), mfa_acr_values=tuple(settings.auth_mfa_acr_values),
         scim_link_claim=settings.scim_link_claim, seed_group_roles=dict(settings.oidc_group_roles),
         redirect_uri=settings.oidc_redirect_uri, frontend_url=settings.frontend_url.rstrip("/"),
-        api_url=settings.api_public_url.rstrip("/"),
+        api_url=settings.api_public_url.rstrip("/"), secret_scope=settings.tenant_default_slug,
     )
 
 
-def from_row(row: TenantIdentityModel, settings: Settings, host: str) -> IdentityConfig:
+def from_row(row: TenantIdentityModel, settings: Settings, host: str, slug: str | None) -> IdentityConfig:
     api_url = with_host(settings.api_public_url, host)
     return IdentityConfig(
         auth_mode="oidc" if row.auth_mode == "oidc" else "local", source="tenant", tenant_id=row.tenant_id,
@@ -189,7 +182,7 @@ def from_row(row: TenantIdentityModel, settings: Settings, host: str) -> Identit
         require_mfa=row.require_mfa, mfa_amr_values=tuple(row.mfa_amr_values or ()),
         mfa_acr_values=tuple(row.mfa_acr_values or ()), scim_link_claim=row.scim_link_claim,
         redirect_uri=api_url + "/api/auth/oidc/callback", frontend_url=with_host(settings.frontend_url, host),
-        api_url=api_url,
+        api_url=api_url, secret_scope=slug,
     )
 
 
@@ -222,7 +215,7 @@ def get_identity(db: Annotated[Session, Depends(get_db, scope="function")]) -> I
 def _resolve(db: Session, settings: Settings, tenant_id: str, host: str) -> IdentityConfig:
     row = db.scalar(select(TenantIdentityModel))  # row-level security: this tenant's, if any
     if row is not None:
-        return from_row(row, settings, host)
+        return from_row(row, settings, host, _slug(db, tenant_id))
     if _slug(db, tenant_id) == settings.tenant_default_slug:
         return from_settings(settings, tenant_id)
     return IdentityConfig(
@@ -234,6 +227,21 @@ def _resolve(db: Session, settings: Settings, tenant_id: str, host: str) -> Iden
 
 def tenant_slug(db: Session, tenant_id: str) -> str | None:
     return _slug(db, tenant_id)
+
+
+def current_slug() -> str | None:
+    """The current tenant's slug: whose secrets a reference reaches."""
+    tenant_id = current_tenant_id()
+    return _slug_cached(tenant_id) if tenant_id else None
+
+
+def _slug_cached(tenant_id: str) -> str | None:
+    if tenant_id not in _slugs:
+        from app.db.session import get_session_factory
+
+        with get_session_factory()() as db:
+            return _slug(db, tenant_id)
+    return _slugs[tenant_id]
 
 
 # ---- what an admin may save ---------------------------------------------------------
@@ -273,4 +281,4 @@ def validate(values: dict, slug: str, settings: Settings) -> None:
 
 def candidate(values: dict, tenant_id: str, settings: Settings, host: str) -> IdentityConfig:
     """The configuration these values would give, before saving them."""
-    return from_row(TenantIdentityModel(tenant_id=tenant_id, **values), settings, host)
+    return from_row(TenantIdentityModel(tenant_id=tenant_id, **values), settings, host, _slug_cached(tenant_id))

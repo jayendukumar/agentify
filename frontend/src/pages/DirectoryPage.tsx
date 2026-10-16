@@ -48,7 +48,7 @@ function toInput(s: IdentitySettings): IdentitySettingsInput {
     issuer: s.issuer,
     discovery_url: s.discovery_url,
     client_id: s.client_id,
-    client_secret_ref: s.client_secret_ref || `env:${s.secret_prefix}OIDC_CLIENT_SECRET`,
+    client_secret_ref: s.client_secret_ref || 'secret://tenant/oidc_client_secret',
     display_name: s.display_name,
     scopes: s.scopes,
     acr_values: s.acr_values,
@@ -156,7 +156,9 @@ function IdentitySection() {
           Client secret reference
           <input value={form.client_secret_ref} onChange={(e) => update({ client_secret_ref: e.target.value })} />
           <span className="meta">
-            Not the secret itself: the name it's stored under on the server, starting with <code>env:{current.secret_prefix}</code>.
+            Not the secret itself: a reference to your organization's own secret, like{' '}
+            <code>secret://tenant/oidc_client_secret</code>. The hosting company stores it as{' '}
+            <code>{current.secret_location}</code>.
             {current.secret_configured ? ' The current one is set.' : ''}
           </span>
         </label>

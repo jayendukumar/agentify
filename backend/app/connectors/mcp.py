@@ -14,7 +14,8 @@ Config:
     kind            context entity kind the records become
     mapping         {"external_id": "<field>", "name": "<field>", "code": "<field>",
                      "data": {"<entity data key>": "<record field>", ...}}
-    token_env       env var holding a bearer token (optional)
+    token_ref       a bearer token, as `secret://tenant/<name>` (optional;
+                    the first tenant may name an env var with token_env)
 """
 
 from __future__ import annotations

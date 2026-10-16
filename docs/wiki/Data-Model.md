@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-16 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**71 tables, 768 columns (93 JSON), 168 foreign keys, 37 Alembic migrations.**
+**71 tables, 768 columns (93 JSON), 168 foreign keys, 38 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -1219,7 +1219,7 @@ Epic 29, US29.3: which catalog application a free-text system name means within 
 
 #### `connectors` (ConnectorModel)
 
-Epic 31, US31.2: a configured, read-only connector to a system of record. `config` never holds a secret -- only the *name* of the environment variable that does (`token_env`).
+Epic 31, US31.2: a configured, read-only connector to a system of record. `config` never holds a secret -- only the *name* of the environment variable that does (`token_env`). Epic 38, US38.10: a reference to the tenant's own secret (`token_ref`, `secret://tenant/<name>`); `token_env` only for the first tenant.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
@@ -1612,7 +1612,7 @@ Epic 37, US37.11: members of a group hold a role at a scope (the same scope_type
 
 #### `tenant_identity` (TenantIdentityModel)
 
-Epic 38, US38.6: how this tenant's people sign in -- its own IdP, MFA rules and SCIM link claim, edited by its admins on the Directory page. One row per tenant. Without a row, the first tenant uses the OIDC_* / AUTH_MFA_* environment variables and any other tenant has no single sign-on (app/tenancy/identity.py). The client secret is held as a reference (`env:TENANT_<SLUG>_...`), never as a value.
+Epic 38, US38.6: how this tenant's people sign in -- its own IdP, MFA rules and SCIM link claim, edited by its admins on the Directory page. One row per tenant. Without a row, the first tenant uses the OIDC_* / AUTH_MFA_* environment variables and any other tenant has no single sign-on (app/tenancy/identity.py). The client secret is held as a reference (`secret://tenant/<name>`, US38.10), never as a value.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|

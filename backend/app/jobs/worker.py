@@ -250,4 +250,7 @@ if __name__ == "__main__":
     # (e.g. local sign-in in production). Check before polling the queue so
     # a standalone worker exits non-zero instead of running half-configured.
     settings_or_exit("job worker")
+    from app.request_context import configure_logging
+
+    configure_logging()
     asyncio.run(Worker().run())

@@ -12,10 +12,10 @@ import type { Connector, ConnectorRun, ContextEntity } from '../../api/types'
 
 const CONFIG_EXAMPLES: Record<string, string> = {
   folder: '{"path": "/data/policies"}',
-  http: '{"url": "https://cmdb.example.com/api/now/table/cmdb_ci_appl", "kind": "application", "records_key": "result",\n "mapping": {"external_id": "sys_id", "name": "name", "data": {"vendor": "vendor", "aliases": "u_aliases"}},\n "token_env": "CMDB_TOKEN"}',
+  http: '{"url": "https://cmdb.example.com/api/now/table/cmdb_ci_appl", "kind": "application", "records_key": "result",\n "mapping": {"external_id": "sys_id", "name": "name", "data": {"vendor": "vendor", "aliases": "u_aliases"}},\n "token_ref": "secret://tenant/cmdb_token"}',
   oscal: '{"url": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json"}',
-  scim: '{"url": "https://graph.microsoft.com/rbac/scim/v2", "group_prefix": "AXY-", "token_env": "IDP_SCIM_TOKEN"}',
-  mcp: '{"url": "https://grc.example.com/mcp", "tool": "list_controls", "kind": "control",\n "mapping": {"external_id": "id", "name": "title", "data": {"description": "text"}}, "token_env": "GRC_MCP_TOKEN"}',
+  scim: '{"url": "https://graph.microsoft.com/rbac/scim/v2", "group_prefix": "AXY-", "token_ref": "secret://tenant/idp_scim_token"}',
+  mcp: '{"url": "https://grc.example.com/mcp", "tool": "list_controls", "kind": "control",\n "mapping": {"external_id": "id", "name": "title", "data": {"description": "text"}}, "token_ref": "secret://tenant/grc_mcp_token"}',
 }
 
 /** Epic 31, US31.2-US31.6, US31.9: read-only connectors to systems of record. */
@@ -116,8 +116,9 @@ export default function ConnectorsPanel({ businessUnits, canEdit }: { businessUn
     <section aria-labelledby="connectors-heading">
       <h2 id="connectors-heading">Connectors</h2>
       <p className="meta">
-        Keep context current from the systems you already run. Connectors only ever read; tokens live in environment
-        variables, named in the settings as <code>token_env</code>, never stored here.
+        Keep context current from the systems you already run. Connectors only ever read. Tokens are never stored here:
+        the settings reference your organization's own secret with <code>token_ref</code>, like{' '}
+        <code>secret://tenant/cmdb_token</code>, which the hosting company keeps for you.
       </p>
       {message && <p className={message.kind} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
       {connectors.length === 0 ? (

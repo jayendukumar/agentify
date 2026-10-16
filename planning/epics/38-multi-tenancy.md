@@ -4,8 +4,9 @@
 boundary. Step 2 in progress: US38.6 (each tenant's own IdP) implemented
 2026-10-15, US38.7 (SCIM and logout stay inside the tenant) and US38.8
 (operator console, support access) 2026-10-16. Step 2 is complete.
-Step 3 in progress: US38.9 (fair share, limits, usage) implemented
-2026-10-16; open: US38.10-38.15. Decisions confirmed 2026-10-15
+Step 3 in progress: US38.9 (fair share, limits, usage) and US38.10
+(secrets, files, logs per tenant) implemented 2026-10-16; open:
+US38.11-38.15. Decisions confirmed 2026-10-15
 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
@@ -352,6 +353,54 @@ Deviations and decisions:
   `calls_without_cost` and shown as such, rather than guessed.
 - **Fair share is per tenant, not per process** within a tenant: a
   tenant's own big batch can still hold back its other work.
+
+## US38.10 as built
+
+- **Secrets store** (`app/secret_store`): stored settings hold a
+  reference, `secret://tenant/<name>`, which only ever reaches the
+  current tenant's secrets. Pluggable with `SECRETS_BACKEND`: `env`
+  (default) reads `TENANT_<SLUG>_<NAME>`, `files` reads a file of that
+  name in `SECRETS_DIR` (Docker or Kubernetes secrets). References are
+  checked when saved and again when used.
+- **Where references are used:** the IdP client secret
+  (`tenant_identity.client_secret_ref`), connector tokens (`token_ref`,
+  new), and a model endpoint's key in the LLM policy (`api_key_env` now
+  takes a reference too). Environment names (`env:NAME`, `token_env`, a
+  bare `api_key_env`) remain for the first tenant only; the operator
+  console's own IdP keeps its environment variable.
+- **Migration `d6e7f8a9b0c1`** turns a tenant's own
+  `env:TENANT_<SLUG>_<NAME>` into `secret://tenant/<name>` (the env
+  backend reads the same variable, so nothing is set again) and moves
+  uploads into `tenants/<tenant_id>/`, as each tenant.
+- **Files** (`app/tenancy/files.py`): `<DOCUMENT_STORAGE_PATH>/tenants/
+  <tenant_id>/<process_id>/` and `.../_organization/`. A file name is cut
+  to its last component and the path must stay inside the tenant's
+  directory; without a tenant, nothing is stored or read. Deleting a
+  process now deletes its files.
+- **Logs:** every app-log line carries `[tenant=<id>]` (or `-` outside a
+  tenant); the usage JSONL has `tenant_id` since US38.9. A standalone
+  worker (`python -m app.jobs.worker`) now configures logging the same
+  way; before, it logged nothing below warning.
+- **UI:** the Directory page suggests `secret://tenant/oidc_client_secret`
+  and shows where the hosting company stores it; the Connectors panel's
+  examples use `token_ref`.
+- **Tests.** `tests/test_tenant_secrets_files.py` (12). Live:
+  `testing/tenancy/smoke_secrets_files.py` (13/13).
+
+Deviations and decisions:
+
+- **Environment variables and mounted files, not a cloud secrets
+  manager.** The store is an interface with two backends; Vault or a
+  cloud manager is one more class when a deployment needs it.
+- **Model endpoint keys were included** although US38.11 owns model
+  policy: the same hole (a tenant naming the platform's key and sending
+  it to an endpoint it chose) existed there, so it's closed now. Choosing
+  between the platform's key and a tenant's own for the default provider
+  stays with US38.11.
+- **Old environment names in other tenants stop resolving** rather than
+  being migrated when they aren't the tenant's own `TENANT_<SLUG>_*`
+  variable: the connector or sign-in says which secret to set.
+- **Per-tenant encryption keys** wait for object storage (weakness 4).
 
 ## User Stories
 

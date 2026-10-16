@@ -41,6 +41,7 @@ from app.ingestion.extractors import ExtractedBlock, extract_docx, extract_pdf
 from app.ingestion.pipeline import DOCX_CONTENT_TYPE, PDF_CONTENT_TYPE
 from app.llm import ChatMessage, LLMClient
 from app.schemas.context import AppliesTo, Citation, ContextEntityCreate
+from app.tenancy.files import safe_name, tenant_file
 
 from . import repository
 
@@ -69,7 +70,7 @@ class PolicyIngestionError(Exception):
 
 
 def _policy_path(settings: Settings, document_id: str, filename: str) -> Path:
-    return settings.document_storage_root / "_organization" / f"{document_id}_{filename}"
+    return tenant_file(settings, "_organization", f"{document_id}_{safe_name(filename)}")  # US38.10
 
 
 def save_policy_file(settings: Settings, document_id: str, filename: str, data: bytes) -> None:

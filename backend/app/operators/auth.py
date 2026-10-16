@@ -13,6 +13,7 @@ from fastapi import Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app import secret_store
 from app.config import Settings, get_settings
 from app.db.models import OperatorModel, OperatorSessionModel, PlatformAuditEventModel
 from app.ids import new_id, utcnow
@@ -38,7 +39,7 @@ def identity_config(settings: Settings, host: str) -> IdentityConfig:
     return IdentityConfig(
         auth_mode="oidc" if settings.operator_auth_mode == "oidc" else "local", source="environment",
         tenant_id="platform", issuer=settings.operator_oidc_issuer, discovery_url=settings.operator_oidc_discovery_url,
-        client_id=settings.operator_oidc_client_id, client_secret_ref=f"env:{settings.operator_oidc_client_secret_env}",
+        client_id=settings.operator_oidc_client_id, client_secret_ref=f"env:{settings.operator_oidc_client_secret_env}", secret_scope=secret_store.PLATFORM,
         display_name="platform SSO", acr_values=settings.operator_oidc_acr_values, require_mfa=True,
         mfa_amr_values=tuple(settings.operator_mfa_amr_values), mfa_acr_values=tuple(settings.operator_mfa_acr_values),
         redirect_uri=api_url + "/api/operator/oidc/callback", frontend_url=with_host(settings.frontend_url, host),

@@ -1054,7 +1054,8 @@ export interface IdentitySettings extends Omit<IdentitySettingsInput, 'auth_mode
   auth_mode: 'local' | 'oidc' | 'none'
   source: 'tenant' | 'environment' | 'unset'
   secret_configured: boolean
-  secret_prefix: string
+  // US38.10: where the hosting company stores the referenced secret
+  secret_location: string
   redirect_uri: string
   post_logout_redirect_uri: string
   backchannel_logout_url: string

@@ -30,7 +30,7 @@ from .test_oidc import CLIENT_ID, ISSUER, FakeIdp
 
 NORTHWIND_ID = "ten_northwind"
 NORTHWIND = "northwind.test"
-SECRET_REF = "env:TENANT_NORTHWIND_OIDC_CLIENT_SECRET"
+SECRET_REF = "secret://tenant/oidc_client_secret"  # US38.10: TENANT_NORTHWIND_OIDC_CLIENT_SECRET
 
 
 def _settings(**overrides) -> dict:
@@ -76,7 +76,7 @@ def test_the_first_tenant_keeps_the_environment_and_others_have_no_sso(client, n
     assert theirs["redirect_uri"] == "http://northwind.test:8000/api/auth/oidc/callback"
     assert theirs["post_logout_redirect_uri"] == "http://northwind.test:3000/"
     assert theirs["scim_base_url"] == "http://northwind.test:8000/scim/v2"
-    assert theirs["secret_prefix"] == "TENANT_NORTHWIND_"
+    assert theirs["secret_location"] == "TENANT_NORTHWIND_OIDC_CLIENT_SECRET (environment variable)"
 
 
 def test_in_production_a_tenant_without_settings_cannot_sign_in_at_all(monkeypatch):
@@ -148,9 +148,10 @@ def test_an_issuer_the_idp_does_not_claim_is_refused(northwind_admin, fake_idp):
 @pytest.mark.parametrize(
     ("overrides", "reason"),
     [
-        ({"client_secret_ref": "env:OPENROUTER_API_KEY"}, "must be named TENANT_NORTHWIND_"),
-        ({"client_secret_ref": "env:TENANT_TEST_OIDC_CLIENT_SECRET"}, "must be named TENANT_NORTHWIND_"),
-        ({"client_secret_ref": "client-secret"}, "must be a reference"),
+        ({"client_secret_ref": "env:OPENROUTER_API_KEY"}, "only for the deployment's first organization"),
+        ({"client_secret_ref": "env:TENANT_TEST_OIDC_CLIENT_SECRET"}, "only for the deployment's first organization"),
+        ({"client_secret_ref": "secret://tenant/../test/x"}, "lowercase letters"),
+        ({"client_secret_ref": "client-secret"}, "not the secret itself"),
         ({"issuer": ""}, "needs the issuer"),
         ({"scopes": "profile email"}, "must include openid"),
         ({"mfa_acr_values": [], "mfa_amr_values": []}, "what counts as MFA"),

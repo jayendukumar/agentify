@@ -8,7 +8,10 @@ from typing import Any
 
 import openai
 
+from app import secret_store
 from app.config import Settings, get_settings
+from app.tenancy.context import current_tenant_id
+from app.tenancy.identity import current_slug
 
 from . import metering
 from .exceptions import (
@@ -91,15 +94,27 @@ class LLMClient:
 
     def _client_for(self, route: LlmRoute | None) -> openai.AsyncOpenAI:
         """Epic 31, US31.8: a self-hosted OpenAI-compatible endpoint when the
-        business unit's policy names one, else the default provider."""
+        business unit's policy names one, else the default provider.
+
+        Epic 38, US38.10: the endpoint's key is the tenant's own secret
+        (`secret://tenant/<name>`); an environment variable's name only
+        works for the first tenant, or the platform's own key could be sent
+        to an endpoint a tenant's admin chose."""
         if route is None or not route.base_url:
             return self._client
-        key = (route.base_url, route.api_key_env)
+        ref = route.api_key_env or ""
+        if ref and not secret_store.is_ref(ref):
+            ref = f"env:{ref}"
+        scope = current_slug() if current_tenant_id() else secret_store.PLATFORM
+        if ref and scope != secret_store.PLATFORM:
+            try:
+                secret_store.check_ref(ref, scope or "", example="secret://tenant/llm_api_key")
+            except secret_store.SecretRefError as exc:
+                raise LLMPolicyError(f"The model policy's API key: {exc}") from exc
+        key = (route.base_url, scope, ref)
         if key not in self._routed_clients:
-            import os
-
             self._routed_clients[key] = openai.AsyncOpenAI(
-                api_key=os.environ.get(route.api_key_env or "", "") or "not-needed",
+                api_key=(secret_store.resolve(ref, scope) if ref else None) or "not-needed",
                 base_url=route.base_url,
                 timeout=self._settings.llm_request_timeout_seconds,
             )

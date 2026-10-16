@@ -1,6 +1,6 @@
 # The process digital twin (Epic 36)
 
-Last reviewed: 2026-10-15 · Sources: `backend/app/process_twin`, `backend/app/twin/orchestrator.py`, `backend/app/twin/records.py`, `planning/epics/36-process-twin-efficiency.md`
+Last reviewed: 2026-10-16 · Sources: `backend/app/process_twin`, `backend/app/twin/orchestrator.py`, `backend/app/twin/records.py`, `planning/epics/36-process-twin-efficiency.md`
 
 The process twin runs the **whole** agentic process (every generated
 agent, the people still in the loop, every decision point) over hundreds
@@ -83,3 +83,6 @@ These are listed in Epic 36's notes and the [Critical Review](Critical-Review.md
 - Sample-data writes don't trigger downstream system behaviour.
 - The as-is comparison follows the twin's path, so it's approximate for
   misrouted cases.
+- A run stops as `stopped_budget` at its own budget, or when the tenant's
+  monthly LLM budget is used up (Epic 38, US38.9); cases not yet run are
+  cancelled.

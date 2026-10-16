@@ -13,7 +13,6 @@ change), or retire what the source no longer has.
 
 from __future__ import annotations
 
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -56,13 +55,25 @@ class Connector(ABC):
         self.config = config
 
     def secret(self) -> str | None:
-        """Secrets come from the environment, never from stored config."""
-        name = self.config.get("token_env")
-        if not name:
+        """Secrets never sit in stored config, only a reference to one:
+        `token_ref` (`secret://tenant/<name>`, in the tenant's own secrets
+        store, US38.10), or for the first tenant `token_env`, an
+        environment variable's name."""
+        from app import secret_store
+        from app.tenancy.identity import current_slug
+
+        ref = self.config.get("token_ref") or (f"env:{self.config['token_env']}" if self.config.get("token_env") else "")
+        if not ref:
             return None
-        value = os.environ.get(name)
+        slug = current_slug()
+        try:
+            secret_store.check_ref(ref, slug or "", example="secret://tenant/connector_token")
+        except secret_store.SecretRefError as exc:
+            raise ConnectorError(f"The connector's token: {exc}") from exc
+        value = secret_store.resolve(ref, slug)
         if not value:
-            raise ConnectorError(f"Environment variable '{name}' (the connector's token) is not set")
+            raise ConnectorError(f"The connector's token isn't set: the hosting company stores it as "
+                                 f"{secret_store.where_to_put(ref, slug or '')}")
         return value
 
     @abstractmethod

@@ -3658,3 +3658,42 @@ Northwind's budget below that: the next extraction failed with the
 budget error, no new call was recorded, and the audit log said why. No
 defects; the one wait it needs is the 30-second limit cache.
 
+## 2026-10-16 -- Epic 38, US38.10: per-tenant secrets, files and log lines
+
+### A reference names a secret within the tenant, never a variable
+
+US38.6 let tenants reference their IdP secret as `env:TENANT_<SLUG>_...`
+and checked the prefix. Connectors had no such check: `token_env` could
+name any variable, including `OPENROUTER_API_KEY`, and the token is sent
+to a URL the tenant's admin chose. The LLM policy's `api_key_env` had the
+same hole. Rather than add prefix checks in three places, a reference is
+now `secret://tenant/<name>`: the tenant comes from where it's used, so
+there's nothing to spell that reaches another tenant or the platform.
+Environment names stay for the first tenant, whose operator is the
+organization on a single-tenant deployment. Checked when saved and again
+when used, so a value stored before the rule can't slip through.
+
+### `app.secrets` shadowed the standard library
+
+Found by running the tests: the first name for the package was
+`app/secrets`, and `from app import secrets` in modules that also
+`import secrets` (the standard library, for tokens) replaced it, so
+operator sign-in failed with `token_urlsafe` missing. Renamed to
+`app/secret_store`.
+
+### Upload names could leave the uploads directory
+
+Found by testing: Starlette passes the multipart file name through
+unchanged, so an upload named `../../../../tmp/x.docx` was written
+relative to the process's directory, outside the uploads root. With one
+directory per tenant this would also have reached another tenant's
+files. File names are now cut to their last component, and every path is
+checked to stay inside the tenant's directory; the live smoke test
+uploads such a name and finds it inside Northwind's directory.
+
+### Deleting a process left its files
+
+Found live: the smoke tests' processes were deleted but their upload
+directories stayed. Rows went with the process (cascade), files didn't.
+The delete now removes the process's directory in the tenant's tree.
+

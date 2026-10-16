@@ -15,6 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app import secret_store
 from app.auth import audit as auth_audit
 from app.auth.permissions import Permission, may_act_in_unit
 from app.config import get_settings
@@ -48,6 +49,7 @@ from app.schemas.context import (
     StarterPackApplyResult,
     StarterPackSummary,
 )
+from app.tenancy.identity import current_slug
 
 from .deps import ContextConfirmDep, ContextEditDep, CurrentUserDep, DbDep, LLMDep, OrgAdminDep, ProcessEditDep
 
@@ -101,6 +103,12 @@ def set_llm_policy(body: LlmPolicy, db: DbDep, user: OrgAdminDep) -> Organizatio
     """Epic 31, US31.8: the organization-wide model policy, used where a
     business unit has none of its own."""
     context_access.require_unrestricted(context_access.access_for(db, user))
+    if body.api_key_env:  # US38.10: a reference to the tenant's own secret
+        ref = body.api_key_env if secret_store.is_ref(body.api_key_env) else f"env:{body.api_key_env}"
+        try:
+            secret_store.check_ref(ref, current_slug() or "", example="secret://tenant/llm_api_key")
+        except secret_store.SecretRefError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"api_key_env: {exc}") from exc
     repository.set_organization_profile_value(db, "llm_policy", body.model_dump())
     return repository.get_organization(db)
 

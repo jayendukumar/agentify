@@ -146,7 +146,7 @@ if ($Sso) {
     & docker compose exec -T api python -m app.tenancy identity set northwind `
         --issuer 'http://localhost:8180/realms/northwind' `
         --discovery-url 'http://keycloak:8080/realms/northwind/.well-known/openid-configuration' `
-        --client-id axyntro --secret-ref 'env:TENANT_NORTHWIND_OIDC_CLIENT_SECRET' --display-name 'Northwind SSO' `
+        --client-id axyntro --secret-ref 'secret://tenant/oidc_client_secret' --display-name 'Northwind SSO' `
         --acr-values mfa --mfa-acr mfa --admin-group northwind-admins | Out-Null
 }
 else {

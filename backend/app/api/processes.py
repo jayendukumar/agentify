@@ -2,10 +2,12 @@ from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.auth import audit
+from app.config import get_settings
 from app.auth.permissions import Permission, may_act_in_unit
 from app.context import repository as context_repository
 from app.db import repository
 from app.db.models import ProcessModel
+from app.ingestion import storage
 from app.schemas.context import ProcessScope
 from app.schemas.processes import ProcessCreateRequest, ProcessDetail, ProcessSummary
 
@@ -66,3 +68,4 @@ def get_process(process_id: str, db: DbDep, user: CurrentUserDep) -> ProcessDeta
 def delete_process(process_id: str, db: DbDep, user: ProcessDeleteDep) -> None:
     del user
     repository.delete_process(db, process_id)
+    storage.delete_process_files(get_settings(), process_id)

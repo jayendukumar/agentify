@@ -12,6 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 
+from app import secret_store
 from app.auth import audit, directory, oidc, sessions, support
 from app.config import get_settings
 from app.db.models import ContextEntityModel, ScimTokenModel, SessionModel, SupportGrantModel, TenantIdentityModel
@@ -54,7 +55,8 @@ def _identity_out(db, config: identity.IdentityConfig) -> IdentitySettingsOut:
         jit_provisioning=config.jit_provisioning, require_mfa=config.require_mfa,
         mfa_amr_values=list(config.mfa_amr_values), mfa_acr_values=list(config.mfa_acr_values),
         scim_link_claim=config.scim_link_claim, secret_configured=bool(config.client_secret),
-        secret_prefix=identity.secret_prefix(slug or ""), redirect_uri=config.redirect_uri,
+        secret_location=secret_store.where_to_put(config.client_secret_ref or identity.DEFAULT_SECRET_REF, slug or ""),
+        redirect_uri=config.redirect_uri,
         post_logout_redirect_uri=config.frontend_url.rstrip("/") + "/",
         backchannel_logout_url=config.backchannel_logout_url, scim_base_url=config.scim_base_url,
         updated_at=row.updated_at if row else None, updated_by=row.updated_by if row else None,

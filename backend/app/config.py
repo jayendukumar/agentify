@@ -143,8 +143,9 @@ class Settings(BaseSettings):
     # than browsers do (Keycloak in docker compose: http://keycloak:8080).
     oidc_discovery_url: str = ""
     oidc_client_id: str = ""
-    # The *name* of the environment variable holding the client secret --
-    # the same convention as connectors' `token_env`.
+    # The *name* of the environment variable holding the first tenant's
+    # client secret. Other tenants reference theirs as secret://tenant/<name>
+    # (Epic 38, US38.10, app/secret_store).
     oidc_client_secret_env: str = "OIDC_CLIENT_SECRET"
     oidc_redirect_uri: str = "http://localhost:8000/api/auth/oidc/callback"
     oidc_scopes: str = "openid profile email"
@@ -181,6 +182,11 @@ class Settings(BaseSettings):
     # Only read by that migration; afterwards `python -m app.tenancy` manages
     # tenants and hosts.
     tenant_default_slug: str = "default"
+    # Epic 38, US38.10: where `secret://tenant/<name>` references are kept
+    # (app/secret_store): `env` -- TENANT_<SLUG>_<NAME> environment variables --
+    # or `files`, one file per secret, so named, in `secrets_dir`.
+    secrets_backend: Literal["env", "files"] = "env"
+    secrets_dir: str = "/run/secrets"
     tenant_default_name: str | None = None
     tenant_default_hosts: str = "localhost,127.0.0.1"
     # Browsers call the API from the tenant's own host (frontend/src/api/

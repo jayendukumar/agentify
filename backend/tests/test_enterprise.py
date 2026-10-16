@@ -157,7 +157,7 @@ def test_connector_config_refuses_secrets(client):
         "/api/organization/connectors",
         json={"name": "x", "type": "http", "config": {"url": "https://x", "api_key": "sk-123"}},
     )
-    assert bad.status_code == 400 and "token_env" in bad.json()["detail"]
+    assert bad.status_code == 400 and "token_ref" in bad.json()["detail"]
     assert client.post("/api/organization/connectors", json={"name": "y", "type": "nope"}).status_code == 400
 
 

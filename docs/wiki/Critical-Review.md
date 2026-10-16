@@ -62,8 +62,11 @@ fixable without rethinking the product.
    with another tenant's ids. Each tenant signs in through its own IdP.
    Operators work in a separate console, through a database role that
    can't read tenant tables, and enter a tenant only as support under a
-   grant its admin gave. Still shared per deployment: registries, the model provider's key, connector
-   secrets, uploaded files and the logs. The job queue shares free
+   grant its admin gave. Each tenant's secrets are references into its own store
+   (`secret://tenant/<name>`), its uploads live in a directory of its own,
+   and every log line names its tenant. Still shared per deployment:
+   registries, the model provider's key and the log files themselves.
+   The job queue shares free
    capacity round-robin across tenants, and each tenant has its own
    limits (concurrent jobs, LLM requests per minute, a monthly LLM
    budget) and usage records. Foreign keys aren't tenant-aware: Postgres
@@ -76,8 +79,11 @@ fixable without rethinking the product.
    monitoring. The twin is the only place an agent executes. The value
    chain stops at evidence. (Epics 15, 23)
 4. **Secrets and data handling are local-grade.** API keys are in
-   `backend/.env`. Uploaded documents sit unencrypted on the container
-   filesystem (`.data/uploads`), and so do the usage log and app log.
+   `backend/.env`; tenants' secrets come from environment variables or
+   mounted files (`app/secret_store`), not a secrets manager yet. Uploaded
+   documents sit unencrypted on the container filesystem, one directory
+   per tenant (`.data/uploads/tenants/<id>`), and so do the usage log and
+   app log.
    Policy text, process documents and twin case data are sent to a
    third-party model gateway (OpenRouter) by default. Per-unit routing and
    redaction exist (Epic 31), but redaction is regex-based and nothing is

@@ -78,7 +78,7 @@ class KnownGroup(BaseModel):
 
 class IdentitySettingsIn(BaseModel):
     """What an admin edits. The client secret is a reference
-    (`env:TENANT_<SLUG>_...`), never the secret itself."""
+    (`secret://tenant/<name>`, US38.10), never the secret itself."""
 
     auth_mode: Literal["local", "oidc"]
     issuer: str = ""
@@ -101,8 +101,9 @@ class IdentitySettingsOut(IdentitySettingsIn):
     # tenant (saved here) | environment (the first tenant's defaults) | unset
     source: str
     secret_configured: bool
-    # Secret references must start with this (one tenant can't use another's).
-    secret_prefix: str
+    # US38.10: where the hosting company stores the secret this reference
+    # (or, before one is saved, `secret://tenant/oidc_client_secret`) names.
+    secret_location: str
     # What to register at the IdP: derived from this organization's host.
     redirect_uri: str
     post_logout_redirect_uri: str
