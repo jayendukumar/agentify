@@ -92,7 +92,7 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | Package | Files | Lines | Purpose (from its docstring) |
 |---|---|---|---|
 | `app/agents` | 3 | 241 | Epic 12, US12.1/US12.2: deterministic mapping from a blueprint node's AgentSpec (Epic 7) to a portable AgentDefinition. No LLM call here -- the blueprint evalua |
-| `app/api` | 34 | 5,084 |  |
+| `app/api` | 34 | 5,124 |  |
 | `app/auth` | 9 | 1,692 | Epic 37, US37.6: the append-only audit trail. |
 | `app/batches` | 3 | 849 | Epic 34: batch execution at volume. |
 | `app/blueprint` | 3 | 219 | Epic 7 / agentic-blueprint-evaluator skill: the system instructions + JSON response contract for per-node automation feasibility evaluation. Same prompt-with-ex |
@@ -111,8 +111,8 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | `app/oracles` | 5 | 818 | Epic 33: scalable oracles -- rules, label-first generation, metamorphic relations, calibrated judges. |
 | `app/process_twin` | 4 | 604 | Epic 36: the process digital twin -- the whole process run over many cases, measured against today. |
 | `app/registry` | 4 | 222 | Epic 13, US13.1: the registry connector interface every registry backend implements identically -- the local reference connector (app/registry/local.py) today,  |
-| `app/runtime` | 17 | 3,280 | Epic 39: the agent runtime -- the one execution loop the twin and production both run agents through (`executor.py`). |
-| `app/schemas` | 29 | 2,699 |  |
+| `app/runtime` | 18 | 3,521 | Epic 39: the agent runtime -- the one execution loop the twin and production both run agents through (`executor.py`). |
+| `app/schemas` | 29 | 2,707 |  |
 | `app/scim` | 3 | 491 | Epic 37, US37.10: the inbound SCIM 2.0 server (RFC 7643/7644) the customer's IdP provisions users and groups through. Not Epic 31's outbound ScimConnector, whic |
 | `app/secret_store` | 1 | 139 | Epic 38, US38.10: each tenant's secrets, kept apart. |
 | `app/tenancy` | 14 | 1,467 | Epic 38: many organizations ("tenants") on one deployment, kept apart by Postgres row-level security. See planning/epics/38-multi-tenancy.md. |

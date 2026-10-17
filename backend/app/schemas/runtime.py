@@ -310,3 +310,16 @@ class EventSubscription(EventSubscriptionIn):
     created_at: datetime
     last_event_at: datetime | None = None
     revoked_at: datetime | None = None
+
+
+class ReportsIn(BaseModel):
+    """US39.18: executions that ran on the customer's own platform -- each
+    {id, status, started_at, completed_at, input, final_output,
+    total_cost_usd, total_tokens, tool_calls: [{system, failed}], outcome}."""
+
+    executions: list[dict[str, Any]] = Field(max_length=500)
+
+
+class ReportsResult(BaseModel):
+    accepted: int
+    duplicates: int

@@ -9,6 +9,7 @@ tool schemas the twin tested) and goes through:
                                  --pause--> paused --resume--> active
     shadow --promote--> active (a canary, or all cases)
     canary/shadow --rollback--> retired
+    pending --hand off--> external (runs on the customer's platform, US39.18)
 
 Paused (US39.12, by hand or by a pause rule) is a halt, not a stop:
 running cases finish, new ones are refused or queued, and resuming needs
@@ -312,7 +313,7 @@ def builders(session: Session, artifact_id: str) -> set[str]:
     return {a for a in actors if a}
 
 
-def _check_segregation(session: Session, deployment: AgentDeploymentModel, user: UserModel) -> None:
+def check_segregation(session: Session, deployment: AgentDeploymentModel, user: UserModel) -> None:
     if user.id == deployment.created_by:
         raise SegregationError("You asked for this deployment -- someone else must approve it")
     if user.id in builders(session, deployment.agent_artifact_id):
@@ -370,7 +371,7 @@ def activate(session: Session, deployment: AgentDeploymentModel, user: UserModel
     "shadow" (a copy of live cases, nothing that changes data sent)."""
     if deployment.status != "pending":
         raise DeploymentError(f"only a pending deployment can be activated; this one is {deployment.status}")
-    _check_segregation(session, deployment, user)
+    check_segregation(session, deployment, user)
     if shadow_waiver is not None:
         deployment.shadow_waiver = shadow_waiver.strip() or None
     problems = readiness(session, deployment, shadow_ok=rollout == "shadow")
@@ -395,7 +396,7 @@ def _check_promotable(session: Session, deployment: AgentDeploymentModel, user: 
         takes_all = " and takes every case" if deployment.status in LIVE else ""
         raise DeploymentError(f"only a version in shadow or a canary can be promoted; this one is "
                               f"{deployment.status}{takes_all}")
-    _check_segregation(session, deployment, user)
+    check_segregation(session, deployment, user)
     if not 1 <= share <= 100:
         raise DeploymentError("give a share between 1 and 100 percent")
     problems = readiness(session, deployment) if deployment.status == "shadow" else []
@@ -477,7 +478,7 @@ def kill(session: Session, deployments: list[AgentDeploymentModel], *, reason: s
     reason = (reason or "").strip()
     if not reason:
         raise DeploymentError("give a reason for stopping the agent")
-    live = [d for d in deployments if d.status in (*LIVE, "pending", "shadow")]
+    live = [d for d in deployments if d.status in (*LIVE, "pending", "shadow", "external")]
     waiting = sum(_stop(session, d, status="killed", reason=reason, actor=actor) for d in live)
     running = session.scalar(select(AgentExecutionModel.id).where(
         AgentExecutionModel.deployment_id.in_([d.id for d in live]),
@@ -534,7 +535,7 @@ def resume(session: Session, deployment: AgentDeploymentModel, user: UserModel, 
 
 
 def retire(session: Session, deployment: AgentDeploymentModel, *, actor: str) -> None:
-    if deployment.status not in (*LIVE, "pending", "shadow"):
+    if deployment.status not in (*LIVE, "pending", "shadow", "external"):
         raise DeploymentError(f"this deployment is already {deployment.status}")
     _stop(session, deployment, status="retired", reason="Retired", actor=actor)
 

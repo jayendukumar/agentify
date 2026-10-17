@@ -6,14 +6,14 @@ _Generated 2026-10-17 by `python -m tools.code_health report`. Do not edit by ha
 
 | Measure | Backend (Python) | Frontend (TS/React) | Target | Status |
 |---|---|---|---|---|
-| Production code (non-blank lines) | 32,920 | 18,074 | - |  |
-| Test code (non-blank lines) | 13,654 | 3,795 | - |  |
-| Functions measured | 1685 | 710 | - |  |
-| Mean cognitive complexity / function | 4.15 | 4.61 | <= 6 | OK |
+| Production code (non-blank lines) | 33,212 | 18,074 | - |  |
+| Test code (non-blank lines) | 13,756 | 3,795 | - |  |
+| Functions measured | 1708 | 710 | - |  |
+| Mean cognitive complexity / function | 4.13 | 4.61 | <= 6 | OK |
 | Functions over cognitive 15 | 90 | 51 | ratchet: must not rise |  |
 | Functions over cyclomatic 10 | 133 | 71 | ratchet: must not rise |  |
 | Duplicated lines | 0.22% | 0.08% | <= 5.0% | OK |
-| Structural duplication (renamed copies) | 3.65% | 0.58% | ratchet |  |
+| Structural duplication (renamed copies) | 3.61% | 0.58% | ratchet |  |
 | Import cycles (module level, import-time) | 0 | 0 | 0 | OK |
 | Package cycles (incl. lazy imports) | 1 | 1 | ratchet |  |
 | Unused definitions / exports | 15 | 11 | ratchet |  |
@@ -63,7 +63,7 @@ Cognitive complexity measures how hard a function is to *read* (nesting is penal
 
 Copy-paste clones of at least 70 tokens and 6 lines, ignoring whitespace and comments, in production code.
 
-**Backend:** 72 of 32,920 lines (0.22%) sit in 3 exact clone pairs; 3.65% sit in 49 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
+**Backend:** 72 of 33,212 lines (0.22%) sit in 3 exact clone pairs; 3.61% sit in 49 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
 
 | Tokens | Lines | First copy | Second copy |
 |---|---|---|---|
@@ -109,15 +109,15 @@ Files that are both complicated and frequently changed. Score = commits touching
 | `backend/app/twin/orchestrator.py` | 5 | 1,304 | 246 | 685 | 1,230 |
 | `backend/app/oracles/service.py` | 4 | 755 | 241 | 582 | 964 |
 | `backend/app/twin/engine.py` | 10 | 1,649 | 84 | 354 | 840 |
+| `backend/app/api/runtime.py` | 6 | 929 | 135 | 704 | 810 |
 | `frontend/src/pages/ProcessDetailPage.tsx` | 10 | 370 | 74 | 287 | 740 |
-| `backend/app/api/runtime.py` | 5 | 845 | 128 | 664 | 640 |
 | `backend/app/llm/client.py` | 7 | 385 | 85 | 313 | 595 |
 | `frontend/src/pages/DiagramPage.tsx` | 8 | 326 | 68 | 261 | 544 |
 | `backend/app/jobs/worker.py` | 11 | 366 | 49 | 236 | 539 |
 | `backend/app/context/ingestion.py` | 3 | 665 | 175 | 553 | 525 |
-| `backend/app/runtime/deployments.py` | 4 | 616 | 129 | 462 | 516 |
+| `backend/app/runtime/deployments.py` | 4 | 616 | 129 | 463 | 516 |
 | `frontend/src/components/OrchestrationPanel.tsx` | 5 | 525 | 103 | 461 | 515 |
-| `backend/app/config.py` | 17 | 364 | 28 | 304 | 476 |
+| `backend/app/config.py` | 17 | 364 | 28 | 307 | 476 |
 
 ## 4. Coupling and dependency cycles
 
@@ -163,16 +163,16 @@ Ca = how many internal packages depend on this one; Ce = how many it depends on;
 
 | Module | Ca (in) | Ce (out) | Instability |
 |---|---|---|---|
-| `app.db.models` | 78 | 0 | 0.0 |
+| `app.db.models` | 79 | 0 | 0.0 |
 | `app.db.repository` | 30 | 44 | 0.59 |
-| `app.ids` | 53 | 0 | 0.0 |
-| `app.config` | 49 | 0 | 0.0 |
+| `app.ids` | 54 | 0 | 0.0 |
+| `app.config` | 50 | 0 | 0.0 |
 | `app.main` | 1 | 41 | 0.98 |
 | `app.api.deps` | 31 | 10 | 0.24 |
 | `app.jobs.worker` | 13 | 16 | 0.55 |
 | `app.tenancy.identity` | 23 | 5 | 0.18 |
+| `app.api.runtime` | 1 | 26 | 0.96 |
 | `app.db.session` | 23 | 4 | 0.15 |
-| `app.api.runtime` | 1 | 25 | 0.96 |
 
 ### Frontend directories
 
@@ -203,7 +203,7 @@ Ca = how many internal packages depend on this one; Ce = how many it depends on;
 
 **Backend module cycles (incl. lazy imports):**
 
-- `app.api.batches` <-> `app.api.connectors` <-> `app.api.data_export` <-> `app.api.operator` <-> `app.api.process_twin` <-> `app.api.runtime` <-> `app.connectors.jobs` <-> `app.context.jobs` ... (20 nodes)
+- `app.api.batches` <-> `app.api.connectors` <-> `app.api.data_export` <-> `app.api.operator` <-> `app.api.process_twin` <-> `app.api.runtime` <-> `app.connectors.jobs` <-> `app.context.jobs` ... (21 nodes)
 - `app.db.session` <-> `app.tenancy.databases` (2 nodes)
 - `app.context.consumers` <-> `app.db.repository` (2 nodes)
 - `app.runtime.adapters` <-> `app.runtime.credentials` (2 nodes)
@@ -255,12 +255,12 @@ Production lines per API endpoint and per implemented user story, at every commi
 
 |  | First commit | Latest commit | Change |
 |---|---|---|---|
-| Production lines | 2,985 | 50,765 | x17.0 |
-| Test lines | 1,577 | 17,349 | x11.0 |
-| API endpoints | 22 | 272 | x12.4 |
+| Production lines | 2,985 | 50,994 | x17.1 |
+| Test lines | 1,577 | 17,454 | x11.1 |
+| API endpoints | 22 | 275 | x12.5 |
 | User stories implemented | 21 | 259 | x12.3 |
-| Lines per endpoint | 136 | 187 |  |
-| Lines per implemented story | 142 | 196 |  |
+| Lines per endpoint | 136 | 185 |  |
+| Lines per implemented story | 142 | 197 |  |
 | Test lines per production line | 0.53 | 0.34 |  |
 
 ```mermaid
@@ -268,14 +268,14 @@ xychart-beta
     title "Production lines per implemented story (lower is better)"
     x-axis ["09-18", "09-18", "09-19", "09-19", "09-19", "09-20", "09-20", "09-22", "09-24", "09-29", "09-29", "10-09", "10-11", "10-13", "10-14", "10-15", "10-15", "10-15", "10-16", "10-16", "10-17", "10-17", "10-17", "10-17"]
     y-axis "Lines per story"
-    line [142, 218, 272, 265, 267, 172, 161, 165, 171, 166, 162, 157, 154, 164, 164, 164, 166, 176, 170, 180, 184, 177, 188, 196]
+    line [142, 218, 272, 265, 267, 172, 161, 165, 171, 166, 162, 157, 154, 164, 164, 164, 166, 176, 170, 180, 184, 177, 188, 197]
 ```
 
 ```mermaid
 xychart-beta
     title "Production lines (bars) vs implemented stories x100 (line)"
     x-axis ["09-18", "09-18", "09-19", "09-19", "09-19", "09-20", "09-20", "09-22", "09-24", "09-29", "09-29", "10-09", "10-11", "10-13", "10-14", "10-15", "10-15", "10-15", "10-16", "10-16", "10-17", "10-17", "10-17", "10-17"]
-    bar [2985, 4578, 5707, 6892, 6941, 7041, 8526, 10714, 11101, 13139, 16076, 16688, 19104, 32993, 37042, 37042, 37618, 39839, 40983, 43439, 44305, 45789, 48576, 50765]
+    bar [2985, 4578, 5707, 6892, 6941, 7041, 8526, 10714, 11101, 13139, 16076, 16688, 19104, 32993, 37042, 37042, 37618, 39839, 40983, 43439, 44305, 45789, 48576, 50994]
     line [2100, 2100, 2100, 2600, 2600, 4100, 5300, 6500, 6500, 7900, 9900, 10600, 12400, 20100, 22600, 22600, 22600, 22600, 24100, 24100, 24100, 25900, 25900, 25900]
 ```
 

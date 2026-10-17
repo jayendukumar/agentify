@@ -108,6 +108,8 @@ def refusal(deployment: AgentDeploymentModel) -> str | None:
         return f"This agent was stopped: {deployment.stop_reason}"
     if deployment.status == "pending":
         return "This deployment hasn't been approved and activated yet"
+    if deployment.status == "external":
+        return "This agent runs on your own platform (handed off); start it there"
     return f"This deployment is {deployment.status}"
 
 

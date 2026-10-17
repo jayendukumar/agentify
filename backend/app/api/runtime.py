@@ -44,7 +44,7 @@ from app.db.models import (
 )
 from app.ids import new_id, utcnow
 from app.datasets import service as datasets
-from app.runtime import credentials, deployments, drift, events, jobs, limits, metrics, monitoring, reviews, rollout
+from app.runtime import credentials, deployments, drift, events, handoff, jobs, limits, metrics, monitoring, reviews, rollout
 from app.runtime.adapters import UnsafeProductionEndpoint, check_production_url
 from app.tenancy.identity import current_slug
 from app.schemas.agents import AgentDefinition
@@ -70,6 +70,8 @@ from app.schemas.runtime import (
     MonitoringIn,
     OutcomeIn,
     PromoteIn,
+    ReportsIn,
+    ReportsResult,
     RollbackIn,
     RuntimeDeploymentView,
     RuntimeOverviewRow,
@@ -386,6 +388,35 @@ def update_monitoring(process_id: str, deployment_id: str, body: MonitoringIn, d
                  process_id=process_id, detail={"from": before, "to": body.model_dump(exclude_none=True)})
     db.flush()
     return _detail(db, d)
+
+
+# ---- US39.18: handing off to the customer's platform -----------------------------------
+
+
+@router.post("/deployments/{deployment_id}/handoff")
+def hand_off_deployment(process_id: str, deployment_id: str, db: DbDep, request: Request,
+                        user: AgentApproveDep) -> dict:
+    """Approved like an activation; the deployment becomes `external` and
+    the signed bundle comes back."""
+    d = _deployment(db, process_id, deployment_id)
+    try:
+        handoff.hand_off(db, d, user)
+    except deployments.SegregationError as exc:
+        audit.record_refusal(actor=user, action="hand_off_deployment", reason=str(exc), object_type="deployment",
+                             object_id=d.id, process_id=process_id, request=request)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except deployments.DeploymentError as exc:
+        raise _refused(exc) from exc
+    return handoff.bundle(db, d)
+
+
+@router.get("/deployments/{deployment_id}/handoff")
+def get_handoff(process_id: str, deployment_id: str, db: DbDep, user: CurrentUserDep) -> dict:
+    del user
+    d = _deployment(db, process_id, deployment_id)
+    if d.status != "external":
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=f"This deployment wasn't handed off; it is {d.status}")
+    return handoff.bundle(db, d)
 
 
 # ---- US39.16: event triggers ------------------------------------------------------------
@@ -762,6 +793,25 @@ def start_execution(deployment_id: str, body: ExecutionIn, db: DbDep, caller: Cl
     if not created:
         response.status_code = status.HTTP_200_OK
     return _accepted(execution)
+
+
+@client_router.get("/handoff/keys")
+def handoff_keys() -> dict:
+    """US39.18: the public key a receiving platform checks a hand-off's
+    evidence with (JWKS). Public: it proves, it doesn't grant."""
+    return handoff.jwks()
+
+
+@client_router.post("/deployments/{deployment_id}/reports", response_model=ReportsResult)
+def report_executions(deployment_id: str, body: ReportsIn, db: DbDep, caller: ClientDep) -> ReportsResult:
+    """US39.18: what ran on the customer's platform, for metrics and drift."""
+    deployment = db.get(AgentDeploymentModel, deployment_id)
+    if deployment is None or (caller.deployment_ids is not None and deployment_id not in caller.deployment_ids):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Deployment '{deployment_id}' not found")
+    try:
+        return ReportsResult(**handoff.record_reports(db, deployment, caller.id, body.executions))
+    except deployments.DeploymentError as exc:
+        raise _refused(exc) from exc
 
 
 @client_router.post("/events/{subscription_id}", response_model=ExecutionAccepted, status_code=202)

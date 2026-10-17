@@ -97,6 +97,9 @@ class Settings(BaseSettings):
     # carry, unless the client is registered with its own (an Entra ID
     # tenant names it after its app registration, api://...).
     runtime_oauth_audience: str = "axyntro-runtime"
+    # US39.18: the Ed25519 key that signs a hand-off's evidence (PEM). Made
+    # on first use outside production; production must provide it.
+    handoff_signing_key_file: str = ".data/handoff-signing-key.pem"
     # Job kinds this process's worker claims ("all", or comma separated):
     # `runtime_execution` alone gives production its own workers (US39.3).
     job_worker_kinds: str = "all"

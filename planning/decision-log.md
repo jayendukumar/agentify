@@ -4169,3 +4169,29 @@ same 422 naming the field) and the kill switch need no event-specific
 code. The idempotency key is `event:<subscription>:<event id>`, so the
 same event id from two subscriptions is two cases, and a redelivery is
 one.
+
+## 2026-10-17 -- Epic 39 build step 5: certified hand-off (US39.18)
+
+### Evidence is signed with an asymmetric key and covers the whole bundle by hash
+
+The receiving platform must be able to check the evidence without a
+secret shared with us, so it's a JWS signed with an Ed25519 key, whose
+public half is published as a JWKS (the way OIDC publishes ID-token
+keys). An HMAC would have meant handing every customer a key that could
+also forge evidence. The JWS doesn't carry the bundle. It carries the
+SHA-256 of the canonical JSON (sorted keys, no spaces) of the card, the
+tools, the definition, the contracts, the guardrails and the snapshot.
+So a change anywhere in what the platform will run breaks verification,
+and the signed part stays small. The smoke test verifies with PyJWT and
+its own hashing, not our `verify`, so the documented rule is what's
+tested.
+
+### A handed-off deployment is an ordinary deployment with status `external`
+
+Rather than a separate export table, hand-off is another way out of
+`pending`, with the same segregation of duties as activation. Its
+reported executions are ordinary `agent_executions` rows (trigger
+`external`, a step per reported tool call). That is how the story's
+"report metrics back to the drift view through the same metrics API"
+needed no new metrics code: the Runtime page, alert rules and drift
+check read executions and steps, wherever they ran.

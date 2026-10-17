@@ -1,9 +1,9 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1685,
-   "mean_cyclomatic": 4.47,
-   "mean_cognitive": 4.15,
+   "functions": 1708,
+   "mean_cyclomatic": 4.46,
+   "mean_cognitive": 4.13,
    "max_cognitive": 98,
    "over_cognitive_limit": 90,
    "over_cyclomatic_limit": 133
@@ -297,7 +297,7 @@
  },
  "duplication": {
   "backend": {
-   "loc": 32920,
+   "loc": 33212,
    "duplicated_lines": 72,
    "percent": 0.22,
    "clones": [
@@ -333,7 +333,7 @@
     }
    ],
    "clone_count": 3,
-   "structural_percent": 3.65,
+   "structural_percent": 3.61,
    "structural_clone_count": 49,
    "structural_clones": [
     {
@@ -419,11 +419,11 @@
     {
      "tokens": 132,
      "a_file": "backend/app/api/runtime.py",
-     "a_start": 227,
-     "a_end": 240,
+     "a_start": 229,
+     "a_end": 242,
      "b_file": "backend/app/api/runtime.py",
-     "b_start": 314,
-     "b_end": 328,
+     "b_start": 316,
+     "b_end": 330,
      "lines": 15
     },
     {
@@ -762,7 +762,7 @@
   "backend_modules_top": [
    {
     "node": "app.db.models",
-    "afferent": 78,
+    "afferent": 79,
     "efferent": 0,
     "instability": 0.0
    },
@@ -774,13 +774,13 @@
    },
    {
     "node": "app.ids",
-    "afferent": 53,
+    "afferent": 54,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.config",
-    "afferent": 49,
+    "afferent": 50,
     "efferent": 0,
     "instability": 0.0
    },
@@ -809,28 +809,28 @@
     "instability": 0.18
    },
    {
+    "node": "app.api.runtime",
+    "afferent": 1,
+    "efferent": 26,
+    "instability": 0.96
+   },
+   {
     "node": "app.db.session",
     "afferent": 23,
     "efferent": 4,
     "instability": 0.15
    },
    {
-    "node": "app.api.runtime",
-    "afferent": 1,
-    "efferent": 25,
-    "instability": 0.96
-   },
-   {
     "node": "app.schemas.agents",
-    "afferent": 23,
+    "afferent": 24,
     "efferent": 1,
     "instability": 0.04
    },
    {
     "node": "app.auth.audit",
-    "afferent": 20,
+    "afferent": 21,
     "efferent": 3,
-    "instability": 0.13
+    "instability": 0.12
    },
    {
     "node": "app.llm",
@@ -839,16 +839,16 @@
     "instability": 0.17
    },
    {
+    "node": "app.schemas.run",
+    "afferent": 22,
+    "efferent": 1,
+    "instability": 0.04
+   },
+   {
     "node": "app.api.organization",
     "afferent": 1,
     "efferent": 21,
     "instability": 0.95
-   },
-   {
-    "node": "app.context.repository",
-    "afferent": 16,
-    "efferent": 6,
-    "instability": 0.27
    }
   ],
   "frontend_dirs": [
@@ -1002,6 +1002,7 @@
     "app.runtime.callbacks",
     "app.runtime.deployments",
     "app.runtime.events",
+    "app.runtime.handoff",
     "app.runtime.jobs",
     "app.runtime.monitoring",
     "app.runtime.telemetry",
@@ -1129,7 +1130,7 @@
    },
    {
     "file": "backend/app/runtime/jobs.py",
-    "line": 493,
+    "line": 495,
     "name": "queue_submission",
     "kind": "function",
     "status": "test-only"
@@ -2006,20 +2007,20 @@
    "score": 840
   },
   {
+   "file": "backend/app/api/runtime.py",
+   "commits": 6,
+   "lines_changed": 929,
+   "cognitive": 135,
+   "loc": 704,
+   "score": 810
+  },
+  {
    "file": "frontend/src/pages/ProcessDetailPage.tsx",
    "commits": 10,
    "lines_changed": 370,
    "cognitive": 74,
    "loc": 287,
    "score": 740
-  },
-  {
-   "file": "backend/app/api/runtime.py",
-   "commits": 5,
-   "lines_changed": 845,
-   "cognitive": 128,
-   "loc": 664,
-   "score": 640
   },
   {
    "file": "backend/app/llm/client.py",
@@ -2058,7 +2059,7 @@
    "commits": 4,
    "lines_changed": 616,
    "cognitive": 129,
-   "loc": 462,
+   "loc": 463,
    "score": 516
   },
   {
@@ -2074,7 +2075,7 @@
    "commits": 17,
    "lines_changed": 364,
    "cognitive": 28,
-   "loc": 304,
+   "loc": 307,
    "score": 476
   },
   {
@@ -2097,9 +2098,9 @@
    "file": "backend/app/runtime/jobs.py",
    "commits": 4,
    "lines_changed": 895,
-   "cognitive": 106,
-   "loc": 447,
-   "score": 424
+   "cognitive": 107,
+   "loc": 449,
+   "score": 428
   },
   {
    "file": "backend/app/batches/results.py",
@@ -2808,6 +2809,16 @@
    "endpoints": 272,
    "stories": 287,
    "stories_implemented": 259
+  },
+  {
+   "commit": "ac19401",
+   "date": "2026-10-17",
+   "subject": "Build Epic 39 US39.16: agents started by signed events",
+   "prod_loc": 50994,
+   "test_loc": 17454,
+   "endpoints": 275,
+   "stories": 287,
+   "stories_implemented": 259
   }
  ],
  "mutation": {
@@ -3137,8 +3148,8 @@
   }
  },
  "size": {
-  "backend_prod_loc": 32920,
-  "backend_test_loc": 13654,
+  "backend_prod_loc": 33212,
+  "backend_test_loc": 13756,
   "frontend_prod_loc": 18074,
   "frontend_test_loc": 3795
  }

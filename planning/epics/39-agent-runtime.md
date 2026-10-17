@@ -9,7 +9,7 @@ automatic pause (US39.9, US39.10, US39.12). US39.4 completed 2026-10-17
 client credentials from the tenant's IdP). Step 4 implemented 2026-10-17:
 shadow, canary and rollback, live metrics, traces and alerts, drift
 against the twin, and the Runtime page (US39.13-39.15). Step 5 started
-2026-10-17: event triggers (US39.16). Open
+2026-10-17: event triggers (US39.16), certified hand-off (US39.18). Open
 items are listed under each step's "as built". Decisions confirmed 2026-10-17 (see Notes).**
 Weakness 3 in the wiki's Critical Review ("Agents never run in
 production") and item 4 of its recommended order.
@@ -454,6 +454,50 @@ Deviations from the stories, decided while building:
   webhooks. A signature scheme other than HMAC over timestamp and body
   (e.g. GitHub's, without a timestamp) can't be configured, because then
   replays couldn't be refused.
+
+## US39.18 as built (step 5)
+
+- **Code.** `app/runtime/handoff.py`. An approver hands a pending
+  deployment off instead of activating it (`POST .../handoff`, the same
+  segregation rule). It becomes `external`: it takes no cases here, needs
+  no bindings, and its bundle is fetched again with `GET .../handoff`. The
+  bundle (`axyntro.agent-handoff/v1`) holds the A2A agent card (one skill,
+  input and output schemas under an `axyntro` extension), MCP tool
+  definitions (with `readOnlyHint` and `destructiveHint` from the
+  contracts), the definition, tool contracts, guardrails and escalation
+  policy, the pinned snapshot, and an evidence summary signed as an EdDSA
+  JWS. The summary names the approval, the twin baseline (or why there is
+  none) and the SHA-256 of the canonical JSON of everything above. The
+  public key is at `/runtime/v1/handoff/keys` (JWKS), so the receiver
+  verifies without a shared secret. The receiving platform reports
+  executions to `/runtime/v1/deployments/{id}/reports` with a runtime
+  client (bearer or OAuth). They're stored as executions of the external
+  deployment (trigger `external`, one step per reported tool call, a
+  repeated id skipped), so metrics, alerts, drift and the Runtime page
+  cover them unchanged. The key is `HANDOFF_SIGNING_KEY_FILE` (Ed25519
+  PEM), made on first use outside production.
+- **Tests.** `tests/test_runtime_handoff.py` (4): the bundle verifies, has
+  the card, MCP tool hints, contracts and guardrails, and fails once
+  changed. Fetching again gives the same content hash. Only an approver
+  other than the requester hands off. An external deployment refuses
+  cases. Reports are deduplicated (also within a batch), validated, need a
+  client, and feed metrics, step detail and drift. Only an external
+  deployment takes reports.
+- **Live.** `testing/runtime/smoke_runtime_handoff.py` (17/17 on
+  2026-10-17): as the receiving platform, with only HTTP, PyJWT and its own
+  hash, the evidence checked out against the JWKS and a changed bundle
+  failed. Three executions reported with a Keycloak client-credentials
+  token showed on the Runtime page.
+- **Deviations:**
+  - The A2A card's `url` is empty: the receiving platform serves the
+    agent and fills it in.
+  - Locally the key lives in the API container's `.data`, which has no
+    volume, so a rebuild makes a new key. A bundle fetched again is
+    re-signed with it, but a receiver holding an old bundle must fetch
+    again. Production must provide the key file, and key rotation (several
+    keys in the JWKS) isn't built.
+  - The receiving platform's kill switch is its own: killing an external
+    deployment here only refuses its reports.
 
 ## User Stories
 
