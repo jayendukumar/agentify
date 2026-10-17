@@ -435,6 +435,7 @@ export type RunStatus =
   | 'CANCELLED'
   | 'TIMED_OUT'
   | 'ESCALATED'
+  | 'KILLED'
 
 export const TERMINAL_RUN_STATUSES: ReadonlySet<RunStatus> = new Set([
   'COMPLETED',
@@ -442,6 +443,7 @@ export const TERMINAL_RUN_STATUSES: ReadonlySet<RunStatus> = new Set([
   'CANCELLED',
   'TIMED_OUT',
   'ESCALATED',
+  'KILLED',
 ])
 
 export type StepType =

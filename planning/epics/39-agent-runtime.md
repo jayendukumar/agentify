@@ -1,7 +1,7 @@
 # Epic 39 -- Agent Runtime: Running Approved Agents in Production
 
-**Status: groomed 2026-10-17. Not started. Decisions confirmed
-2026-10-17 (see Notes).** Weakness 3 in the wiki's Critical Review
+**Status: groomed 2026-10-17. Build step 1 implemented 2026-10-17:
+US39.1 (one executor). Decisions confirmed 2026-10-17 (see Notes).** Weakness 3 in the wiki's Critical Review
 ("Agents never run in production") and item 4 of its recommended order.
 Section 3 of the enterprise-readiness deck ("Production agent runtime").
 
@@ -103,6 +103,50 @@ Measured on 2026-10-17 against the code:
   numbers its release was approved on (Epic 35's batch results) are
   frozen as its baseline. Live metrics are computed the same way over
   rolling windows, so drift is a like-for-like comparison.
+
+## US39.1 as built
+
+- **Code.** `app/runtime/executor.py` holds the loop (`execute`), the
+  `ToolPort` and `HumanPort` protocols, `ToolResult`, `ExecutionError`,
+  `RunCancelled` and the `request_human_decision` tool.
+  `app/twin/engine.py` keeps `run_scenario` with its signature, and adds
+  `_TwinTools` (faults, then sample data, then static stubs, sandbox API
+  or an LLM-fabricated response) and `_TwinReviewer` (sampled, rule or
+  manual). It grades the outcome as before. `TwinServiceError` is now an
+  `ExecutionError`, so the executor ends a run FAILED with its message,
+  as before. The engine went from 654 lines to about 420.
+- **Tests.** `tests/test_runtime_replay.py` runs 17 scripted cases
+  (tools, policy denial, scenario and environment faults, LLM-fabricated
+  responses, seeded and manual checkpoints with resume, repair turn,
+  fenced JSON, each guardrail, loop detection, escalation, cancellation,
+  routing and dataset decisions, sample data, stub latency). It compares
+  every step, outcome, resume state and model request with
+  `tests/fixtures/executor_replay.json`, recorded from the engine before
+  the move. Changing one step's reason makes it fail.
+  `tests/test_runtime_executor.py` drives the executor with non-twin
+  ports: a denied call never reaches the tool port, a port failure ends
+  the run FAILED, a checkpoint with no decision suspends and resumes. It
+  also holds the import guard. The existing twin, orchestration, batch and
+  process-twin tests pass without edits.
+
+Deviations from the story, decided while building:
+
+- **No `StepSink` class.** The `on_step` and `on_phase` callbacks the
+  twin already passes are the step sink. A third protocol would only wrap
+  them. Production's execution store (US39.3) supplies its own callbacks.
+- **The run instructions moved too.** The twin's extra system message
+  (which tools map to which systems, how to ask for review, the output
+  keys) is now `app/runtime/instructions.py`'s `run_instructions`, and
+  the executor takes the text as an argument. Production sends the same
+  text with a different header, since the twin's says "for this test run
+  only". Writing new instructions for production would void the twin
+  evidence.
+- **`RunCancelled` carries a status and a reason,** so a kill switch
+  (US39.11) can stop a run as `KILLED` through the same path a cancel
+  uses. `KILLED` is a new terminal run status.
+- **The gateway stays in `app/twin/gateway.py`.** It is the one twin
+  module `app/runtime` may import. Moving it would touch every governance
+  import for no change in behaviour.
 
 ## User Stories
 
@@ -256,6 +300,9 @@ Acceptance:
 - **Same checks:** `check_tool_permission` and `GuardrailTracker` run
   unchanged, from the snapshot pinned on the deployment, not from the
   artifact's current (possibly edited) definition.
+- **Same instructions:** production sends the run instructions the twin
+  sent (which tools map to which systems, how to ask for review, the
+  output keys), without the line calling it a test run.
 - **No fail-open:** production refuses an artifact with no tool contracts
   (US39.2) and refuses any tool call without a binding.
 - **Outcomes:** a denied call, an exceeded limit or a timeout ends the

@@ -1,0 +1,4723 @@
+{
+ "cancelled_mid_run": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Run was cancelled",
+     "step_index": null
+    }
+   ],
+   "final_output": null,
+   "graded_passed": null,
+   "resume_state": null,
+   "status": "CANCELLED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "CANCELLED"
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 10,
+   "turns_used": 1
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "dataset_decision_and_routing": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Expected the case to be decided 'approve', but it was 'reject'",
+     "step_index": null
+    }
+   ],
+   "final_output": {
+    "decision": "reject",
+    "route": "Yes"
+   },
+   "graded_passed": false,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": "Task_1",
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": "Task_1",
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": "Task_1",
+     "reason": null,
+     "result": {
+      "decision": "reject",
+      "route": "Yes"
+     },
+     "seq": 2,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": "Task_1",
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 10,
+   "turns_used": 1
+  },
+  "phases": [
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision', 'route']. Do not include any other text.\n- Set \"decision\" to how you decided the case: \"approve\", \"reject\", or \"escalate\" (you could not decide it yourself and passed it to someone else).\n- Set \"route\" to exactly one of [\"Yes\", \"No\"]: the branch the next decision point (\"Is it valid?\") should take for this case, based on what you found.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "environment_and_scenario_faults": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Unexpected extra step at index 0: tool_call 'CRM'",
+     "step_index": 0
+    },
+    {
+     "reason": "Unexpected extra step at index 1: tool_call 'ERP'",
+     "step_index": 1
+    }
+   ],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": false,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": "Simulated fault: http_500",
+     "result": {
+      "error": "http_500",
+      "message": "Simulated fault: this system returned an internal server error (500)."
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_FAILED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "amount": 120
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 5,
+     "static_fallback": false,
+     "target": "ERP",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "amount": 120
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": "Simulated fault: timeout",
+     "result": {
+      "error": "timeout",
+      "message": "Simulated fault: the call to this system timed out."
+     },
+     "seq": 6,
+     "static_fallback": false,
+     "target": "ERP",
+     "tokens": null,
+     "type": "TOOL_FAILED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 7,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 8,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 9,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 30,
+   "turns_used": 3
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       }
+      ]
+     },
+     {
+      "content": "{\"error\": \"http_500\", \"message\": \"Simulated fault: this system returned an internal server error (500).\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       }
+      ]
+     },
+     {
+      "content": "{\"error\": \"http_500\", \"message\": \"Simulated fault: this system returned an internal server error (500).\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "amount": 120
+        },
+        "id": "call_0",
+        "name": "post_invoice"
+       }
+      ]
+     },
+     {
+      "content": "{\"error\": \"timeout\", \"message\": \"Simulated fault: the call to this system timed out.\"}",
+      "name": "post_invoice",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "fenced_json_final": {
+  "first": {
+   "deviations": [],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": true,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 2,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 10,
+   "turns_used": 1
+  },
+  "phases": [
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "happy_path_graded": {
+  "first": {
+   "deviations": [],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": true,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 5,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 6,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       }
+      ]
+     },
+     {
+      "content": "{\"tier\": \"gold\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "human_checkpoint_seeded": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Unexpected extra step at index 0: human_checkpoint 'human_checkpoint'",
+     "step_index": 0
+    }
+   ],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": false,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "proposed_action": {
+       "amount": 120
+      },
+      "summary": "pay"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "human_checkpoint",
+     "tokens": null,
+     "type": "HUMAN_APPROVAL_REQUESTED"
+    },
+    {
+     "arguments": {
+      "proposed_action": {
+       "amount": 120
+      },
+      "summary": "pay"
+     },
+     "cost_usd": null,
+     "decision": "approve",
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 3,
+     "static_fallback": false,
+     "target": "human_checkpoint",
+     "tokens": null,
+     "type": "HUMAN_APPROVED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 5,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 6,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Call this to ask a human to review and approve or reject a proposed action, per your instructions above -- do not just describe that you would ask for review.",
+       "name": "request_human_decision",
+       "parameters": {
+        "properties": {
+         "proposed_action": {
+          "description": "The key fields of the action/decision you want the human to review.",
+          "type": "object"
+         },
+         "summary": {
+          "description": "One sentence explaining what you want approved and why.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "summary",
+         "proposed_action"
+        ],
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- When you need human review/approval as instructed above, call the \"request_human_decision\" tool instead of stopping -- you will get back a decision of \"approve\" or \"reject\" and should continue accordingly.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Call this to ask a human to review and approve or reject a proposed action, per your instructions above -- do not just describe that you would ask for review.",
+       "name": "request_human_decision",
+       "parameters": {
+        "properties": {
+         "proposed_action": {
+          "description": "The key fields of the action/decision you want the human to review.",
+          "type": "object"
+         },
+         "summary": {
+          "description": "One sentence explaining what you want approved and why.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "summary",
+         "proposed_action"
+        ],
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- When you need human review/approval as instructed above, call the \"request_human_decision\" tool instead of stopping -- you will get back a decision of \"approve\" or \"reject\" and should continue accordingly.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "proposed_action": {
+          "amount": 120
+         },
+         "summary": "pay"
+        },
+        "id": "call_0",
+        "name": "request_human_decision"
+       }
+      ]
+     },
+     {
+      "content": "{\"decision\": \"approve\"}",
+      "name": "request_human_decision",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "loop_detection": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Loop detected: 'CRM' called with identical arguments 2 times (retry_max_attempts=0)",
+     "step_index": null
+    }
+   ],
+   "final_output": null,
+   "graded_passed": null,
+   "resume_state": null,
+   "status": "FAILED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "FAILED"
+     },
+     "seq": 5,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       }
+      ]
+     },
+     {
+      "content": "{\"tier\": \"gold\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "manual_checkpoint_suspends": {
+  "first": {
+   "deviations": [],
+   "final_output": null,
+   "graded_passed": null,
+   "resume_state": {
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- When you need human review/approval as instructed above, call the \"request_human_decision\" tool instead of stopping -- you will get back a decision of \"approve\" or \"reject\" and should continue accordingly.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       },
+       {
+        "arguments": {
+         "proposed_action": {},
+         "summary": "pay"
+        },
+        "id": "call_1",
+        "name": "request_human_decision"
+       },
+       {
+        "arguments": {
+         "amount": 120
+        },
+        "id": "call_2",
+        "name": "post_invoice"
+       }
+      ]
+     },
+     {
+      "content": "{\"tier\": \"gold\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ],
+    "pending_calls": [
+     {
+      "arguments": {
+       "proposed_action": {},
+       "summary": "pay"
+      },
+      "id": "call_1",
+      "name": "request_human_decision"
+     },
+     {
+      "arguments": {
+       "amount": 120
+      },
+      "id": "call_2",
+      "name": "post_invoice"
+     }
+    ],
+    "steps": [
+     {
+      "arguments": {},
+      "cost_usd": null,
+      "decision": null,
+      "denied": false,
+      "node_id": null,
+      "reason": null,
+      "result": null,
+      "seq": 0,
+      "static_fallback": false,
+      "target": null,
+      "tokens": null,
+      "type": "RUN_STARTED"
+     },
+     {
+      "arguments": {},
+      "cost_usd": null,
+      "decision": null,
+      "denied": false,
+      "node_id": null,
+      "reason": null,
+      "result": {
+       "has_tool_calls": true
+      },
+      "seq": 1,
+      "static_fallback": false,
+      "target": null,
+      "tokens": 10,
+      "type": "MODEL_INVOKED"
+     },
+     {
+      "arguments": {
+       "id": "C-1"
+      },
+      "cost_usd": null,
+      "decision": null,
+      "denied": false,
+      "node_id": null,
+      "reason": null,
+      "result": null,
+      "seq": 2,
+      "static_fallback": false,
+      "target": "CRM",
+      "tokens": null,
+      "type": "POLICY_CHECK"
+     },
+     {
+      "arguments": {
+       "id": "C-1"
+      },
+      "cost_usd": null,
+      "decision": null,
+      "denied": false,
+      "node_id": null,
+      "reason": null,
+      "result": {
+       "tier": "gold"
+      },
+      "seq": 3,
+      "static_fallback": false,
+      "target": "CRM",
+      "tokens": null,
+      "type": "TOOL_EXECUTED"
+     },
+     {
+      "arguments": {
+       "proposed_action": {},
+       "summary": "pay"
+      },
+      "cost_usd": null,
+      "decision": null,
+      "denied": false,
+      "node_id": null,
+      "reason": null,
+      "result": null,
+      "seq": 4,
+      "static_fallback": false,
+      "target": "human_checkpoint",
+      "tokens": null,
+      "type": "HUMAN_APPROVAL_REQUESTED"
+     }
+    ],
+    "tracker": {
+     "call_counts": [
+      [
+       [
+        "CRM",
+        "{\"id\": \"C-1\"}"
+       ],
+       1
+      ]
+     ],
+     "cost_incomplete": true,
+     "model_calls": 1,
+     "tool_calls": 1,
+     "total_cost_usd": 0.0,
+     "total_tokens": 10
+    },
+    "turn": 1
+   },
+   "status": "WAITING_FOR_HUMAN",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {
+      "proposed_action": {},
+      "summary": "pay"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 4,
+     "static_fallback": false,
+     "target": "human_checkpoint",
+     "tokens": null,
+     "type": "HUMAN_APPROVAL_REQUESTED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 0,
+   "turns_used": 0
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Call this to ask a human to review and approve or reject a proposed action, per your instructions above -- do not just describe that you would ask for review.",
+       "name": "request_human_decision",
+       "parameters": {
+        "properties": {
+         "proposed_action": {
+          "description": "The key fields of the action/decision you want the human to review.",
+          "type": "object"
+         },
+         "summary": {
+          "description": "One sentence explaining what you want approved and why.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "summary",
+         "proposed_action"
+        ],
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- When you need human review/approval as instructed above, call the \"request_human_decision\" tool instead of stopping -- you will get back a decision of \"approve\" or \"reject\" and should continue accordingly.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   }
+  ],
+  "resumed": {
+   "deviations": [
+    {
+     "reason": "Unexpected extra step at index 0: tool_call 'CRM'",
+     "step_index": 0
+    },
+    {
+     "reason": "Unexpected extra step at index 1: human_checkpoint 'human_checkpoint'",
+     "step_index": 1
+    },
+    {
+     "reason": "Unexpected extra step at index 2: tool_call 'ERP'",
+     "step_index": 2
+    }
+   ],
+   "final_output": {
+    "decision": "reject"
+   },
+   "graded_passed": false,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {
+      "proposed_action": {},
+      "summary": "pay"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 4,
+     "static_fallback": false,
+     "target": "human_checkpoint",
+     "tokens": null,
+     "type": "HUMAN_APPROVAL_REQUESTED"
+    },
+    {
+     "arguments": {
+      "proposed_action": {},
+      "summary": "pay"
+     },
+     "cost_usd": null,
+     "decision": "reject",
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 5,
+     "static_fallback": false,
+     "target": "human_checkpoint",
+     "tokens": null,
+     "type": "HUMAN_REJECTED"
+    },
+    {
+     "arguments": {
+      "amount": 120
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 6,
+     "static_fallback": false,
+     "target": "ERP",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "amount": 120
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "doc": "1"
+     },
+     "seq": 7,
+     "static_fallback": false,
+     "target": "ERP",
+     "tokens": 5,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 8,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "reject"
+     },
+     "seq": 9,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 10,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 15,
+   "turns_used": 2
+  },
+  "resumed_requests": [
+   {
+    "kwargs": {
+     "max_tokens": 8000,
+     "operation": "twin_system_simulation",
+     "response_format": {
+      "type": "json_object"
+     }
+    },
+    "messages": [
+     {
+      "content": "You are simulating the system \"ERP\" for testing purposes only -- this is not a real call. A tool named \"post_invoice\" (Post an invoice.) was just called with these arguments: {\"amount\": 120}\n\nA typical successful response looks like: An object with a document number.\n\nReturn ONLY a JSON object that is a plausible response to this specific call.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Call this to ask a human to review and approve or reject a proposed action, per your instructions above -- do not just describe that you would ask for review.",
+       "name": "request_human_decision",
+       "parameters": {
+        "properties": {
+         "proposed_action": {
+          "description": "The key fields of the action/decision you want the human to review.",
+          "type": "object"
+         },
+         "summary": {
+          "description": "One sentence explaining what you want approved and why.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "summary",
+         "proposed_action"
+        ],
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- When you need human review/approval as instructed above, call the \"request_human_decision\" tool instead of stopping -- you will get back a decision of \"approve\" or \"reject\" and should continue accordingly.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       },
+       {
+        "arguments": {
+         "proposed_action": {},
+         "summary": "pay"
+        },
+        "id": "call_1",
+        "name": "request_human_decision"
+       },
+       {
+        "arguments": {
+         "amount": 120
+        },
+        "id": "call_2",
+        "name": "post_invoice"
+       }
+      ]
+     },
+     {
+      "content": "{\"tier\": \"gold\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     },
+     {
+      "content": "{\"decision\": \"reject\"}",
+      "name": "request_human_decision",
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "tool_calls": null
+     },
+     {
+      "content": "{\"doc\": \"1\"}",
+      "name": "post_invoice",
+      "role": "tool",
+      "tool_call_id": "call_2",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "max_steps_escalates": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Exceeded max_steps (2) without producing a final answer",
+     "step_index": null
+    }
+   ],
+   "final_output": null,
+   "graded_passed": null,
+   "resume_state": null,
+   "status": "ESCALATED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-2"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 5,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-2"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 6,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": "Exceeded max_steps (2) without producing a final answer",
+     "result": null,
+     "seq": 7,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "ESCALATION"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "ESCALATED"
+     },
+     "seq": 8,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       }
+      ]
+     },
+     {
+      "content": "{\"tier\": \"gold\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "no_json_after_repair_fails": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Final response was not a valid JSON object",
+     "step_index": null
+    }
+   ],
+   "final_output": null,
+   "graded_passed": null,
+   "resume_state": null,
+   "status": "FAILED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": "Final answer was not a valid JSON object; asked once to restate it",
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RETRY"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "FAILED"
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "not json",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "That was not a valid JSON object. Reply with ONLY the JSON object with exactly these keys: ['decision'].",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "policy_denied": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Tool call to 'ERP' denied by policy: agent lacks 'update' permission on resource 'invoice' (required by tool 'ERP')",
+     "step_index": null
+    },
+    {
+     "reason": "Unexpected extra step at index 0: tool_call 'CRM'",
+     "step_index": 0
+    },
+    {
+     "reason": "Unexpected extra step at index 1: tool_call 'ERP'",
+     "step_index": 1
+    }
+   ],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": false,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {
+      "amount": 120
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": true,
+     "node_id": null,
+     "reason": "agent lacks 'update' permission on resource 'invoice' (required by tool 'ERP')",
+     "result": null,
+     "seq": 4,
+     "static_fallback": false,
+     "target": "ERP",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "amount": 120
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": true,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "error": "permission_denied",
+      "reason": "agent lacks 'update' permission on resource 'invoice' (required by tool 'ERP')"
+     },
+     "seq": 5,
+     "static_fallback": false,
+     "target": "ERP",
+     "tokens": null,
+     "type": "TOOL_FAILED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 6,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 7,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 8,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       },
+       {
+        "arguments": {
+         "amount": 120
+        },
+        "id": "call_1",
+        "name": "post_invoice"
+       }
+      ]
+     },
+     {
+      "content": "{\"tier\": \"gold\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     },
+     {
+      "content": "{\"error\": \"permission_denied\", \"reason\": \"agent lacks 'update' permission on resource 'invoice' (required by tool 'ERP')\"}",
+      "name": "post_invoice",
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "proxy_tool_and_usage": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Unexpected extra step at index 0: tool_call 'ERP'",
+     "step_index": 0
+    }
+   ],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": false,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "amount": 120
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "ERP",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "amount": 120
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "doc": "5100001"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "ERP",
+     "tokens": 7,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 5,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 6,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 27,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "max_tokens": 8000,
+     "operation": "twin_system_simulation",
+     "response_format": {
+      "type": "json_object"
+     }
+    },
+    "messages": [
+     {
+      "content": "You are simulating the system \"ERP\" for testing purposes only -- this is not a real call. A tool named \"post_invoice\" (Post an invoice.) was just called with these arguments: {\"amount\": 120}\n\nA typical successful response looks like: An object with a document number.\n\nReturn ONLY a JSON object that is a plausible response to this specific call.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "amount": 120
+        },
+        "id": "call_0",
+        "name": "post_invoice"
+       }
+      ]
+     },
+     {
+      "content": "{\"doc\": \"5100001\"}",
+      "name": "post_invoice",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "repair_turn": {
+  "first": {
+   "deviations": [],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": true,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": "Final answer was not a valid JSON object; asked once to restate it",
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RETRY"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 5,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Here you go: decision approve",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "That was not a valid JSON object. Reply with ONLY the JSON object with exactly these keys: ['decision'].",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "sample_data_records": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Unexpected extra step at index 0: tool_call 'CRM'",
+     "step_index": 0
+    }
+   ],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": false,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "action": "lookup",
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "action": "lookup",
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "count": 1,
+      "found": true,
+      "records": [
+       {
+        "id": "C-1",
+        "tier": "gold"
+       }
+      ]
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 5,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 6,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "CRM. Look up records by any of: id.",
+       "name": "crm_records",
+       "parameters": {
+        "properties": {
+         "action": {
+          "description": "lookup: find records; create: add a record; update: change a found record.",
+          "enum": [
+           "lookup"
+          ],
+          "type": "string"
+         },
+         "id": {
+          "description": "Find records whose id equals this value.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "action"
+        ],
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "CRM. Look up records by any of: id.",
+       "name": "crm_records",
+       "parameters": {
+        "properties": {
+         "action": {
+          "description": "lookup: find records; create: add a record; update: change a found record.",
+          "enum": [
+           "lookup"
+          ],
+          "type": "string"
+         },
+         "id": {
+          "description": "Find records whose id equals this value.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "action"
+        ],
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "action": "lookup",
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "crm_records"
+       }
+      ]
+     },
+     {
+      "content": "{\"found\": true, \"count\": 1, \"records\": [{\"id\": \"C-1\", \"tier\": \"gold\"}]}",
+      "name": "crm_records",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "stub_latency": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Unexpected extra step at index 0: tool_call 'CRM'",
+     "step_index": 0
+    }
+   ],
+   "final_output": {
+    "decision": "approve"
+   },
+   "graded_passed": false,
+   "resume_state": null,
+   "status": "COMPLETED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": false
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "decision": "approve"
+     },
+     "seq": 5,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "FINAL_RESPONSE"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "COMPLETED"
+     },
+     "seq": 6,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 20,
+   "turns_used": 2
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_MODEL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   },
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "",
+      "name": null,
+      "role": "assistant",
+      "tool_call_id": null,
+      "tool_calls": [
+       {
+        "arguments": {
+         "id": "C-1"
+        },
+        "id": "call_0",
+        "name": "lookup_customer"
+       }
+      ]
+     },
+     {
+      "content": "{\"tier\": \"gold\"}",
+      "name": "lookup_customer",
+      "role": "tool",
+      "tool_call_id": "call_0",
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "tool_call_limit_fails": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Exceeded max_tool_calls (1)",
+     "step_index": null
+    }
+   ],
+   "final_output": null,
+   "graded_passed": null,
+   "resume_state": null,
+   "status": "FAILED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "POLICY_CHECK"
+    },
+    {
+     "arguments": {
+      "id": "C-1"
+     },
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "tier": "gold"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": "CRM",
+     "tokens": null,
+     "type": "TOOL_EXECUTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "FAILED"
+     },
+     "seq": 4,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 10,
+   "turns_used": 1
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL",
+   "WAITING_FOR_TOOL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ },
+ "unknown_tool_fails": {
+  "first": {
+   "deviations": [
+    {
+     "reason": "Agent called an unknown tool 'delete_everything' that wasn't offered to it",
+     "step_index": null
+    }
+   ],
+   "final_output": null,
+   "graded_passed": null,
+   "resume_state": null,
+   "status": "FAILED",
+   "steps": [
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": null,
+     "seq": 0,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_STARTED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "has_tool_calls": true
+     },
+     "seq": 1,
+     "static_fallback": false,
+     "target": null,
+     "tokens": 10,
+     "type": "MODEL_INVOKED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": "unknown tool",
+     "result": null,
+     "seq": 2,
+     "static_fallback": false,
+     "target": "delete_everything",
+     "tokens": null,
+     "type": "TOOL_FAILED"
+    },
+    {
+     "arguments": {},
+     "cost_usd": null,
+     "decision": null,
+     "denied": false,
+     "node_id": null,
+     "reason": null,
+     "result": {
+      "status": "FAILED"
+     },
+     "seq": 3,
+     "static_fallback": false,
+     "target": null,
+     "tokens": null,
+     "type": "RUN_COMPLETED"
+    }
+   ],
+   "total_cost_usd": null,
+   "total_tokens": 10,
+   "turns_used": 1
+  },
+  "phases": [
+   "WAITING_FOR_MODEL",
+   "WAITING_FOR_TOOL"
+  ],
+  "requests": [
+   {
+    "kwargs": {
+     "model": "test-model",
+     "operation": "twin_run",
+     "response_format": null,
+     "tools": [
+      {
+       "description": "Look up a customer.",
+       "name": "lookup_customer",
+       "parameters": {
+        "properties": {
+         "id": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      },
+      {
+       "description": "Post an invoice.",
+       "name": "post_invoice",
+       "parameters": {
+        "properties": {
+         "amount": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     ]
+    },
+    "messages": [
+     {
+      "content": "You check invoices.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "Digital twin simulation instructions for this test run only (not part of your normal operating instructions above):\n- Every system you have access to is available as a callable tool -- call the matching tool instead of describing what you would do.\n- Once you are completely finished and have no more tool calls to make, respond with ONLY a JSON object whose keys are exactly: ['decision']. Do not include any other text.",
+      "name": null,
+      "role": "system",
+      "tool_call_id": null,
+      "tool_calls": null
+     },
+     {
+      "content": "{\"invoice_id\": \"INV-1\"}",
+      "name": null,
+      "role": "user",
+      "tool_call_id": null,
+      "tool_calls": null
+     }
+    ]
+   }
+  ]
+ }
+}

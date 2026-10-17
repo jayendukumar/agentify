@@ -111,11 +111,12 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | `app/oracles` | 5 | 818 | Epic 33: scalable oracles -- rules, label-first generation, metamorphic relations, calibrated judges. |
 | `app/process_twin` | 4 | 604 | Epic 36: the process digital twin -- the whole process run over many cases, measured against today. |
 | `app/registry` | 4 | 222 | Epic 13, US13.1: the registry connector interface every registry backend implements identically -- the local reference connector (app/registry/local.py) today,  |
-| `app/schemas` | 28 | 2,449 |  |
+| `app/runtime` | 3 | 440 | Epic 39: the agent runtime -- the one execution loop the twin and production both run agents through (`executor.py`). |
+| `app/schemas` | 28 | 2,451 |  |
 | `app/scim` | 3 | 491 | Epic 37, US37.10: the inbound SCIM 2.0 server (RFC 7643/7644) the customer's IdP provisions users and groups through. Not Epic 31's outbound ScimConnector, whic |
 | `app/secret_store` | 1 | 139 | Epic 38, US38.10: each tenant's secrets, kept apart. |
 | `app/tenancy` | 14 | 1,467 | Epic 38: many organizations ("tenants") on one deployment, kept apart by Postgres row-level security. See planning/epics/38-multi-tenancy.md. |
-| `app/twin` | 14 | 2,654 | Epic 19, US19.4: a plain-English behavioral diff between two runs -- typically two versions of the same agent (US19.5's `AgentArtifact.version`), but works for  |
+| `app/twin` | 14 | 2,415 | Epic 19, US19.4: a plain-English behavioral diff between two runs -- typically two versions of the same agent (US19.5's `AgentArtifact.version`), but works for  |
 <!-- END GENERATED: module-inventory -->
 
 ### Package dependencies
@@ -245,6 +246,9 @@ flowchart LR
     process_twin --> schemas
     registry --> db
     registry -.-> tenancy
+    runtime --> llm
+    runtime --> schemas
+    runtime --> twin
     schemas --> batches
     scim --> auth
     scim --> db
@@ -259,6 +263,7 @@ flowchart LR
     twin --> db
     twin --> llm
     twin --> oracles
+    twin --> runtime
     twin --> schemas
 ```
 
@@ -510,5 +515,5 @@ On an operator host, `main.tsx` loads the operator console
 | [Epic 36 -- Process Digital Twin at Volume: Efficiency & Readiness](../../planning/epics/36-process-twin-efficiency.md) | 9 | implemented (2026-10-13), except US36.9 (still open) |
 | [Epic 37 -- Enterprise Identity, Roles & Segregation of Duties](../../planning/epics/37-enterprise-identity-and-access.md) | 15 | build steps 1-4 implemented. Step 1 (2026-10-14): US37.1-37.6, US37.14, US37.15. Step... |
 | [Epic 38 -- Multi-Tenancy: Many Organizations on One Deployment](../../planning/epics/38-multi-tenancy.md) | 15 | build step 1 implemented (2026-10-15): US38.1-38.5, the tenant boundary. Step 2 in... |
-| [Epic 39 -- Agent Runtime: Running Approved Agents in Production](../../planning/epics/39-agent-runtime.md) | 18 | groomed 2026-10-17. Not started. Decisions confirmed 2026-10-17 (see Notes) |
+| [Epic 39 -- Agent Runtime: Running Approved Agents in Production](../../planning/epics/39-agent-runtime.md) | 18 | groomed 2026-10-17. Build step 1 implemented 2026-10-17: US39.1 (one executor).... |
 <!-- END GENERATED: epic-index -->

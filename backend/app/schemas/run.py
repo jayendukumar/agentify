@@ -37,6 +37,8 @@ RunStatus = Literal[
     "CANCELLED",
     "TIMED_OUT",
     "ESCALATED",
+    # Epic 39, US39.11: stopped by a kill switch (production only).
+    "KILLED",
 ]
 
 # US17.1's non-terminal states -- a row in any of these is still in flight.
@@ -44,7 +46,7 @@ NON_TERMINAL_RUN_STATUSES: frozenset[RunStatus] = frozenset(
     {"CREATED", "QUEUED", "RUNNING", "WAITING_FOR_MODEL", "WAITING_FOR_TOOL", "WAITING_FOR_HUMAN"}
 )
 TERMINAL_RUN_STATUSES: frozenset[RunStatus] = frozenset(
-    {"COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT", "ESCALATED"}
+    {"COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT", "ESCALATED", "KILLED"}
 )
 
 # US17.2's fifteen-... sixteen-value step taxonomy, replacing the old

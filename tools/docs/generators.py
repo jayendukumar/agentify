@@ -282,7 +282,9 @@ def llm_call_sites() -> list[dict]:
     sites = []
     for path in sorted((BACKEND / "app").rglob("*.py")):
         source = path.read_text(encoding="utf-8")
-        if ".complete(" not in source:
+        # Epic 39: agent runs call the model through app/runtime/executor.py's
+        # `execute(..., operation="x")`, so its callers count as call sites.
+        if ".complete(" not in source and "app.runtime.executor import" not in source:
             continue
         tree = ast.parse(source)
         for fn in ast.walk(tree):

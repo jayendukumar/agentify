@@ -1,9 +1,9 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1376,
-   "mean_cyclomatic": 4.57,
-   "mean_cognitive": 4.36,
+   "functions": 1386,
+   "mean_cyclomatic": 4.55,
+   "mean_cognitive": 4.32,
    "max_cognitive": 98,
    "over_cognitive_limit": 89,
    "over_cyclomatic_limit": 132
@@ -50,30 +50,12 @@
    },
    {
     "lang": "python",
-    "file": "backend/app/twin/engine.py",
-    "name": "run_scenario",
-    "line": 305,
-    "length": 350,
-    "cyclomatic": 63,
-    "cognitive": 83
-   },
-   {
-    "lang": "python",
     "file": "backend/app/batches/results.py",
     "name": "batch_results",
     "line": 201,
     "length": 111,
     "cyclomatic": 67,
     "cognitive": 78
-   },
-   {
-    "lang": "python",
-    "file": "backend/app/twin/engine.py",
-    "name": "run_scenario.process_calls",
-    "line": 407,
-    "length": 104,
-    "cyclomatic": 21,
-    "cognitive": 66
    },
    {
     "lang": "typescript",
@@ -119,6 +101,15 @@
     "length": 72,
     "cyclomatic": 52,
     "cognitive": 57
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/runtime/executor.py",
+    "name": "execute",
+    "line": 158,
+    "length": 277,
+    "cyclomatic": 36,
+    "cognitive": 55
    },
    {
     "lang": "python",
@@ -200,6 +191,15 @@
     "length": 200,
     "cyclomatic": 41,
     "cognitive": 50
+   },
+   {
+    "lang": "typescript",
+    "file": "frontend/src/pages/VersionsPage.tsx",
+    "name": "VersionsPage",
+    "line": 27,
+    "length": 222,
+    "cyclomatic": 34,
+    "cognitive": 50
    }
   ],
   "longest": [
@@ -249,15 +249,6 @@
     "cognitive": 91
    },
    {
-    "lang": "python",
-    "file": "backend/app/twin/engine.py",
-    "name": "run_scenario",
-    "line": 305,
-    "length": 350,
-    "cyclomatic": 63,
-    "cognitive": 83
-   },
-   {
     "lang": "typescript",
     "file": "frontend/src/pages/DiagramPage.tsx",
     "name": "DiagramPage",
@@ -265,6 +256,15 @@
     "length": 280,
     "cyclomatic": 36,
     "cognitive": 44
+   },
+   {
+    "lang": "python",
+    "file": "backend/app/runtime/executor.py",
+    "name": "execute",
+    "line": 158,
+    "length": 277,
+    "cyclomatic": 36,
+    "cognitive": 55
    },
    {
     "lang": "typescript",
@@ -297,20 +297,10 @@
  },
  "duplication": {
   "backend": {
-   "loc": 28571,
-   "duplicated_lines": 96,
-   "percent": 0.34,
+   "loc": 28774,
+   "duplicated_lines": 72,
+   "percent": 0.25,
    "clones": [
-    {
-     "tokens": 90,
-     "a_file": "backend/app/twin/engine.py",
-     "a_start": 516,
-     "a_end": 527,
-     "b_file": "backend/app/twin/engine.py",
-     "b_start": 566,
-     "b_end": 577,
-     "lines": 12
-    },
     {
      "tokens": 89,
      "a_file": "backend/app/api/oidc.py",
@@ -342,8 +332,8 @@
      "lines": 14
     }
    ],
-   "clone_count": 4,
-   "structural_percent": 3.48,
+   "clone_count": 3,
+   "structural_percent": 3.46,
    "structural_clone_count": 39,
    "structural_clones": [
     {
@@ -504,11 +494,6 @@
      "percent": 1.3
     },
     {
-     "file": "backend/app/twin/engine.py",
-     "duplicated_lines": 24,
-     "percent": 4.0
-    },
-    {
      "file": "backend/app/api/oidc.py",
      "duplicated_lines": 12,
      "percent": 5.9
@@ -531,7 +516,7 @@
    ]
   },
   "frontend": {
-   "loc": 17013,
+   "loc": 17015,
    "duplicated_lines": 14,
    "percent": 0.08,
    "clones": [
@@ -673,7 +658,7 @@
    },
    {
     "node": "app.ids",
-    "afferent": 19,
+    "afferent": 20,
     "efferent": 0,
     "instability": 0.0
    },
@@ -691,9 +676,9 @@
    },
    {
     "node": "app.llm",
-    "afferent": 14,
+    "afferent": 15,
     "efferent": 7,
-    "instability": 0.33
+    "instability": 0.32
    },
    {
     "node": "app.main",
@@ -732,8 +717,14 @@
     "instability": 0.5
    },
    {
+    "node": "app.runtime",
+    "afferent": 1,
+    "efferent": 4,
+    "instability": 0.8
+   },
+   {
     "node": "app.schemas",
-    "afferent": 18,
+    "afferent": 19,
     "efferent": 1,
     "instability": 0.05
    },
@@ -763,9 +754,9 @@
    },
    {
     "node": "app.twin",
-    "afferent": 4,
-    "efferent": 9,
-    "instability": 0.69
+    "afferent": 5,
+    "efferent": 10,
+    "instability": 0.67
    }
   ],
   "backend_modules_top": [
@@ -837,9 +828,9 @@
    },
    {
     "node": "app.llm",
-    "afferent": 16,
+    "afferent": 17,
     "efferent": 4,
-    "instability": 0.2
+    "instability": 0.19
    },
    {
     "node": "app.schemas.context",
@@ -1032,6 +1023,7 @@
     "app.llm",
     "app.oracles",
     "app.registry",
+    "app.runtime",
     "app.schemas",
     "app.tenancy",
     "app.twin"
@@ -1061,6 +1053,7 @@
     "app.process_twin",
     "app.registry",
     "app.request_context",
+    "app.runtime",
     "app.schemas",
     "app.scim",
     "app.tenancy",
@@ -1418,336 +1411,336 @@
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 488,
+    "line": 490,
     "name": "EvaluationDimensionName",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 502,
+    "line": 504,
     "name": "EvaluationDimension",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 508,
+    "line": 510,
     "name": "EvaluationResult",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 529,
+    "line": 531,
     "name": "RegressionSuiteScenarioResult",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 559,
+    "line": 561,
     "name": "FaultType",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 601,
+    "line": 603,
     "name": "ReproducibilityTier",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 612,
+    "line": 614,
     "name": "TwinSystemStubMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 613,
+    "line": 615,
     "name": "TwinHumanCheckpointMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 614,
+    "line": 616,
     "name": "TwinRuleOperator",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 616,
+    "line": 618,
     "name": "TwinStaticResponseRule",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 626,
+    "line": 628,
     "name": "TwinHumanDecisionRule",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 644,
+    "line": 646,
     "name": "TwinExpectedStepKind",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 680,
+    "line": 682,
     "name": "TwinStepMatch",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 700,
+    "line": 702,
     "name": "CoverageKind",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 702,
+    "line": 704,
     "name": "ReviewerBehaviour",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 751,
+    "line": 753,
     "name": "GatewayContext",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 792,
+    "line": 794,
     "name": "TwinDeviation",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 832,
+    "line": 834,
     "name": "TwinBaselineComparison",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 858,
+    "line": 860,
     "name": "NodeRunKind",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 859,
+    "line": 861,
     "name": "ManualNodeMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 862,
+    "line": 864,
     "name": "HandoffMode",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 863,
+    "line": 865,
     "name": "GatewayRouting",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 942,
+    "line": 944,
     "name": "PublicationStatus",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 946,
+    "line": 948,
     "name": "AgentLifecycleStatus",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1022,
+    "line": 1024,
     "name": "ScimToken",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1123,
+    "line": 1125,
     "name": "SupportSessionInfo",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1167,
+    "line": 1169,
     "name": "RoleOption",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1188,
+    "line": 1190,
     "name": "ChangeEntry",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1197,
+    "line": 1199,
     "name": "ApprovalRecord",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1265,
+    "line": 1267,
     "name": "ContextStatus",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1267,
+    "line": 1269,
     "name": "AppliesTo",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1421,
+    "line": 1423,
     "name": "ContextPackEntry",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1431,
+    "line": 1433,
     "name": "ContextPackPassage",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1441,
+    "line": 1443,
     "name": "StaleEntry",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1485,
+    "line": 1487,
     "name": "ApiOperation",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1502,
+    "line": 1504,
     "name": "ApplicationImportRow",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1537,
+    "line": 1539,
     "name": "SituationEvidence",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1652,
+    "line": 1654,
     "name": "Provenance",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1713,
+    "line": 1715,
     "name": "RowChange",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1894,
+    "line": 1896,
     "name": "SegmentResult",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1900,
+    "line": 1902,
     "name": "FailureCluster",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1908,
+    "line": 1910,
     "name": "Distribution",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1983,
+    "line": 1985,
     "name": "RoleCost",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2059,
+    "line": 2061,
     "name": "CaseEfficiency",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2081,
+    "line": 2083,
     "name": "NodeEfficiency",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2131,
+    "line": 2133,
     "name": "BudgetState",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2140,
+    "line": 2142,
     "name": "OperationUsage",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2150,
+    "line": 2152,
     "name": "MonthUsage",
     "kind": "export",
     "status": "export-unneeded"
@@ -1952,20 +1945,12 @@
    "score": 7751
   },
   {
-   "file": "backend/app/twin/engine.py",
-   "commits": 9,
-   "lines_changed": 1054,
-   "cognitive": 219,
-   "loc": 596,
-   "score": 1971
-  },
-  {
    "file": "frontend/src/api/client.ts",
-   "commits": 28,
-   "lines_changed": 1601,
+   "commits": 29,
+   "lines_changed": 1619,
    "cognitive": 68,
    "loc": 1175,
-   "score": 1904
+   "score": 1972
   },
   {
    "file": "frontend/src/pages/BlueprintPage.tsx",
@@ -1992,12 +1977,28 @@
    "score": 964
   },
   {
+   "file": "backend/app/twin/engine.py",
+   "commits": 9,
+   "lines_changed": 1054,
+   "cognitive": 84,
+   "loc": 354,
+   "score": 756
+  },
+  {
    "file": "frontend/src/pages/ProcessDetailPage.tsx",
    "commits": 10,
    "lines_changed": 370,
    "cognitive": 74,
    "loc": 287,
    "score": 740
+  },
+  {
+   "file": "backend/app/llm/client.py",
+   "commits": 7,
+   "lines_changed": 385,
+   "cognitive": 85,
+   "loc": 313,
+   "score": 595
   },
   {
    "file": "frontend/src/pages/DiagramPage.tsx",
@@ -2024,14 +2025,6 @@
    "score": 515
   },
   {
-   "file": "backend/app/llm/client.py",
-   "commits": 6,
-   "lines_changed": 378,
-   "cognitive": 85,
-   "loc": 313,
-   "score": 510
-  },
-  {
    "file": "backend/app/api/organization.py",
    "commits": 4,
    "lines_changed": 665,
@@ -2040,20 +2033,28 @@
    "score": 468
   },
   {
+   "file": "frontend/src/operator/OperatorConsole.tsx",
+   "commits": 4,
+   "lines_changed": 606,
+   "cognitive": 109,
+   "loc": 540,
+   "score": 436
+  },
+  {
+   "file": "backend/app/config.py",
+   "commits": 15,
+   "lines_changed": 348,
+   "cognitive": 28,
+   "loc": 288,
+   "score": 420
+  },
+  {
    "file": "backend/app/batches/results.py",
    "commits": 2,
    "lines_changed": 519,
    "cognitive": 201,
    "loc": 434,
    "score": 402
-  },
-  {
-   "file": "backend/app/config.py",
-   "commits": 14,
-   "lines_changed": 333,
-   "cognitive": 28,
-   "loc": 288,
-   "score": 392
   },
   {
    "file": "backend/app/twin/test_builder.py",
@@ -2072,14 +2073,6 @@
    "score": 345
   },
   {
-   "file": "frontend/src/operator/OperatorConsole.tsx",
-   "commits": 3,
-   "lines_changed": 460,
-   "cognitive": 109,
-   "loc": 540,
-   "score": 327
-  },
-  {
    "file": "backend/app/scim/service.py",
    "commits": 2,
    "lines_changed": 443,
@@ -2088,20 +2081,20 @@
    "score": 316
   },
   {
-   "file": "frontend/src/App.tsx",
-   "commits": 16,
-   "lines_changed": 295,
-   "cognitive": 18,
-   "loc": 181,
-   "score": 288
+   "file": "backend/app/jobs/worker.py",
+   "commits": 7,
+   "lines_changed": 342,
+   "cognitive": 44,
+   "loc": 226,
+   "score": 308
   },
   {
-   "file": "frontend/src/pages/UsersPage.tsx",
-   "commits": 4,
-   "lines_changed": 342,
-   "cognitive": 71,
-   "loc": 281,
-   "score": 284
+   "file": "frontend/src/App.tsx",
+   "commits": 17,
+   "lines_changed": 302,
+   "cognitive": 18,
+   "loc": 181,
+   "score": 306
   }
  ],
  "growth": [
@@ -2714,6 +2707,26 @@
    "endpoints": 240,
    "stories": 269,
    "stories_implemented": 241
+  },
+  {
+   "commit": "f464810",
+   "date": "2026-10-17",
+   "subject": "Build Epic 38 US38.13-US38.15: tenant lifecycle, dedicated databases, data residency",
+   "prod_loc": 45584,
+   "test_loc": 15504,
+   "endpoints": 245,
+   "stories": 269,
+   "stories_implemented": 241
+  },
+  {
+   "commit": "d050194",
+   "date": "2026-10-17",
+   "subject": "Plan Epic 39: an agent runtime for running approved agents in production",
+   "prod_loc": 45584,
+   "test_loc": 15504,
+   "endpoints": 245,
+   "stories": 287,
+   "stories_implemented": 241
   }
  ],
  "mutation": {
@@ -3043,9 +3056,9 @@
   }
  },
  "size": {
-  "backend_prod_loc": 28571,
-  "backend_test_loc": 11869,
-  "frontend_prod_loc": 17013,
+  "backend_prod_loc": 28774,
+  "backend_test_loc": 12225,
+  "frontend_prod_loc": 17015,
   "frontend_test_loc": 3635
  }
 }

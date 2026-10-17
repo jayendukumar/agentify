@@ -3836,3 +3836,26 @@ in it -- a provider of unknown region doesn't count. Business units can
 still narrow it with their own residency (US31.8). Unset, a deployment
 behaves exactly as before, so single-region installs don't need to
 declare their provider's region.
+
+
+## 2026-10-17 -- Epic 39 build step 1 (one executor)
+
+### The extraction is proven by a recording, not by the old tests alone
+
+Moving the twin's loop into `app/runtime/executor.py` must change
+nothing, and the existing tests check outcomes more than step-by-step
+detail. So before moving anything, 17 scripted runs were recorded through
+the old engine (every step, outcome, resume state and model request) as
+`tests/fixtures/executor_replay.json`, and the refactor had to reproduce
+them exactly. Changing one step's reason makes the test fail, so it
+catches differences that small.
+
+### Run instructions are an argument, not built into the executor
+
+The twin adds a system message telling the agent how to use its tools,
+how to ask for review and which output keys to return, headed "for this
+test run only". Production can't drop it: the agent was tested with it,
+and without it the release evidence no longer applies. It can't keep
+calling a live case a test either. The executor takes the instructions
+from its caller, and production will send the twin's text minus that
+heading (US39.8 checks this), rather than writing new instructions.
