@@ -2212,11 +2212,15 @@ export interface TenantExport {
 // Epic 39, US39.10: the review inbox for live cases.
 export interface ReviewTask {
   id: string
-  execution_id: string
-  deployment_id: string
+  // Epic 39, US39.17: a process case's step that no agent runs has no
+  // execution or deployment of its own.
+  execution_id: string | null
+  deployment_id: string | null
+  process_execution_id?: string | null
+  node_id?: string | null
   process_id: string
   agent_name: string
-  kind: 'checkpoint' | 'escalation'
+  kind: 'checkpoint' | 'escalation' | 'human_task'
   status: 'open' | 'decided' | 'resolved' | 'cancelled'
   summary: string
   proposed_action: Record<string, unknown>

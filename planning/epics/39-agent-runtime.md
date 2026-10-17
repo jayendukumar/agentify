@@ -8,8 +8,9 @@ automatic pause (US39.9, US39.10, US39.12). US39.4 completed 2026-10-17
 (typed input, internal triggers, client limits, signed callbacks, OAuth
 client credentials from the tenant's IdP). Step 4 implemented 2026-10-17:
 shadow, canary and rollback, live metrics, traces and alerts, drift
-against the twin, and the Runtime page (US39.13-39.15). Step 5 started
-2026-10-17: event triggers (US39.16), certified hand-off (US39.18). Open
+against the twin, and the Runtime page (US39.13-39.15). Step 5 implemented
+2026-10-17: event triggers (US39.16), whole-process execution
+(US39.17), certified hand-off (US39.18). Every story of the epic is built. Open
 items are listed under each step's "as built". Decisions confirmed 2026-10-17 (see Notes).**
 Weakness 3 in the wiki's Critical Review ("Agents never run in
 production") and item 4 of its recommended order.
@@ -498,6 +499,58 @@ Deviations from the stories, decided while building:
     keys in the JWKS) isn't built.
   - The receiving platform's kill switch is its own: killing an external
     deployment here only refuses its reports.
+
+## US39.17 as built (step 5)
+
+- **Code.** `app/runtime/processes.py`. A process case
+  (`POST /runtime/v1/processes/{id}/executions`, a client not limited to
+  some deployments; `process_executions`, migration `b9c0d1e2f3a4`) walks
+  the version the live agents were generated from, using Epic 16's
+  `run_orchestration`. Its new `agent_runner` port is how production runs
+  an agent node: an ordinary execution of the node's live deployment
+  (`parent_execution_id`, trigger `process`; a canary takes its share),
+  run inline in the `runtime_process` job through
+  `jobs.run_execution`, with every guardrail. A node that waits for a
+  review suspends the walk. When that execution ends in its own job,
+  `_after` queues the walk again. A task node no live deployment covers is
+  a `human_task` in the review inbox (no execution or deployment; resolve
+  it with the outcome, which joins the case). Gateways go by the confirmed
+  decision rules where a gateway has some, else the agent before it
+  chooses (`agent_executions.routing` carries the question). Hand-off is
+  the case file. A whole process is paused or stopped with `PUT
+  /api/processes/{id}/runtime` (`process_runtime`). Paused: new cases get
+  503 and running ones hold before their next node. Killed: every
+  deployment of the process is killed, waiting cases end KILLED, and
+  their human tasks are cancelled.
+- **Tests.** `tests/test_runtime_processes.py` (4): a case runs the agent's
+  node as a child execution, then waits on a person's step in the inbox
+  (which can't be "approved", only resolved); resolving it finishes the
+  case with both results. Pausing needs a reason, refuses new cases and
+  holds a running one before its next node; stopping kills a waiting case,
+  the deployment and the task, and refuses new cases. A client limited to
+  some deployments can't start a process case, and a process with nothing
+  live answers 409. `InboxPage.test.tsx`: a person's step is resolved with
+  its outcome.
+- **Live.** `testing/runtime/smoke_runtime_processes.py` (20/20 on
+  2026-10-17): the agent asked for review twice (before the lookup and
+  before opening the account); after both approvals it opened the
+  account, the case moved to "Sign the contract" in the inbox, and
+  resolving it finished the case with the account and contract numbers.
+  Stopping the process killed a waiting case and the deployment.
+- **Deviations:**
+  - The runtime now imports the orchestrator from `app.twin` (the import
+    boundary test allows it, with the reason). Production passes its own
+    agent runner and makes every person's step "manual", so the twin's
+    engine and simulators are never reached. Moving the walk into
+    `app/runtime` would be the clean form.
+  - A node that escalates ends the process case ESCALATED. Resolving that
+    escalation in the inbox doesn't carry the case on.
+  - A case whose node is waiting when that one deployment (not the
+    process) is killed stays waiting. Stopping the process ends it.
+  - No shadow copies or callbacks for process cases yet, and no events
+    start one (US39.16 starts a single agent).
+  - No page lists process cases: they're read through the API, and their
+    steps appear in the inbox and under each deployment.
 
 ## User Stories
 

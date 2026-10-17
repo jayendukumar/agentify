@@ -57,4 +57,21 @@ describe('Inbox page (Epic 39, US39.10)', () => {
       expect(api.resolve).toHaveBeenCalledWith('proc_1', 'rtask_1', { riskRating: 'low', decision: 'approve' }, ''),
     )
   })
+
+  it('resolves a step of a whole-process case that no agent runs (US39.17)', async () => {
+    api.list.mockResolvedValue([{
+      ...checkpoint, kind: 'human_task', summary: 'Sign the contract', execution_id: null, deployment_id: null,
+      process_execution_id: 'pex_1', node_id: 'Task_b', agent_name: "Loan onboarding (a person's step)",
+    }])
+    api.resolve.mockResolvedValue({ ...checkpoint, kind: 'human_task', status: 'resolved' })
+    render(<InboxPage />)
+    expect(await screen.findByText('A step for a person')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'approve' } })
+    fireEvent.change(screen.getByLabelText('Outcome details (JSON)'), { target: { value: '{"contractId": "K-1"}' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve case' }))
+    await waitFor(() =>
+      expect(api.resolve).toHaveBeenCalledWith('proc_1', 'rtask_1', { contractId: 'K-1', decision: 'approve' }, ''),
+    )
+  })
 })

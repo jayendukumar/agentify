@@ -83,8 +83,8 @@ fixable without rethinking the product.
    its parent up first could link a row to another tenant's object (the
    probe found one, now fixed). (`app/tenancy`, Epic 38 steps 2-4)
 3. **Agents run in production, watched at pilot scale.** An approved
-   agent can be deployed and run real cases (`app/runtime`, Epic 39 steps
-   1-4): the same executor and Tool Gateway as the twin, an identity per
+   agent can be deployed and run real cases (`app/runtime`, Epic 39, all
+   five steps): the same executor and Tool Gateway as the twin, an identity per
    deployment, production adapters with scoped short-lived credentials,
    guardrails that fail closed (a review-before-action checkpoint
    included), caps and circuit breakers, a review inbox, automatic pause,
@@ -93,6 +93,9 @@ fixable without rethinking the product.
    in shadow or as a canary before it takes every case, and can be rolled
    back. The Runtime page shows live metrics and drift against the twin's
    baseline, and traces go to the customer's OpenTelemetry collector.
+   Agents also start from signed events, a case can walk the whole
+   process (a person's steps go to the inbox), and an agent can be handed
+   off to the customer's own platform with signed evidence.
    Still weak: metrics are computed per request rather than rolled up, so
    they won't hold at thousands of cases a day. Alerts reach the app and
    webhooks but not email. Stored payloads have no retention or redaction
@@ -243,11 +246,12 @@ The order is in the enterprise-readiness deck. In short:
 3. **Security baseline:** a secrets manager, object storage with
    encryption, KMS, default-deny model policy, DLP-grade redaction, and
    tamper-evident export of the audit log. *(4)*
-4. **Agent runtime: steps 1-4 done in Epic 39** (one executor, deployments,
-   identity, adapters, credentials, kill switch, inbox, caps, pause,
-   shadow, canary and rollback, metrics, traces, alerts, drift). Left:
-   metric rollups for volume, retention and redaction of stored payloads,
-   and email alerts. *(3)*
+4. **Agent runtime: Epic 39 done** (one executor, deployments, identity,
+   adapters, credentials, kill switch, inbox, caps, pause, shadow, canary
+   and rollback, metrics, traces, alerts, drift, event triggers,
+   whole-process cases, certified hand-off). Left: metric rollups for
+   volume, retention and redaction of stored payloads, email alerts, and
+   moving the orchestrator's walk out of the twin package. *(3)*
 5. **Refactor the hot core** behind the ratchet: split `repository.py`
    into per-domain stores plus services, extract the orchestrator's walk
    into a small state machine, remove lazy-import cycles. *(9, 10, 11)*

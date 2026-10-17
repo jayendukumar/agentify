@@ -72,7 +72,7 @@ from .adapters import Binding, ProductionTools, is_mutating
 from .deployments import CARRY_ON, LIVE, bindings_of, pause_if_needed, siblings
 from .executor import ExecutionOutcome, RunCancelled, execute
 from .inputs import input_problems
-from .instructions import run_instructions
+from .instructions import ROUTE_FIELD, run_instructions
 
 JOB_KIND = "runtime_execution"
 SUBMIT_JOB_KIND = "runtime_submit"
@@ -355,7 +355,8 @@ def _add_usage(execution: AgentExecutionModel, outcome: ExecutionOutcome, *, res
         execution.total_cost_usd += outcome.total_cost_usd
 
 
-def _after(session: Session, execution: AgentExecutionModel, deployment: AgentDeploymentModel) -> None:
+def _after(session: Session, execution: AgentExecutionModel, deployment: AgentDeploymentModel, *,
+           inline: bool = False) -> None:
     """Opens the inbox task the outcome calls for, checks the pause rules,
     alerts and drift, and exports the trace (US39.14-39.15). A shadow case
     involves no one."""
@@ -368,6 +369,12 @@ def _after(session: Session, execution: AgentExecutionModel, deployment: AgentDe
         pause_if_needed(session, deployment)
         callbacks.notify_caller(session, execution)
         monitoring.after_case(session, execution, deployment)
+        if execution.parent_execution_id and not inline:
+            # US39.17: a node of a process case that ended in its own job
+            # (after a review, or held while paused): the case carries on.
+            from .processes import queue_walk
+
+            queue_walk(session, execution.parent_execution_id, tag=f"node:{execution.id}")
 
 
 @dataclass
@@ -450,11 +457,30 @@ def _admit(session: Session, execution: AgentExecutionModel | None, payload: dic
     return deployment, definition, decision
 
 
+def _instructions(definition: AgentDefinition, execution: AgentExecutionModel) -> tuple[str, list[str]]:
+    """The live run instructions and output fields; a node of a process
+    case may also be asked which way the next gateway goes (US39.17)."""
+    output_fields = [f.name for f in definition.output_schema]
+    routing = (execution.routing["question"], execution.routing["options"]) if execution.routing else None
+    if routing and output_fields and ROUTE_FIELD not in output_fields:
+        output_fields.append(ROUTE_FIELD)
+    instructions = run_instructions(has_checkpoint=definition.human_checkpoint != "none", output_fields=output_fields,
+                                    routing=routing, test_run=False)
+    return instructions, output_fields
+
+
 @handler(JOB_KIND)
 async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[str, Any]:
+    execution = session.get(AgentExecutionModel, payload["execution_id"])
+    return await run_execution(session, execution, payload)
+
+
+async def run_execution(session: Session, execution: AgentExecutionModel | None,
+                        payload: dict[str, Any]) -> dict[str, Any]:
+    """One leg of an execution: from its job, or inline from a process
+    case's walk (US39.17)."""
     from app.connectors.jobs import get_job_llm
 
-    execution = session.get(AgentExecutionModel, payload["execution_id"])
     admitted = _admit(session, execution, payload)
     if isinstance(admitted, dict):
         return admitted
@@ -462,7 +488,7 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
     resume_state = execution.resume_state if decision else None
     _start_leg(session, execution, resuming=bool(decision))
     recorder = _Recorder(session, execution, deployment, session.get(AgentIdentityModel, execution.identity_id))
-    output_fields = [f.name for f in definition.output_schema]
+    instructions, output_fields = _instructions(definition, execution)
     outcome = await execute(
         get_job_llm(),
         artifact=definition,
@@ -472,8 +498,7 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
                                   shadow=in_shadow(execution, deployment)),
         human_port=_ShadowApproves() if in_shadow(execution, deployment) else _AwaitReview(),
         inputs=execution.input or {},
-        instructions=run_instructions(has_checkpoint=definition.human_checkpoint != "none",
-                                      output_fields=output_fields, test_run=False),
+        instructions=instructions,
         output_fields=output_fields,
         max_turns=get_settings().runtime_max_turns,
         operation="runtime_execution",
@@ -484,7 +509,7 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
         on_phase=recorder.on_phase,
     )
     _record_outcome(execution, outcome, resumed=bool(decision))
-    _after(session, execution, deployment)
+    _after(session, execution, deployment, inline=bool(payload.get("inline")))
     session.commit()
     return {"status": execution.status}
 

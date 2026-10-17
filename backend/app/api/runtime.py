@@ -37,6 +37,7 @@ from app.db.models import (
     AgentExecutionModel,
     AgentIdentityModel,
     EventSubscriptionModel,
+    ProcessExecutionModel,
     ProcessModel,
     ReviewTaskModel,
     RuntimeClientModel,
@@ -44,7 +45,7 @@ from app.db.models import (
 )
 from app.ids import new_id, utcnow
 from app.datasets import service as datasets
-from app.runtime import credentials, deployments, drift, events, handoff, jobs, limits, metrics, monitoring, reviews, rollout
+from app.runtime import credentials, deployments, drift, events, handoff, jobs, processes, limits, metrics, monitoring, reviews, rollout
 from app.runtime.adapters import UnsafeProductionEndpoint, check_production_url
 from app.tenancy.identity import current_slug
 from app.schemas.agents import AgentDefinition
@@ -69,6 +70,11 @@ from app.schemas.runtime import (
     ExecutionSummary,
     MonitoringIn,
     OutcomeIn,
+    ProcessCaseAccepted,
+    ProcessExecution,
+    ProcessExecutionSummary,
+    ProcessRuntime,
+    ProcessRuntimeIn,
     PromoteIn,
     ReportsIn,
     ReportsResult,
@@ -390,6 +396,62 @@ def update_monitoring(process_id: str, deployment_id: str, body: MonitoringIn, d
     return _detail(db, d)
 
 
+# ---- US39.17: whole-process execution ------------------------------------------------------
+
+
+def _case_out(db, case: ProcessExecutionModel) -> ProcessExecution:
+    children = db.scalars(select(AgentExecutionModel).where(AgentExecutionModel.parent_execution_id == case.id)
+                          .order_by(AgentExecutionModel.created_at))
+    tasks = db.scalars(select(ReviewTaskModel.id).where(ReviewTaskModel.process_execution_id == case.id,
+                                                        ReviewTaskModel.status == "open"))
+    return ProcessExecution(
+        **ProcessExecutionSummary.model_validate(case, from_attributes=True).model_dump(),
+        client_id=case.client_id, input=case.input, final_output=case.final_output, deviations=case.deviations or [],
+        visited_path=case.visited_path or [], node_runs=case.node_runs or [],
+        node_executions=[_execution_summary(e) for e in children], open_tasks=list(tasks),
+    )
+
+
+@router.get("/process-executions", response_model=list[ProcessExecutionSummary])
+def list_process_executions(process_id: str, db: DbDep, user: CurrentUserDep) -> list[ProcessExecutionSummary]:
+    del user
+    rows = db.scalars(select(ProcessExecutionModel).where(ProcessExecutionModel.process_id == process_id)
+                      .order_by(ProcessExecutionModel.created_at.desc()).limit(200))
+    return [ProcessExecutionSummary.model_validate(r, from_attributes=True) for r in rows]
+
+
+@router.get("/process-executions/{process_execution_id}", response_model=ProcessExecution)
+def get_process_execution(process_id: str, process_execution_id: str, db: DbDep,
+                          user: CurrentUserDep) -> ProcessExecution:
+    del user
+    case = db.get(ProcessExecutionModel, process_execution_id)
+    if case is None or case.process_id != process_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Process case '{process_execution_id}' not found")
+    return _case_out(db, case)
+
+
+def _runtime_out(process_id: str, row) -> ProcessRuntime:
+    if row is None:
+        return ProcessRuntime(process_id=process_id)
+    return ProcessRuntime.model_validate(row, from_attributes=True)
+
+
+@router.get("/runtime", response_model=ProcessRuntime)
+def get_process_runtime(process_id: str, db: DbDep, user: CurrentUserDep) -> ProcessRuntime:
+    del user
+    return _runtime_out(process_id, processes.runtime_status(db, process_id))
+
+
+@router.put("/runtime", response_model=ProcessRuntime)
+def set_process_runtime(process_id: str, body: ProcessRuntimeIn, db: DbDep, user: RuntimeStopDep) -> ProcessRuntime:
+    """Pause, stop or reopen the whole process: every node at once."""
+    try:
+        return _runtime_out(process_id, processes.set_runtime(db, process_id, status=body.status, reason=body.reason,
+                                                               user=user))
+    except processes.ProcessError as exc:
+        raise HTTPException(exc.status, detail=exc.detail) from exc
+
+
 # ---- US39.18: handing off to the customer's platform -----------------------------------
 
 
@@ -519,9 +581,13 @@ def resume_deployment(process_id: str, deployment_id: str, body: ResumeIn, db: D
 
 
 def _task_out(db, task: ReviewTaskModel) -> ReviewTask:
-    deployment = db.get(AgentDeploymentModel, task.deployment_id)
+    deployment = db.get(AgentDeploymentModel, task.deployment_id) if task.deployment_id else None
     out = ReviewTask.model_validate(task, from_attributes=True)
-    out.agent_name = deployment.snapshot["definition"]["name"] if deployment else ""
+    if deployment is not None:
+        out.agent_name = deployment.snapshot["definition"]["name"]
+    else:
+        process = db.get(ProcessModel, task.process_id)
+        out.agent_name = f"{process.name if process else 'Process'} (a person's step)"
     out.overdue = task.status == "open" and task.due_at <= utcnow().replace(tzinfo=None)
     return out
 
@@ -570,6 +636,8 @@ def resolve_review_task(process_id: str, task_id: str, body: ResolutionIn, db: D
         reviews.resolve(db, task, user, outcome=body.outcome, comment=body.comment)
     except reviews.ReviewError as exc:
         raise _review_refused(exc, user=user, action="resolve_review_task", task=task, request=request) from exc
+    if task.kind == "human_task":
+        processes.resume_after_task(db, task)
     return _task_out(db, task)
 
 
@@ -793,6 +861,36 @@ def start_execution(deployment_id: str, body: ExecutionIn, db: DbDep, caller: Cl
     if not created:
         response.status_code = status.HTTP_200_OK
     return _accepted(execution)
+
+
+def _case_accepted(case: ProcessExecutionModel) -> ProcessCaseAccepted:
+    return ProcessCaseAccepted(id=case.id, status=case.status, final_output=case.final_output,
+                               deviations=case.deviations or [])
+
+
+@client_router.post("/processes/{process_id}/executions", response_model=ProcessCaseAccepted, status_code=202)
+def start_process_case(process_id: str, body: ExecutionIn, db: DbDep, caller: ClientDep, response: Response,
+                       idempotency_key: Annotated[str | None, Header()] = None) -> ProcessCaseAccepted:
+    """US39.17: one case through the whole process. A client limited to
+    some deployments can't start a whole process."""
+    if db.get(ProcessModel, process_id) is None or caller.deployment_ids is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Process '{process_id}' not found")
+    try:
+        case, created = processes.submit(db, process_id, data=body.input, idempotency_key=idempotency_key or "",
+                                         client_id=caller.id, requested_by=body.requested_by)
+    except processes.ProcessError as exc:
+        raise HTTPException(exc.status, detail=exc.detail) from exc
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return _case_accepted(case)
+
+
+@client_router.get("/process-executions/{process_execution_id}", response_model=ProcessCaseAccepted)
+def read_process_case(process_execution_id: str, db: DbDep, caller: ClientDep) -> ProcessCaseAccepted:
+    case = db.get(ProcessExecutionModel, process_execution_id)
+    if case is None or case.client_id != caller.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Process case '{process_execution_id}' not found")
+    return _case_accepted(case)
 
 
 @client_router.get("/handoff/keys")

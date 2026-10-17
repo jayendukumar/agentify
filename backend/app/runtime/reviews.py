@@ -29,7 +29,7 @@ rejection pause rule, US39.12), and it can be added to a labelled dataset
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -150,6 +150,30 @@ def open_escalation(session: Session, execution: AgentExecutionModel, deployment
                       summary=reasons[-1] if reasons else "The agent passed this case on", action={})
 
 
+HUMAN_TASK_SLA_MINUTES = 240
+
+
+def open_human_task(session: Session, case: Any, *, node_id: str, label: str,
+                    case_data: dict[str, Any]) -> ReviewTaskModel:
+    """US39.17: a step of a process case that no agent runs. Opened once per
+    visit to the node; resolving it moves the case on."""
+    existing = session.scalar(select(ReviewTaskModel).where(
+        ReviewTaskModel.process_execution_id == case.id, ReviewTaskModel.node_id == node_id,
+        ReviewTaskModel.status == "open"))
+    if existing is not None:
+        return existing
+    task = ReviewTaskModel(
+        id=new_id("rtask"), execution_id=None, deployment_id=None, process_execution_id=case.id, node_id=node_id,
+        process_id=case.process_id, kind="human_task", status="open", summary=label, proposed_action={},
+        case_input=case_data, assignee_role=None, level=0, due_at=_now() + timedelta(minutes=HUMAN_TASK_SLA_MINUTES),
+    )
+    session.add(task)
+    session.flush()
+    notify(session, {u.id for u in reviewers(session, case.process_id)}, kind="human_task",
+           message=f"A case needs a person: {label}", process_id=case.process_id, task_id=task.id)
+    return task
+
+
 def cancel_open(session: Session, deployment_id: str, reason: str) -> int:
     tasks = list(session.scalars(select(ReviewTaskModel).where(ReviewTaskModel.deployment_id == deployment_id,
                                                                ReviewTaskModel.status == "open")))
@@ -163,11 +187,20 @@ def cancel_open(session: Session, deployment_id: str, reason: str) -> int:
 # ---- deciding ------------------------------------------------------------------------------------
 
 
-def _check_reviewer(session: Session, task: ReviewTaskModel, user: UserModel) -> AgentExecutionModel:
+def _requester(session: Session, task: ReviewTaskModel) -> str:
+    from app.db.models import ProcessExecutionModel
+
+    if task.execution_id:
+        return session.get(AgentExecutionModel, task.execution_id).requested_by or ""
+    case = session.get(ProcessExecutionModel, task.process_execution_id) if task.process_execution_id else None
+    return (case.requested_by or "") if case else ""
+
+
+def _check_reviewer(session: Session, task: ReviewTaskModel, user: UserModel) -> AgentExecutionModel | None:
     if task.status != "open":
         raise ReviewError(409, f"This task is already {task.status}")
-    execution = session.get(AgentExecutionModel, task.execution_id)
-    requester = (execution.requested_by or "").strip().lower()
+    execution = session.get(AgentExecutionModel, task.execution_id) if task.execution_id else None
+    requester = _requester(session, task).strip().lower()
     if requester and requester in {(user.name or "").lower(), (user.email or "").lower()}:
         raise ReviewError(403, "You asked for this case -- someone else must review it")
     return execution
@@ -176,7 +209,7 @@ def _check_reviewer(session: Session, task: ReviewTaskModel, user: UserModel) ->
 def decide(session: Session, task: ReviewTaskModel, user: UserModel, *, decision: str, comment: str | None) -> None:
     """Records a checkpoint decision; the caller queues the resume."""
     if task.kind != "checkpoint":
-        raise ReviewError(409, "An escalated case is resolved, not approved or rejected")
+        raise ReviewError(409, "Only a checkpoint is approved or rejected; resolve this task with its outcome")
     if decision == "reject" and not (comment or "").strip():
         raise ReviewError(422, "Say why you're rejecting it")
     execution = _check_reviewer(session, task, user)
@@ -197,8 +230,9 @@ def note_for(task: ReviewTaskModel, user: UserModel) -> str:
 
 def resolve(session: Session, task: ReviewTaskModel, user: UserModel, *, outcome: dict[str, Any],
             comment: str | None) -> None:
-    """A reviewer closes an escalated case by hand."""
-    if task.kind != "escalation":
+    """A reviewer closes an escalated case by hand, or does a process
+    case's human task (US39.17); the caller moves that case on."""
+    if task.kind == "checkpoint":
         raise ReviewError(409, "A checkpoint is approved or rejected, not resolved")
     if not outcome:
         raise ReviewError(422, "Record the outcome you reached")
@@ -206,10 +240,13 @@ def resolve(session: Session, task: ReviewTaskModel, user: UserModel, *, outcome
     task.status, task.outcome, task.comment = "resolved", outcome, (comment or "").strip() or None
     task.decision = outcome.get("decision") if outcome.get("decision") in ("approve", "reject") else None
     task.decided_by, task.decided_at = user.id, _now()
-    execution.resolution = {"outcome": outcome, "comment": task.comment, "by": user.id, "by_name": user.name,
-                            "at": task.decided_at.isoformat()}
-    audit.record(session, actor=user, action="runtime_case_resolved", object_type="agent_execution",
-                 object_id=execution.id, process_id=task.process_id, detail={"task_id": task.id, "outcome": outcome})
+    if execution is not None:
+        execution.resolution = {"outcome": outcome, "comment": task.comment, "by": user.id, "by_name": user.name,
+                                "at": task.decided_at.isoformat()}
+    audit.record(session, actor=user, action="runtime_case_resolved",
+                 object_type="agent_execution" if execution is not None else "process_execution",
+                 object_id=execution.id if execution is not None else task.process_execution_id,
+                 process_id=task.process_id, detail={"task_id": task.id, "outcome": outcome})
     session.flush()
 
 
@@ -223,6 +260,9 @@ def escalate_overdue(session: Session) -> int:
     tasks = list(session.scalars(select(ReviewTaskModel).where(ReviewTaskModel.status == "open",
                                                                ReviewTaskModel.due_at <= now)))
     for task in tasks:
+        if task.deployment_id is None:
+            _escalate_human_task(session, task, now)
+            continue
         deployment = session.get(AgentDeploymentModel, task.deployment_id)
         definition = AgentDefinition.model_validate(deployment.snapshot["definition"])
         levels = review_levels(session, task.process_id, definition, task.proposed_action or {})
@@ -241,6 +281,14 @@ def escalate_overdue(session: Session) -> int:
                task_id=task.id)
     session.flush()
     return len(tasks)
+
+
+def _escalate_human_task(session: Session, task: ReviewTaskModel, now: datetime) -> None:
+    task.level += 1
+    task.escalated_at = now
+    task.due_at = now + timedelta(minutes=HUMAN_TASK_SLA_MINUTES)
+    notify(session, {u.id for u in reviewers(session, task.process_id)}, kind="review_overdue",
+           message=f"A step of a process case is overdue: {task.summary}", process_id=task.process_id, task_id=task.id)
 
 
 # ---- feedback --------------------------------------------------------------------------------------

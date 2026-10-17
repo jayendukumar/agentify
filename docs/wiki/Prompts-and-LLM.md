@@ -97,7 +97,7 @@ plus any prompt helpers or constants it uses.
 | `oracle_rule_structuring` | Turn a gateway's condition text into an executable rule expression | `backend/app/oracles/service.py` `propose_rules()` | JSON | no | 8000 |
 | `orchestration_data_adapter` | Reshape the case file into the next agent's input fields | `backend/app/twin/orchestrator.py` `_adapt_data()` | JSON | no | 8000 |
 | `policy_extraction` | Extract obligations, controls and approval rules from an uploaded policy document | `backend/app/context/ingestion.py` `extract_proposals()` | JSON | no | 16000 |
-| `runtime_execution` | The agent itself, running a real case in production through its bound systems | `backend/app/runtime/jobs.py` `runtime_execution()` | text / tool calls | yes | default |
+| `runtime_execution` | The agent itself, running a real case in production through its bound systems | `backend/app/runtime/jobs.py` `run_execution()` | text / tool calls | yes | default |
 | `twin_builder_describe` | Turn a plain-language description into a test situation | `backend/app/twin/test_builder.py` `describe_situation()` | JSON | no | default |
 | `twin_builder_personas` | Cast reviewer personas for a test | `backend/app/twin/test_builder.py` `generate_personas()` | JSON | no | default |
 | `twin_builder_suggest` | Draft test situations from the blueprint (guided test builder) | `backend/app/twin/test_builder.py` `suggest_situations()` | JSON | no | default |
@@ -742,13 +742,15 @@ Passages:
 The agent itself, running a real case in production through its bound systems
 
 <details>
-<summary><code>backend/app/runtime/jobs.py -- runtime_execution()</code></summary>
+<summary><code>backend/app/runtime/jobs.py -- run_execution()</code></summary>
 
 ```python
-async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[str, Any]:
+async def run_execution(session: Session, execution: AgentExecutionModel | None,
+                        payload: dict[str, Any]) -> dict[str, Any]:
+    """One leg of an execution: from its job, or inline from a process
+    case's walk (US39.17)."""
     from app.connectors.jobs import get_job_llm
 
-    execution = session.get(AgentExecutionModel, payload["execution_id"])
     admitted = _admit(session, execution, payload)
     if isinstance(admitted, dict):
         return admitted
@@ -756,7 +758,7 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
     resume_state = execution.resume_state if decision else None
     _start_leg(session, execution, resuming=bool(decision))
     recorder = _Recorder(session, execution, deployment, session.get(AgentIdentityModel, execution.identity_id))
-    output_fields = [f.name for f in definition.output_schema]
+    instructions, output_fields = _instructions(definition, execution)
     outcome = await execute(
         get_job_llm(),
         artifact=definition,
@@ -766,8 +768,7 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
                                   shadow=in_shadow(execution, deployment)),
         human_port=_ShadowApproves() if in_shadow(execution, deployment) else _AwaitReview(),
         inputs=execution.input or {},
-        instructions=run_instructions(has_checkpoint=definition.human_checkpoint != "none",
-                                      output_fields=output_fields, test_run=False),
+        instructions=instructions,
         output_fields=output_fields,
         max_turns=get_settings().runtime_max_turns,
         operation="runtime_execution",
@@ -778,7 +779,7 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
         on_phase=recorder.on_phase,
     )
     _record_outcome(execution, outcome, resumed=bool(decision))
-    _after(session, execution, deployment)
+    _after(session, execution, deployment, inline=bool(payload.get("inline")))
     session.commit()
     return {"status": execution.status}
 ```
@@ -786,46 +787,19 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
 </details>
 
 <details>
-<summary><code>backend/app/runtime/instructions.py -- run_instructions</code></summary>
+<summary><code>backend/app/runtime/jobs.py -- _instructions</code></summary>
 
 ```python
-def run_instructions(
-    *, has_checkpoint: bool, output_fields: list[str], decision_field: str | None = None,
-    routing: tuple[str, list[str]] | None = None, test_run: bool,
-) -> str:
-    lines = [
-        _TEST_HEADER if test_run else _LIVE_HEADER,
-        "- Every system you have access to is available as a callable tool -- call the matching "
-        "tool instead of describing what you would do.",
-    ]
-    if has_checkpoint:
-        lines.append(
-            '- When you need human review/approval as instructed above, call the '
-            '"request_human_decision" tool instead of stopping -- you will get back a decision of '
-            '"approve" or "reject" and should continue accordingly.'
-        )
-    if output_fields:
-        lines.append(
-            "- Once you are completely finished and have no more tool calls to make, respond with "
-            f"ONLY a JSON object whose keys are exactly: {output_fields}. Do not include any other text."
-        )
-    else:
-        lines.append(
-            "- Once you are completely finished and have no more tool calls to make, respond with "
-            "ONLY a short JSON object summarizing what you did. Do not include any other text."
-        )
-    if decision_field:
-        lines.append(
-            f'- Set "{decision_field}" to how you decided the case: "approve", "reject", or "escalate" '
-            "(you could not decide it yourself and passed it to someone else)."
-        )
-    if routing:
-        question, options = routing
-        lines.append(
-            f'- Set "{ROUTE_FIELD}" to exactly one of {json.dumps(options)}: the branch the next decision point '
-            f'("{question}") should take for this case, based on what you found.'
-        )
-    return "\n".join(lines)
+def _instructions(definition: AgentDefinition, execution: AgentExecutionModel) -> tuple[str, list[str]]:
+    """The live run instructions and output fields; a node of a process
+    case may also be asked which way the next gateway goes (US39.17)."""
+    output_fields = [f.name for f in definition.output_schema]
+    routing = (execution.routing["question"], execution.routing["options"]) if execution.routing else None
+    if routing and output_fields and ROUTE_FIELD not in output_fields:
+        output_fields.append(ROUTE_FIELD)
+    instructions = run_instructions(has_checkpoint=definition.human_checkpoint != "none", output_fields=output_fields,
+                                    routing=routing, test_run=False)
+    return instructions, output_fields
 ```
 
 </details>

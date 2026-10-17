@@ -2060,6 +2060,10 @@ class AgentExecutionModel(TenantScoped, Base):
     shadow_of: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     reported_outcome: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     reported_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # US39.17: the process execution this node execution belongs to, and the
+    # gateway question its agent answers ({"question", "options"}).
+    parent_execution_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    routing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class ExecutionStepModel(TenantScoped, Base):
@@ -2086,13 +2090,20 @@ class ReviewTaskModel(TenantScoped, Base):
     resumes the execution. "escalation" is a case the agent passed on:
     resolving it records the outcome by hand. `assignee_role` names who
     should take it (the approval matrix or the escalation policy);
-    `level` is its place in the matrix, raised when it goes overdue."""
+    `level` is its place in the matrix, raised when it goes overdue.
+    US39.17: "human_task" is a step of a process execution that no agent
+    runs (`process_execution_id`, `node_id`; no execution or deployment):
+    resolving it moves the case on."""
 
     __tablename__ = "review_tasks"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    execution_id: Mapped[str] = mapped_column(ForeignKey("agent_executions.id", ondelete="CASCADE"), index=True)
-    deployment_id: Mapped[str] = mapped_column(ForeignKey("agent_deployments.id", ondelete="CASCADE"), index=True)
+    execution_id: Mapped[str | None] = mapped_column(ForeignKey("agent_executions.id", ondelete="CASCADE"),
+                                                     index=True, nullable=True)
+    deployment_id: Mapped[str | None] = mapped_column(ForeignKey("agent_deployments.id", ondelete="CASCADE"),
+                                                      index=True, nullable=True)
+    process_execution_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    node_id: Mapped[str | None] = mapped_column(String, nullable=True)
     process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
     kind: Mapped[str] = mapped_column(String, nullable=False)  # checkpoint | escalation
     status: Mapped[str] = mapped_column(String, nullable=False, default="open", index=True)  # open | decided | resolved | cancelled
@@ -2135,6 +2146,53 @@ class EventSubscriptionModel(TenantScoped, Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     last_event_at: Mapped[datetime | None] = mapped_column(nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ProcessExecutionModel(TenantScoped, Base):
+    """Epic 39, US39.17: one case through a whole process, along its real
+    flow (the version its deployed agents were generated from). Each agent
+    node runs as an execution of that node's live deployment, with
+    `parent_execution_id` pointing here; a node with no live deployment is
+    a human task in the inbox. `node_runs` and `visited_path` are the
+    walk's own record; `resume_state` holds it while it waits."""
+
+    __tablename__ = "process_executions"
+    __table_args__ = (UniqueConstraint("process_id", "idempotency_key", name="uq_process_executions_idempotency"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    version_id: Mapped[str] = mapped_column(String, nullable=False)
+    client_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    trigger: Mapped[str] = mapped_column(String, nullable=False, default="api")
+    idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
+    requested_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    input: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    node_runs: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    visited_path: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    resume_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    total_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    total_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ProcessRuntimeModel(TenantScoped, Base):
+    """Epic 39, US39.17: a whole process paused or stopped. Paused: new
+    cases are refused and running ones wait before their next step.
+    Killed: every deployment of the process is killed too, and the process
+    takes no cases until someone sets it active again."""
+
+    __tablename__ = "process_runtime"
+
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), primary_key=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)  # active | paused | killed
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class RuntimeNotificationModel(TenantScoped, Base):

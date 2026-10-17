@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-17 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**84 tables, 955 columns (118 JSON), 201 foreign keys, 48 Alembic migrations.**
+**86 tables, 985 columns (125 JSON), 205 foreign keys, 49 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -570,6 +570,7 @@ erDiagram
         json resume_state
         json resolution
         json reported_outcome
+        json routing
     }
     execution_steps {
         string id PK
@@ -598,6 +599,21 @@ erDiagram
         string system_name PK
         json recent
     }
+    process_executions {
+        string id PK
+        string process_id FK
+        string status
+        json input
+        json final_output
+        json deviations
+        json node_runs
+        json visited_path
+        json resume_state
+    }
+    process_runtime {
+        string process_id PK,FK
+        string status
+    }
     agent_artifacts { }
     processes { }
     agent_artifacts ||--o{ agent_deployments : "agent_artifact_id"
@@ -608,10 +624,12 @@ erDiagram
     agent_deployments ||--o{ agent_executions : "deployment_id"
     processes ||--o{ agent_executions : "process_id"
     agent_executions ||--o{ execution_steps : "execution_id"
-    agent_deployments ||--o{ review_tasks : "deployment_id"
-    agent_executions ||--o{ review_tasks : "execution_id"
+    agent_deployments o|--o{ review_tasks : "deployment_id"
+    agent_executions o|--o{ review_tasks : "execution_id"
     processes ||--o{ review_tasks : "process_id"
     agent_deployments ||--o{ tool_circuits : "deployment_id"
+    processes ||--o{ process_executions : "process_id"
+    processes ||--o{ process_runtime : "process_id"
 ```
 
 ### Identity and access (Epics 9-10, 37, 38)
@@ -1735,6 +1753,8 @@ Epic 39, US39.3: one real case run by a deployment. Summary columns are kept up 
 | `shadow_of` | string | yes | indexed |
 | `reported_outcome` | json | yes |  |
 | `reported_at` | datetime | yes |  |
+| `parent_execution_id` | string | yes | indexed |
+| `routing` | json | yes |  |
 
 #### `execution_steps` (ExecutionStepModel)
 
@@ -1753,13 +1773,15 @@ Epic 39, US39.3: one step of an execution, appended as it happens. No code updat
 
 #### `review_tasks` (ReviewTaskModel)
 
-Epic 39, US39.10: one live case waiting for a person. `kind` "checkpoint" is a human checkpoint the agent asked for: deciding it resumes the execution. "escalation" is a case the agent passed on: resolving it records the outcome by hand. `assignee_role` names who should take it (the approval matrix or the escalation policy); `level` is its place in the matrix, raised when it goes overdue.
+Epic 39, US39.10: one live case waiting for a person. `kind` "checkpoint" is a human checkpoint the agent asked for: deciding it resumes the execution. "escalation" is a case the agent passed on: resolving it records the outcome by hand. `assignee_role` names who should take it (the approval matrix or the escalation policy); `level` is its place in the matrix, raised when it goes overdue. US39.17: "human_task" is a step of a process execution that no agent runs (`process_execution_id`, `node_id`; no execution or deployment): resolving it moves the case on.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | string | no | primary key |
-| `execution_id` | string | no | -> `agent_executions.id` (cascade); indexed |
-| `deployment_id` | string | no | -> `agent_deployments.id` (cascade); indexed |
+| `execution_id` | string | yes | -> `agent_executions.id` (cascade); indexed |
+| `deployment_id` | string | yes | -> `agent_deployments.id` (cascade); indexed |
+| `process_execution_id` | string | yes | indexed |
+| `node_id` | string | yes |  |
 | `process_id` | string | no | -> `processes.id` (cascade); indexed |
 | `kind` | string | no |  |
 | `status` | string | no | indexed |
@@ -1806,6 +1828,44 @@ Epic 39, US39.9: the circuit breaker for one system of one deployment, shared by
 | `recent` | json | no |  |
 | `opened_at` | datetime | yes |  |
 | `reason` | text | yes |  |
+
+#### `process_executions` (ProcessExecutionModel)
+
+Epic 39, US39.17: one case through a whole process, along its real flow (the version its deployed agents were generated from). Each agent node runs as an execution of that node's live deployment, with `parent_execution_id` pointing here; a node with no live deployment is a human task in the inbox. `node_runs` and `visited_path` are the walk's own record; `resume_state` holds it while it waits.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `process_id` | string | no | -> `processes.id` (cascade); indexed |
+| `version_id` | string | no |  |
+| `client_id` | string | yes |  |
+| `trigger` | string | no |  |
+| `idempotency_key` | string | no |  |
+| `requested_by` | string | yes |  |
+| `status` | string | no | indexed |
+| `input` | json | yes |  |
+| `final_output` | json | yes |  |
+| `deviations` | json | no |  |
+| `node_runs` | json | no |  |
+| `visited_path` | json | no |  |
+| `resume_state` | json | yes |  |
+| `total_cost_usd` | float | yes |  |
+| `total_tokens` | int | no |  |
+| `created_at` | datetime | no |  |
+| `started_at` | datetime | yes |  |
+| `completed_at` | datetime | yes |  |
+
+#### `process_runtime` (ProcessRuntimeModel)
+
+Epic 39, US39.17: a whole process paused or stopped. Paused: new cases are refused and running ones wait before their next step. Killed: every deployment of the process is killed too, and the process takes no cases until someone sets it active again.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `process_id` | string | no | primary key; -> `processes.id` (cascade) |
+| `status` | string | no |  |
+| `reason` | text | yes |  |
+| `changed_by` | string | yes |  |
+| `changed_at` | datetime | no |  |
 
 ### Identity and access (Epics 9-10, 37, 38)
 

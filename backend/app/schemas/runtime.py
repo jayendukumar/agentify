@@ -183,8 +183,11 @@ class ExecutionIn(BaseModel):
 
 class ReviewTask(BaseModel):
     id: str
-    execution_id: str
-    deployment_id: str
+    # A process case's human task (US39.17) has no execution or deployment.
+    execution_id: str | None = None
+    deployment_id: str | None = None
+    process_execution_id: str | None = None
+    node_id: str | None = None
     process_id: str
     agent_name: str = ""
     kind: str
@@ -323,3 +326,50 @@ class ReportsIn(BaseModel):
 class ReportsResult(BaseModel):
     accepted: int
     duplicates: int
+
+
+class ProcessExecutionSummary(BaseModel):
+    """US39.17: one case through the whole process."""
+
+    id: str
+    process_id: str
+    version_id: str
+    status: str
+    trigger: str = "api"
+    created_at: datetime
+    completed_at: datetime | None = None
+    total_cost_usd: float | None = None
+    total_tokens: int = 0
+
+
+class ProcessExecution(ProcessExecutionSummary):
+    client_id: str | None = None
+    input: dict[str, Any] | None = None
+    final_output: dict[str, Any] | None = None
+    deviations: list[TwinDeviation] = []
+    visited_path: list[str] = []
+    node_runs: list[dict[str, Any]] = []
+    node_executions: list[ExecutionSummary] = []
+    open_tasks: list[str] = []
+
+
+class ProcessCaseAccepted(BaseModel):
+    """What a caller system gets back for a process case."""
+
+    id: str
+    status: str
+    final_output: dict[str, Any] | None = None
+    deviations: list[TwinDeviation] = []
+
+
+class ProcessRuntimeIn(BaseModel):
+    status: Literal["active", "paused", "killed"]
+    reason: str = Field(default="", max_length=2000)
+
+
+class ProcessRuntime(BaseModel):
+    process_id: str
+    status: str = "active"
+    reason: str | None = None
+    changed_by: str | None = None
+    changed_at: datetime | None = None

@@ -5,7 +5,9 @@ import type { ReviewTask, RuntimeNotification } from '../api/types'
 // Epic 39, US39.10: live cases waiting for a person. A checkpoint is the
 // agent asking before it acts: approving or rejecting it lets the case go
 // on. An escalation is a case the agent passed on: you finish it by hand
-// and record the outcome.
+// and record the outcome. A step for a person is part of a whole-process
+// case that no agent runs (US39.17): record what you did and the case
+// moves on.
 
 function when(value: string): string {
   return new Date(value.endsWith('Z') ? value : `${value}Z`).toLocaleString()
@@ -122,13 +124,21 @@ function ResolveActions({ task, onDone }: { task: ReviewTask; onDone: (task: Rev
   )
 }
 
+// US39.17: a "human_task" is a step of a whole-process case that no agent
+// runs; resolving it moves the case on to its next step.
+const KIND_LABELS: Record<ReviewTask['kind'], string> = {
+  checkpoint: 'Asks before acting',
+  escalation: 'Passed on to a person',
+  human_task: 'A step for a person',
+}
+
 function TaskCard({ task, onDone }: { task: ReviewTask; onDone: (task: ReviewTask) => void }) {
   const open = task.status === 'open'
   return (
     <li className="inbox-task">
       <div className="inbox-task-head">
         <strong>{task.agent_name}</strong>
-        <span className="badge">{task.kind === 'checkpoint' ? 'Asks before acting' : 'Passed on to a person'}</span>
+        <span className="badge">{KIND_LABELS[task.kind]}</span>
         {task.overdue && <span className="badge status-failed">Overdue</span>}
         {task.level > 0 && <span className="badge">Escalated {task.level}x</span>}
         {!open && <span className="badge status-done">{task.decision ?? task.status}</span>}
@@ -141,7 +151,7 @@ function TaskCard({ task, onDone }: { task: ReviewTask; onDone: (task: ReviewTas
       <Fields title="Case" values={task.case_input} />
       {!open && task.comment && <p className="meta">Comment: {task.comment}</p>}
       {open && task.kind === 'checkpoint' && <CheckpointActions task={task} onDone={onDone} />}
-      {open && task.kind === 'escalation' && <ResolveActions task={task} onDone={onDone} />}
+      {open && task.kind !== 'checkpoint' && <ResolveActions task={task} onDone={onDone} />}
     </li>
   )
 }

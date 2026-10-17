@@ -4195,3 +4195,46 @@ reported executions are ordinary `agent_executions` rows (trigger
 "report metrics back to the drift view through the same metrics API"
 needed no new metrics code: the Runtime page, alert rules and drift
 check read executions and steps, wherever they ran.
+
+## 2026-10-17 -- Epic 39 build step 5: whole-process execution (US39.17)
+
+### The orchestrator's walk gets an agent-runner port, and production runs real executions through it
+
+`run_orchestration` already walked the flow, resolved gateways, handed
+the case file on and suspended and resumed around people. What was
+twin-only was how it ran an agent node (`run_scenario` with simulated
+tools). The walk now takes an `agent_runner`. Production's runner creates
+an ordinary execution of the node's live deployment and runs it inline
+through `jobs.run_execution`. So identity, adapters, caps, circuits and
+the kill switch apply unchanged, and the node's execution shows on its
+deployment's page like any other. The alternative, an event-driven state
+machine rebuilding the walk in `app/runtime`, would have duplicated the
+gateway and hand-off logic the twin has already tested. That is the same
+reasoning as US39.1's single executor.
+
+### Allowing the runtime to import the orchestrator from the twin package
+
+The runtime's import boundary (only `app.twin.gateway`) now also allows
+`app.twin.orchestrator`. Production never takes the twin paths inside it:
+it always passes its runner, and every person's step is configured
+"manual", so the probability or rule simulators are never consulted. The
+cost is that the production worker loads the twin's engine module. Moving
+the walk into `app/runtime` (as US39.1 moved the executor) is the clean
+version, left for when the walk next changes.
+
+### A person's step is a review task without an execution
+
+The inbox already had SLAs, escalation and "who may decide" for live
+cases, so a process step no agent covers became a `human_task` review
+task: `execution_id` and `deployment_id` are now nullable, and
+`process_execution_id`/`node_id` say where it belongs. It's resolved, not
+approved, because the person records what they did ("contractId") and
+that joins the case. Overdue ones escalate to the process's reviewers.
+
+### Found live: an agent can ask for review more than once on one node
+
+The first live run hung waiting for the person's step: the agent asked
+for review before looking the customer up and again before opening the
+account, and the smoke test only approved the first. The walk was right
+(it waited on the node's second checkpoint). The smoke test now approves
+each of the node's checkpoints until the case moves on.

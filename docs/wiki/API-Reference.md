@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**301 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**307 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -382,10 +382,14 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/rollback` | `runtime.stop` |  |
 | PUT | `/api/processes/{process_id}/deployments/{deployment_id}/settings` | `org.admin` | US39.9/US39.12: an admin adjusts caps, pause rules, the review SLA and what new work does while paused. Given keys replace the defaults. |
 | GET | `/api/processes/{process_id}/executions/{execution_id}` | signed in |  |
+| GET | `/api/processes/{process_id}/process-executions` | signed in |  |
+| GET | `/api/processes/{process_id}/process-executions/{process_execution_id}` | signed in |  |
 | GET | `/api/processes/{process_id}/review-tasks/{task_id}` | signed in |  |
 | POST | `/api/processes/{process_id}/review-tasks/{task_id}/decide` | `runtime.review` | Approve or reject a checkpoint; the case resumes on a worker. |
 | POST | `/api/processes/{process_id}/review-tasks/{task_id}/resolve` | `runtime.review` | Close an escalated case by hand, with the outcome reached. |
 | POST | `/api/processes/{process_id}/review-tasks/{task_id}/to-dataset` | `agent.test` | US39.10: a person's answer on a live case becomes a golden row. |
+| GET | `/api/processes/{process_id}/runtime` | signed in |  |
+| PUT | `/api/processes/{process_id}/runtime` | `runtime.stop` | Pause, stop or reopen the whole process: every node at once. |
 | GET | `/api/runtime/clients` | `org.admin` |  |
 | POST | `/api/runtime/clients` | `org.admin` | With `oauth_client_id`, the system signs in through the tenant's IdP and no token is issued here. Without, it gets a bearer token. The token |
 | POST | `/api/runtime/clients/{client_id}/revoke` | `org.admin` |  |
@@ -399,6 +403,8 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/runtime/v1/executions/{execution_id}` | public |  |
 | POST | `/runtime/v1/executions/{execution_id}/outcome` | public | US39.13/US39.15: what really happened to the case. It is what a shadow version is checked against, and live accuracy for drift. |
 | GET | `/runtime/v1/handoff/keys` | public | US39.18: the public key a receiving platform checks a hand-off's evidence with (JWKS). Public: it proves, it doesn't grant. |
+| GET | `/runtime/v1/process-executions/{process_execution_id}` | public |  |
+| POST | `/runtime/v1/processes/{process_id}/executions` | public | US39.17: one case through the whole process. A client limited to some deployments can't start a whole process. |
 
 ### scim
 

@@ -58,6 +58,7 @@ DOMAINS: dict[str, list[str]] = {
     "Agent runtime (Epic 39)": [
         "agent_identities", "agent_deployments", "adapter_bindings", "runtime_clients", "event_subscriptions",
         "agent_executions", "execution_steps", "review_tasks", "runtime_notifications", "tool_circuits",
+        "process_executions", "process_runtime",
     ],
     "Identity and access (Epics 9-10, 37, 38)": [
         "users", "user_roles", "user_identities", "sessions", "session_tokens", "oidc_login_requests",

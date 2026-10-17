@@ -20,6 +20,12 @@ convenience index over that same list, not their own trace. The walk can
 now suspend (`WAITING_FOR_HUMAN`) and resume mid-node -- either inside a
 nested agent's own manual checkpoint, or at a manual node's own checkpoint
 -- and can be cooperatively cancelled, exactly like a standalone twin run.
+
+Epic 39, US39.17: the walk runs in production too. `agent_runner` replaces
+how an agent node is run -- by default the twin's `run_scenario`; in
+production (app/runtime/processes.py) a real execution of the node's live
+deployment. On resuming a manual node, `human_output` (what the person
+recorded) joins the case.
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ import json
 import random
 import re
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal, Protocol
 
 from app.bpmn.nodes import FlowNodeInfo
 from app.ids import utcnow
@@ -119,6 +125,15 @@ class NodeArtifact:
     artifact_id: str
     definition: AgentDefinition
     tool_schemas: dict[str, InferredToolSchema]
+
+
+class AgentRunner(Protocol):
+    """How the walk runs one agent node. Returns something shaped like the
+    twin's RunOutcome (status, final_output, deviations, total_cost_usd,
+    total_tokens, resume_state, steps)."""
+
+    async def __call__(self, node: FlowNodeInfo, artifact: NodeArtifact, inputs: dict[str, Any], *,
+                       resume_state: dict[str, Any] | None, routing: tuple[str, list[str]] | None) -> Any: ...
 
 
 @dataclass
@@ -249,6 +264,8 @@ async def run_orchestration(
     on_phase: Callable[[RunStatus], Awaitable[None]] | None = None,
     decision_rules: list[RuleView] | None = None,
     seed: int | None = None,
+    agent_runner: AgentRunner | None = None,
+    human_output: dict[str, Any] | None = None,
 ) -> OrchestrationOutcome:
     """Epic 36: `decision_rules` are the process's confirmed rules, used by
     `rules`-routed gateways; `seed` (a batch case's own) seeds every manual
@@ -363,6 +380,25 @@ async def run_orchestration(
             how["used_configured_decision"] = True
         return decision.to_node_id, None, how
 
+    async def twin_runner(node: FlowNodeInfo, artifact: NodeArtifact, inputs: dict[str, Any], *,
+                          resume_state: dict[str, Any] | None, routing: tuple[str, list[str]] | None) -> Any:
+        node_scenario = TwinScenario(
+            id="orchestration-inline", agent_artifact_id=artifact.artifact_id, name=node.label,
+            inputs=inputs, system_stubs=scenario.system_stubs.get(node.id, {}),
+            human_checkpoint_config=checkpoint_config(
+                scenario.human_checkpoint_config.get(node.id, TwinHumanCheckpointConfig()), node.id
+            ),
+            expected_steps=[], expected_outputs={}, created_at=utcnow(),
+        )
+        return await run_scenario(
+            llm, artifact=artifact.definition, tool_schemas=artifact.tool_schemas, scenario=node_scenario,
+            max_turns=max_turns_per_node, environment=environment, resume_state=resume_state,
+            human_decision=human_decision if resume_state is not None else None, node_id=node.id,
+            on_step=relay, on_phase=on_phase, routing=routing,
+        )
+
+    run_agent = agent_runner or twin_runner
+
     class _NodeSuspend:
         def __init__(self, manual: bool, node_resume_state: dict[str, Any] | None):
             self.manual = manual
@@ -386,20 +422,8 @@ async def run_orchestration(
 
         if artifact is not None:
             if node_resume_state is not None:
-                outcome = await run_scenario(
-                    llm, artifact=artifact.definition, tool_schemas=artifact.tool_schemas,
-                    scenario=TwinScenario(
-                        id="orchestration-inline", agent_artifact_id=artifact.artifact_id, name=node.label,
-                        inputs=current_data, system_stubs=scenario.system_stubs.get(node.id, {}),
-                        human_checkpoint_config=checkpoint_config(
-                            scenario.human_checkpoint_config.get(node.id, TwinHumanCheckpointConfig()), node.id
-                        ),
-                        expected_steps=[], expected_outputs={}, created_at=utcnow(),
-                    ),
-                    max_turns=max_turns_per_node, environment=environment, resume_state=node_resume_state,
-                    human_decision=human_decision, node_id=node.id, on_step=relay, on_phase=on_phase,
-                    routing=routing_for(node),
-                )
+                outcome = await run_agent(node, artifact, current_data, resume_state=node_resume_state,
+                                          routing=routing_for(node))
             else:
                 # Epic 36, US36.2: with a case file, every earlier fact is
                 # available and same-named fields are copied for free.
@@ -440,19 +464,7 @@ async def run_orchestration(
                     },
                     tokens=adapter_tokens, cost_usd=adapter_cost,
                 )
-                node_scenario = TwinScenario(
-                    id="orchestration-inline", agent_artifact_id=artifact.artifact_id, name=node.label,
-                    inputs=mapped_input, system_stubs=scenario.system_stubs.get(node.id, {}),
-                    human_checkpoint_config=checkpoint_config(
-                        scenario.human_checkpoint_config.get(node.id, TwinHumanCheckpointConfig()), node.id
-                    ),
-                    expected_steps=[], expected_outputs={}, created_at=utcnow(),
-                )
-                outcome = await run_scenario(
-                    llm, artifact=artifact.definition, tool_schemas=artifact.tool_schemas, scenario=node_scenario,
-                    max_turns=max_turns_per_node, environment=environment, node_id=node.id,
-                    on_step=relay, on_phase=on_phase, routing=routing_for(node),
-                )
+                outcome = await run_agent(node, artifact, mapped_input, resume_state=None, routing=routing_for(node))
 
             account_outcome(outcome.total_cost_usd, outcome.total_tokens)
             if outcome.status == "WAITING_FOR_HUMAN":
@@ -498,8 +510,9 @@ async def run_orchestration(
                 "HUMAN_APPROVED" if decision == "approve" else "HUMAN_REJECTED",
                 node_id=node.id, target=node.id, decision=decision,
             )
-            output = {**current_data, "human_decision": decision}
-            case_data.update({"human_decision": decision, f"decision_{node.id}": decision})
+            recorded = dict(human_output or {}) if manual_resume else {}
+            output = {**current_data, **recorded, "human_decision": decision}
+            case_data.update({**recorded, "human_decision": decision, f"decision_{node.id}": decision})
         if manual_cfg.mode == "fixed_stub":
             case_data.update(output)
         node_run = NodeRun(

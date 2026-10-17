@@ -1,10 +1,10 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1708,
-   "mean_cyclomatic": 4.46,
-   "mean_cognitive": 4.13,
-   "max_cognitive": 98,
+   "functions": 1746,
+   "mean_cyclomatic": 4.45,
+   "mean_cognitive": 4.11,
+   "max_cognitive": 99,
    "over_cognitive_limit": 90,
    "over_cyclomatic_limit": 133
   },
@@ -25,10 +25,10 @@
     "lang": "python",
     "file": "backend/app/twin/orchestrator.py",
     "name": "run_orchestration",
-    "line": 236,
-    "length": 517,
-    "cyclomatic": 55,
-    "cognitive": 98
+    "line": 251,
+    "length": 515,
+    "cyclomatic": 56,
+    "cognitive": 99
    },
    {
     "lang": "typescript",
@@ -68,6 +68,15 @@
    },
    {
     "lang": "python",
+    "file": "backend/app/twin/orchestrator.py",
+    "name": "run_orchestration.run_task_node",
+    "line": 407,
+    "length": 117,
+    "cyclomatic": 37,
+    "cognitive": 63
+   },
+   {
+    "lang": "python",
     "file": "backend/app/ingestion/merge.py",
     "name": "merge_process_schemas",
     "line": 37,
@@ -81,15 +90,6 @@
     "name": "patch_group",
     "line": 354,
     "length": 48,
-    "cyclomatic": 35,
-    "cognitive": 60
-   },
-   {
-    "lang": "python",
-    "file": "backend/app/twin/orchestrator.py",
-    "name": "run_orchestration.run_task_node",
-    "line": 371,
-    "length": 140,
     "cyclomatic": 35,
     "cognitive": 60
    },
@@ -216,10 +216,10 @@
     "lang": "python",
     "file": "backend/app/twin/orchestrator.py",
     "name": "run_orchestration",
-    "line": 236,
-    "length": 517,
-    "cyclomatic": 55,
-    "cognitive": 98
+    "line": 251,
+    "length": 515,
+    "cyclomatic": 56,
+    "cognitive": 99
    },
    {
     "lang": "typescript",
@@ -297,9 +297,9 @@
  },
  "duplication": {
   "backend": {
-   "loc": 33212,
+   "loc": 33733,
    "duplicated_lines": 72,
-   "percent": 0.22,
+   "percent": 0.21,
    "clones": [
     {
      "tokens": 89,
@@ -333,8 +333,8 @@
     }
    ],
    "clone_count": 3,
-   "structural_percent": 3.61,
-   "structural_clone_count": 49,
+   "structural_percent": 3.73,
+   "structural_clone_count": 54,
    "structural_clones": [
     {
      "tokens": 283,
@@ -382,8 +382,8 @@
      "a_start": 1759,
      "a_end": 1777,
      "b_file": "backend/app/db/models.py",
-     "b_start": 2108,
-     "b_end": 2129,
+     "b_start": 2119,
+     "b_end": 2140,
      "lines": 22
     },
     {
@@ -419,11 +419,11 @@
     {
      "tokens": 132,
      "a_file": "backend/app/api/runtime.py",
-     "a_start": 229,
-     "a_end": 242,
+     "a_start": 235,
+     "a_end": 248,
      "b_file": "backend/app/api/runtime.py",
-     "b_start": 316,
-     "b_end": 330,
+     "b_start": 322,
+     "b_end": 336,
      "lines": 15
     },
     {
@@ -516,7 +516,7 @@
    ]
   },
   "frontend": {
-   "loc": 18074,
+   "loc": 18087,
    "duplicated_lines": 14,
    "percent": 0.08,
    "clones": [
@@ -532,7 +532,7 @@
     }
    ],
    "clone_count": 1,
-   "structural_percent": 0.58,
+   "structural_percent": 0.57,
    "structural_clone_count": 2,
    "structural_clones": [
     {
@@ -604,9 +604,9 @@
    },
    {
     "node": "app.bpmn",
-    "afferent": 7,
+    "afferent": 8,
     "efferent": 3,
-    "instability": 0.3
+    "instability": 0.27
    },
    {
     "node": "app.catalog",
@@ -694,9 +694,9 @@
    },
    {
     "node": "app.oracles",
-    "afferent": 5,
+    "afferent": 6,
     "efferent": 10,
-    "instability": 0.67
+    "instability": 0.62
    },
    {
     "node": "app.process_twin",
@@ -719,8 +719,8 @@
    {
     "node": "app.runtime",
     "afferent": 4,
-    "efferent": 15,
-    "instability": 0.79
+    "efferent": 17,
+    "instability": 0.81
    },
    {
     "node": "app.schemas",
@@ -762,7 +762,7 @@
   "backend_modules_top": [
    {
     "node": "app.db.models",
-    "afferent": 79,
+    "afferent": 80,
     "efferent": 0,
     "instability": 0.0
    },
@@ -774,13 +774,13 @@
    },
    {
     "node": "app.ids",
-    "afferent": 54,
+    "afferent": 55,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.config",
-    "afferent": 50,
+    "afferent": 51,
     "efferent": 0,
     "instability": 0.0
    },
@@ -798,21 +798,21 @@
    },
    {
     "node": "app.jobs.worker",
-    "afferent": 13,
+    "afferent": 14,
     "efferent": 16,
-    "instability": 0.55
+    "instability": 0.53
+   },
+   {
+    "node": "app.api.runtime",
+    "afferent": 1,
+    "efferent": 27,
+    "instability": 0.96
    },
    {
     "node": "app.tenancy.identity",
     "afferent": 23,
     "efferent": 5,
     "instability": 0.18
-   },
-   {
-    "node": "app.api.runtime",
-    "afferent": 1,
-    "efferent": 26,
-    "instability": 0.96
    },
    {
     "node": "app.db.session",
@@ -822,33 +822,33 @@
    },
    {
     "node": "app.schemas.agents",
-    "afferent": 24,
+    "afferent": 25,
     "efferent": 1,
     "instability": 0.04
    },
    {
     "node": "app.auth.audit",
-    "afferent": 21,
+    "afferent": 22,
     "efferent": 3,
     "instability": 0.12
+   },
+   {
+    "node": "app.runtime.jobs",
+    "afferent": 4,
+    "efferent": 20,
+    "instability": 0.83
+   },
+   {
+    "node": "app.schemas.run",
+    "afferent": 23,
+    "efferent": 1,
+    "instability": 0.04
    },
    {
     "node": "app.llm",
     "afferent": 19,
     "efferent": 4,
     "instability": 0.17
-   },
-   {
-    "node": "app.schemas.run",
-    "afferent": 22,
-    "efferent": 1,
-    "instability": 0.04
-   },
-   {
-    "node": "app.api.organization",
-    "afferent": 1,
-    "efferent": 21,
-    "instability": 0.95
    }
   ],
   "frontend_dirs": [
@@ -1005,6 +1005,7 @@
     "app.runtime.handoff",
     "app.runtime.jobs",
     "app.runtime.monitoring",
+    "app.runtime.processes",
     "app.runtime.telemetry",
     "app.tenancy.export"
    ],
@@ -1082,7 +1083,7 @@
     "frontend/src/components"
    ]
   ],
-  "deferred_import_count": 79
+  "deferred_import_count": 84
  },
  "dead_code": {
   "python": [
@@ -1130,7 +1131,7 @@
    },
    {
     "file": "backend/app/runtime/jobs.py",
-    "line": 495,
+    "line": 520,
     "name": "queue_submission",
     "kind": "function",
     "status": "test-only"
@@ -1986,9 +1987,17 @@
    "file": "backend/app/twin/orchestrator.py",
    "commits": 5,
    "lines_changed": 1304,
-   "cognitive": 246,
-   "loc": 685,
-   "score": 1230
+   "cognitive": 251,
+   "loc": 692,
+   "score": 1255
+  },
+  {
+   "file": "backend/app/api/runtime.py",
+   "commits": 7,
+   "lines_changed": 981,
+   "cognitive": 157,
+   "loc": 782,
+   "score": 1099
   },
   {
    "file": "backend/app/oracles/service.py",
@@ -2007,14 +2016,6 @@
    "score": 840
   },
   {
-   "file": "backend/app/api/runtime.py",
-   "commits": 6,
-   "lines_changed": 929,
-   "cognitive": 135,
-   "loc": 704,
-   "score": 810
-  },
-  {
    "file": "frontend/src/pages/ProcessDetailPage.tsx",
    "commits": 10,
    "lines_changed": 370,
@@ -2023,12 +2024,28 @@
    "score": 740
   },
   {
+   "file": "backend/app/runtime/deployments.py",
+   "commits": 5,
+   "lines_changed": 627,
+   "cognitive": 129,
+   "loc": 463,
+   "score": 645
+  },
+  {
    "file": "backend/app/llm/client.py",
    "commits": 7,
    "lines_changed": 385,
    "cognitive": 85,
    "loc": 313,
    "score": 595
+  },
+  {
+   "file": "backend/app/runtime/jobs.py",
+   "commits": 5,
+   "lines_changed": 897,
+   "cognitive": 113,
+   "loc": 469,
+   "score": 565
   },
   {
    "file": "frontend/src/pages/DiagramPage.tsx",
@@ -2055,14 +2072,6 @@
    "score": 525
   },
   {
-   "file": "backend/app/runtime/deployments.py",
-   "commits": 4,
-   "lines_changed": 616,
-   "cognitive": 129,
-   "loc": 463,
-   "score": 516
-  },
-  {
    "file": "frontend/src/components/OrchestrationPanel.tsx",
    "commits": 5,
    "lines_changed": 525,
@@ -2072,11 +2081,11 @@
   },
   {
    "file": "backend/app/config.py",
-   "commits": 17,
-   "lines_changed": 364,
+   "commits": 18,
+   "lines_changed": 367,
    "cognitive": 28,
    "loc": 307,
-   "score": 476
+   "score": 504
   },
   {
    "file": "backend/app/api/organization.py",
@@ -2093,14 +2102,6 @@
    "cognitive": 109,
    "loc": 540,
    "score": 436
-  },
-  {
-   "file": "backend/app/runtime/jobs.py",
-   "commits": 4,
-   "lines_changed": 895,
-   "cognitive": 107,
-   "loc": 449,
-   "score": 428
   },
   {
    "file": "backend/app/batches/results.py",
@@ -2819,6 +2820,16 @@
    "endpoints": 275,
    "stories": 287,
    "stories_implemented": 259
+  },
+  {
+   "commit": "0f69860",
+   "date": "2026-10-17",
+   "subject": "Build Epic 39 US39.18: certified hand-off to the customer's platform",
+   "prod_loc": 51286,
+   "test_loc": 17551,
+   "endpoints": 277,
+   "stories": 287,
+   "stories_implemented": 259
   }
  ],
  "mutation": {
@@ -3148,9 +3159,9 @@
   }
  },
  "size": {
-  "backend_prod_loc": 33212,
-  "backend_test_loc": 13756,
-  "frontend_prod_loc": 18074,
-  "frontend_test_loc": 3795
+  "backend_prod_loc": 33733,
+  "backend_test_loc": 13873,
+  "frontend_prod_loc": 18087,
+  "frontend_test_loc": 3811
  }
 }
