@@ -5,8 +5,9 @@ from collections.abc import Iterator
 from functools import lru_cache
 
 from fastapi import Request
-from sqlalchemy import Connection, Engine, create_engine, event, text
+from sqlalchemy import Connection, Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, SessionTransaction, sessionmaker
+from sqlalchemy.sql.util import find_tables
 
 from app.config import get_settings
 from app.tenancy.context import current_tenant_id
@@ -27,9 +28,35 @@ def get_owner_engine() -> Engine:
     return create_engine(settings.database_owner_url or settings.database_url, pool_pre_ping=True)
 
 
+def _platform_only(mapper, clause) -> bool:
+    from app.db.models import NON_TENANT_TABLES
+
+    mapped = inspect(mapper, raiseerr=False) if mapper is not None else None
+    names = {t.name for t in getattr(mapped, "tables", ())}
+    if clause is not None:
+        names |= {t.name for t in find_tables(clause, include_crud=True) if hasattr(t, "name")}
+    return bool(names) and names <= NON_TENANT_TABLES
+
+
+class TenantSession(Session):
+    """Epic 38, US38.14: a tenant with a database of its own has its
+    statements sent there (app/tenancy/databases.py). Statements touching
+    only platform tables stay on the shared database, which holds them."""
+
+    def get_bind(self, mapper=None, *, clause=None, bind=None, **kw):
+        tenant_id = self.info.get("tenant_id") or current_tenant_id()
+        if bind is None and tenant_id:
+            from app.tenancy.databases import engine_for
+
+            engine = engine_for(tenant_id)
+            if engine is not None and not _platform_only(mapper, clause):
+                return engine
+        return super().get_bind(mapper, clause=clause, bind=bind, **kw)
+
+
 @lru_cache
 def get_session_factory() -> sessionmaker[Session]:
-    return sessionmaker(bind=get_engine(), expire_on_commit=False)
+    return sessionmaker(bind=get_engine(), class_=TenantSession, expire_on_commit=False)
 
 
 @lru_cache

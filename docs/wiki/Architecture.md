@@ -1,6 +1,6 @@
 # Architecture
 
-Last reviewed: 2026-10-16 · Sources: `backend/app`, `frontend/src`, `docker-compose.yml`, `planning/epics`
+Last reviewed: 2026-10-17 · Sources: `backend/app`, `frontend/src`, `docker-compose.yml`, `planning/epics`
 
 Axyntro turns business-process documentation into a reviewed BPMN
 process, evaluates every step for AI-agent automation, generates agent
@@ -92,7 +92,7 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | Package | Files | Lines | Purpose (from its docstring) |
 |---|---|---|---|
 | `app/agents` | 3 | 241 | Epic 12, US12.1/US12.2: deterministic mapping from a blueprint node's AgentSpec (Epic 7) to a portable AgentDefinition. No LLM call here -- the blueprint evalua |
-| `app/api` | 32 | 4,309 |  |
+| `app/api` | 33 | 4,401 |  |
 | `app/auth` | 9 | 1,649 | Epic 37, US37.6: the append-only audit trail. |
 | `app/batches` | 3 | 849 | Epic 34: batch execution at volume. |
 | `app/blueprint` | 3 | 219 | Epic 7 / agentic-blueprint-evaluator skill: the system instructions + JSON response contract for per-node automation feasibility evaluation. Same prompt-with-ex |
@@ -102,19 +102,19 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | `app/connectors` | 7 | 658 | Epic 31, US31.2: read-only connectors to systems of record. |
 | `app/context` | 13 | 2,389 | Epics 27-28: the organization context layer -- see planning/enterprise-context-strategy.md. |
 | `app/datasets` | 3 | 548 | Epic 32: labelled datasets and ground truth. |
-| `app/db` | 4 | 3,770 | SQLAlchemy ORM models for Epic 2 (Business Process Knowledge Store) -- processes, documents, the extracted process schema (actors/elements/ source_refs/flows),  |
+| `app/db` | 4 | 3,817 | SQLAlchemy ORM models for Epic 2 (Business Process Knowledge Store) -- processes, documents, the extracted process schema (actors/elements/ source_refs/flows),  |
 | `app/gap_analysis` | 3 | 282 | Epic 11: the system instructions + JSON response contract for gap analysis. Same prompt-with-explicit-schema-contract pattern as app/chat/prompts.py/app/bluepri |
 | `app/ingestion` | 7 | 824 | US2.3: local embedding generation for extracted document content. |
-| `app/jobs` | 3 | 331 | Epic 31, US31.1: the durable job queue. |
-| `app/llm` | 8 | 834 |  |
-| `app/operators` | 3 | 241 | Epic 38, US38.8: the operator console -- the hosting company's own view of the deployment, separate from every tenant. |
+| `app/jobs` | 3 | 343 | Epic 31, US31.1: the durable job queue. |
+| `app/llm` | 8 | 844 |  |
+| `app/operators` | 3 | 261 | Epic 38, US38.8: the operator console -- the hosting company's own view of the deployment, separate from every tenant. |
 | `app/oracles` | 5 | 818 | Epic 33: scalable oracles -- rules, label-first generation, metamorphic relations, calibrated judges. |
 | `app/process_twin` | 4 | 604 | Epic 36: the process digital twin -- the whole process run over many cases, measured against today. |
 | `app/registry` | 4 | 222 | Epic 13, US13.1: the registry connector interface every registry backend implements identically -- the local reference connector (app/registry/local.py) today,  |
-| `app/schemas` | 27 | 2,405 |  |
+| `app/schemas` | 28 | 2,449 |  |
 | `app/scim` | 3 | 491 | Epic 37, US37.10: the inbound SCIM 2.0 server (RFC 7643/7644) the customer's IdP provisions users and groups through. Not Epic 31's outbound ScimConnector, whic |
-| `app/secret_store` | 1 | 104 | Epic 38, US38.10: each tenant's secrets, kept apart. |
-| `app/tenancy` | 9 | 786 | Epic 38: many organizations ("tenants") on one deployment, kept apart by Postgres row-level security. See planning/epics/38-multi-tenancy.md. |
+| `app/secret_store` | 1 | 139 | Epic 38, US38.10: each tenant's secrets, kept apart. |
+| `app/tenancy` | 14 | 1,467 | Epic 38: many organizations ("tenants") on one deployment, kept apart by Postgres row-level security. See planning/epics/38-multi-tenancy.md. |
 | `app/twin` | 14 | 2,654 | Epic 19, US19.4: a plain-English behavioral diff between two runs -- typically two versions of the same agent (US19.5's `AgentArtifact.version`), but works for  |
 <!-- END GENERATED: module-inventory -->
 
@@ -251,6 +251,7 @@ flowchart LR
     scim --> tenancy
     tenancy --> auth
     tenancy --> db
+    tenancy --> jobs
     tenancy --> secret_store
     twin --> bpmn
     twin -.-> catalog
@@ -426,7 +427,7 @@ stateDiagram-v2
 | Concern | How it's done today | Where |
 |---|---|---|
 | Authentication | `AUTH_MODE=oidc`: the API runs the OIDC code flow with PKCE against the customer's IdP, verifies the ID token and MFA (`amr`/`acr`), and matches people by issuer and subject. `AUTH_MODE=local` (a name and self-picked roles) is for development and demos only. Sessions: a 15-minute session cookie renewed from a rotating refresh cookie (hashed tokens, reuse detection), a 30-minute idle timeout and a 12-hour cap, a CSRF header on writes, and revocation by the user, an admin or the IdP. SCIM provisioning (`/scim/v2`) and group-to-role mappings keep people and roles in step with the directory. SAML is still to come (see the [Glossary](Glossary.md)) | `auth/oidc.py`, `api/oidc.py`, `scim/`, `api/scim.py`, `auth/directory.py`, `auth/sessions.py`, `api/auth.py`, `api/deps.py` |
-| Tenancy | Each customer is a tenant, reached at its own host names. A middleware resolves the host before routing (unknown host: 404; suspended: 403). Every transaction sets `app.tenant_id`, and Postgres row-level security on every table does the rest; the API connects as a role that can't bypass it. Jobs run as their tenant. Each tenant has its own IdP (`tenant_identity`, the Directory page), with providers cached per tenant. The operator console has its own host, IdP, sessions and audit log, and connects as a role with no privilege on tenant tables; operators enter a tenant only as support, under a grant its admin gave. Secrets, files and quotas aren't per tenant yet (Epic 38, step 3) | `tenancy/`, `operators/`, `auth/support.py`, `db/session.py`, `jobs/worker.py`, `auth/oidc.py`, migrations `f2a3b4c5d6e7`, `a3b4c5d6e7f8`, `b4c5d6e7f8a9` |
+| Tenancy | Each customer is a tenant, reached at its own host names. A middleware resolves the host before routing (unknown host: 404; suspended: 403). Every transaction sets `app.tenant_id`, and Postgres row-level security on every table does the rest; the API connects as a role that can't bypass it. Jobs run as their tenant. Each tenant has its own IdP (`tenant_identity`, the Directory page), with providers cached per tenant. The operator console has its own host, IdP, sessions and audit log, and connects as a role with no privilege on tenant tables; operators enter a tenant only as support, under a grant its admin gave. Secrets, files, quotas, model policy and registries are per tenant. Lifecycle: suspend, an admin's one-time data export (a job), delete with a waiting period, then erase with a deletion certificate. A tenant may have its own database (sessions route per statement; migrations run against it), and a deployment may serve one region, keeping tenants and model calls in it | `tenancy/`, `operators/`, `auth/support.py`, `db/session.py`, `jobs/worker.py`, `auth/oidc.py`, `secret_store/`, migrations `f2a3b4c5d6e7`, `a3b4c5d6e7f8`, `b4c5d6e7f8a9`, `b1c2d3e4f5a6`, `c2d3e4f5a6b7` |
 | Authorization | Six roles mapped to permissions, scoped to the organization or a business unit. Every write route declares the permission it needs. Segregation of duties is enforced on the change history, and every privileged action goes to an append-only audit log. Organization-context visibility is separate (Epic 31 memberships) | `auth/permissions.py`, `auth/sod.py`, `auth/audit.py`, `api/deps.py`, `context/access.py` |
 | LLM governance | Per-business-unit policy: provider allow-list, residency, self-hosted endpoint, PII redaction; usage and cost logged per operation | `llm/routing.py`, `llm/client.py`, `llm/usage.py` |
 | Background work | Postgres job queue (`jobs` table, SKIP LOCKED, leases, retries with backoff), worker in the API process by default | `jobs/` |

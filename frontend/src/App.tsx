@@ -11,6 +11,7 @@ import BatchResultsPage from './pages/BatchResultsPage'
 import DatasetsPage from './pages/DatasetsPage'
 import DirectoryPage from './pages/DirectoryPage'
 import UsagePage from './pages/UsagePage'
+import DataExportPage from './pages/DataExportPage'
 import GapReviewPage from './pages/GapReviewPage'
 import ProcessDetailPage from './pages/ProcessDetailPage'
 import OrganizationPage from './pages/OrganizationPage'
@@ -82,6 +83,11 @@ function AppHeader() {
                 Usage
               </NavLink>
             )}
+            {can('org.admin') && (
+              <NavLink to="/data-export" className="app-header-nav-link">
+                Data export
+              </NavLink>
+            )}
             <NavLink to="/sessions" className="app-header-nav-link">
               Sessions
             </NavLink>
@@ -147,6 +153,7 @@ function AppRoutes() {
       <Route path="/sessions" element={<SessionsPage />} />
       <Route path="/directory" element={<DirectoryPage />} />
       <Route path="/usage" element={<UsagePage />} />
+      <Route path="/data-export" element={<DataExportPage />} />
       <Route path="/processes/:processId" element={<ProcessDetailPage />} />
       <Route path="/processes/:processId/diagram" element={<DiagramPage />} />
       <Route path="/processes/:processId/versions" element={<VersionsPage />} />

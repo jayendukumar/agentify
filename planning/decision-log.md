@@ -3749,3 +3749,90 @@ platform transaction first, then onboards as the tenant. If onboarding
 then fails, the tenant exists without a first admin, and the console
 offers a new invitation.
 
+
+## 2026-10-17 -- Epic 38, US38.13-38.15: the tenant lifecycle, dedicated databases, residency
+
+### Erasing removes the `tenants` row too, and the console's role may now delete it
+
+US38.8 marked a deleted tenant `deleting` and deliberately gave the
+console's role no DELETE on `tenants`. Erasing now removes every tenant
+row as the tenant (app role, row-level security, one DELETE per table,
+children first), then the console deletes the tenant's `tenant_domains`
+and `tenants` rows, so the slug and hosts are free again and nothing of
+the tenant is left but the certificate. Foreign keys make the order safe:
+the `tenants` row can't go while any tenant row points at it. The role
+still has no privilege on any tenant table (tests/test_tenancy.py).
+
+### The platform log loses a deleted tenant's personal data
+
+Earlier platform events named people at the tenant (the first admin's
+email in `tenant_created` and `first_admin_invited`). "Nothing of the
+tenant's data remains in that log" rules that out, so erasing rewrites
+those events' `detail` to the slug alone. The console's role got
+column-level UPDATE on `detail` only: the action, time, operator and
+outcome stay untouchable. App log and usage log files still carry the
+tenant id on old lines (US38.10); they're rotated, not rewritten.
+
+### Exports are made while the tenant is active
+
+A suspended tenant's hosts answer 403 and its jobs wait, so its admin
+can't ask for or download an export. Rather than open a hole in
+suspension, the admin exports before the contract ends; an operator can
+reactivate briefly if they didn't. The console shows each tenant's last
+export (made, downloaded) next to the Delete and Erase buttons.
+
+### Exports leave out credential hashes and sign-ins in flight
+
+Every tenant table goes into the archive except `session_tokens`,
+`oidc_login_requests` and `support_entries` (live ways in, worthless
+after), and the hash columns of sessions, SCIM tokens and invitations
+are dropped. So an export is not a byte-for-byte copy -- which is why
+moving a tenant between databases (US38.14) copies tables directly
+instead of exporting and importing as the story suggested.
+
+### Secrets in the environment can't be deleted by the app
+
+With the `files` backend, erasing deletes the tenant's secret files. With
+`env`, the variables belong to the deployment's configuration: the
+certificate lists their names for the operator to remove, and the
+process drops them. Key names are ambiguous across slugs that extend
+each other (`TENANT_ACME_EU_X` is `acme`'s `eu_x` or `acme-eu`'s `x`);
+those are kept and listed, never deleted.
+
+### Dedicated databases route in `Session.get_bind`, with platform tables kept shared
+
+Picking the database per tenant at the session factory would have meant
+knowing the tenant before every session is opened. Routing per
+statement in `get_bind` follows the same tenant context the database
+already uses, and lets one session read `tenants` (limits, created_via)
+from the shared database while its tenant rows come from the tenant's
+own. A tenant whose database secret is missing gets an error, never the
+shared database.
+
+### A move waits for a settled suspension
+
+Which tenant has which database is cached for 30 seconds per process.
+A process that cached "shared" just before a move could otherwise write
+the tenant's new rows to the wrong database. A move requires the tenant
+to have been suspended for at least that long (`attach`/`detach` refuse
+otherwise), so no process is still serving it.
+
+### Found live: one tenant's unreachable database stopped every tenant's jobs
+
+Running the move in the stack showed the worker's tick prepared and
+claimed tenant by tenant inside one try block: a tenant whose database
+secret the worker process lacks raised, and the whole tick was lost, for
+every tenant, every poll. Each tenant's preparation and claim now fails
+on its own (`job_worker_tenant_skipped`), covered by
+`test_one_tenants_unreachable_database_holds_up_only_that_tenant`.
+
+### Residency is a deployment setting, not a tenant one
+
+US38.15 says a tenant's region selects its deployment. So the region
+lives on the deployment (`DEPLOYMENT_REGION`): tenants are only created
+in it, a tenant of another region isn't served even if DNS points at the
+wrong deployment (421), and every LLM call must go to a provider hosted
+in it -- a provider of unknown region doesn't count. Business units can
+still narrow it with their own residency (US31.8). Unset, a deployment
+behaves exactly as before, so single-region installs don't need to
+declare their provider's region.

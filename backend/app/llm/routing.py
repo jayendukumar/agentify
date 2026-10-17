@@ -33,6 +33,8 @@ class LlmRoute:
     redact_pii: bool = False
     blocked_reason: str | None = None
     business_unit: str | None = None
+    # Epic 38, US38.15: where a self-hosted endpoint runs (`base_url`).
+    provider_region: str | None = None
 
 
 current_route: ContextVar[LlmRoute | None] = ContextVar("current_llm_route", default=None)
@@ -64,6 +66,7 @@ def route_from_policy(policy: LlmPolicy, *, unit_name: str | None) -> LlmRoute:
         model=policy.model,
         redact_pii=policy.redact_pii,
         business_unit=unit_name,
+        provider_region=policy.provider_region if policy.base_url else None,
     )
 
 

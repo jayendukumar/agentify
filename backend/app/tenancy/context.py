@@ -27,6 +27,7 @@ class Tenant:
     slug: str
     display_name: str
     status: str
+    region: str | None = None
 
     @property
     def active(self) -> bool:

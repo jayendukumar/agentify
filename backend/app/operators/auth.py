@@ -109,10 +109,12 @@ def record(
     db: Session, *, operator: OperatorModel | None, action: str, request: Request | None = None,
     tenant_id: str | None = None, outcome: str = "success", detail: dict[str, Any] | None = None,
     operator_name: str | None = None,
-) -> None:
-    db.add(PlatformAuditEventModel(
+) -> PlatformAuditEventModel:
+    event = PlatformAuditEventModel(
         id=new_id("paudit"), operator_id=operator.id if operator else None,
         operator_name=operator.name if operator else (operator_name or "unknown"), action=action, outcome=outcome,
         tenant_id=tenant_id, ip=request.client.host if request is not None and request.client else None,
         detail=detail or {},
-    ))
+    )
+    db.add(event)
+    return event

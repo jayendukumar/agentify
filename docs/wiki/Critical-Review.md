@@ -1,6 +1,6 @@
 # Critical review of the architecture
 
-Last reviewed: 2026-10-16 · Sources: `backend/app`, `frontend/src`, `docker-compose.yml`, `docs/code-health/report.json`
+Last reviewed: 2026-10-17 · Sources: `backend/app`, `frontend/src`, `docker-compose.yml`, `docs/code-health/report.json`
 
 This is a candid assessment of where Axyntro is weak, written to decide
 what to fix before it's offered to enterprise customers. It's grounded in
@@ -56,7 +56,7 @@ fixable without rethinking the product.
    only speak SAML. The SCIM sequences aren't yet checked against a live
    Entra or Okta tenant. The local name picker remains for development and
    demos and is refused in production. (`auth/`, `scim/`, Epic 37)
-2. **Tenants are kept apart, but only half-separate.** Every row has a
+2. **Tenants are kept apart; the physical separation is thin.** Every row has a
    tenant, and Postgres row-level security, not the application, keeps
    each tenant's rows invisible to the others; a test probes every route
    with another tenant's ids. Each tenant signs in through its own IdP.
@@ -67,9 +67,14 @@ fixable without rethinking the product.
    sign-in. Each tenant's secrets are references into its own store
    (`secret://tenant/<name>`), its uploads live in a directory of its own,
    and every log line names its tenant. Its model policy and registries
-   are its own, and it may call the model provider on its own key. Still
-   shared per deployment: the default provider and model, and the log
-   files themselves.
+   are its own, and it may call the model provider on its own key. A
+   tenant can be suspended, export its data (once, as a zip) and be
+   erased after a waiting period, with a deletion certificate; it can
+   have a database of its own, and a deployment can keep its tenants and
+   model calls in one region. Still shared per deployment: the default
+   provider and model, the file store (no per-tenant encryption key yet,
+   so erasure has none to destroy) and the log files, whose old lines
+   keep an erased tenant's id.
    The job queue shares free
    capacity round-robin across tenants, and each tenant has its own
    limits (concurrent jobs, LLM requests per minute, a monthly LLM
@@ -214,11 +219,12 @@ fixable without rethinking the product.
 
 The order is in the enterprise-readiness deck. In short:
 
-1. **Tenancy, the rest of Epic 38:** identity per tenant and an operator
-   console without data access, then per-tenant secrets, files, quotas and
-   model policy, then the tenant lifecycle. The boundary itself (tenant id
-   everywhere, row-level security, the cross-tenant probe) is done, and
-   so is identity (SSO with MFA, SCIM, group mappings, roles, segregation
+1. **Tenancy: done in Epic 38**, from the boundary (tenant id
+   everywhere, row-level security, the cross-tenant probe) to identity per
+   tenant, an operator console without data access, per-tenant secrets,
+   files, quotas and model policy, the lifecycle (export, erase,
+   certificate), dedicated databases and residency. What's left belongs to
+   weakness 4 (object storage with a key per tenant). Identity is done too (SSO with MFA, SCIM, group mappings, roles, segregation
    of duties, audit, sessions), apart from SAML. *(Weaknesses 1, 2)*
 2. **Separate the worker, and make runs append-only:** a worker deployment
    on the same queue, a `run_steps` table appended per step, and summary

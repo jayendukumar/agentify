@@ -5,6 +5,7 @@ import OperatorConsole from './OperatorConsole'
 const api = vi.hoisted(() => ({
   config: vi.fn(), me: vi.fn(), login: vi.fn(), logout: vi.fn(), tenants: vi.fn(), createTenant: vi.fn(),
   changeStatus: vi.fn(), grants: vi.fn(), enter: vi.fn(), audit: vi.fn(), setLimits: vi.fn(), invite: vi.fn(),
+  erase: vi.fn(), certificates: vi.fn(),
 }))
 vi.mock('./api', () => ({ operatorApi: api }))
 
@@ -19,14 +20,23 @@ const tenant = {
   effective_limits: { max_concurrent_jobs: 4, llm_requests_per_minute: null, llm_monthly_budget_usd: 50 },
   created_via: 'console',
   first_admin: { state: 'invited', email: 'ada@northwind.test', expires_at: '2026-10-17T08:00:00' },
+  suspended_at: null,
+  delete_after: null,
+  last_export: null,
+  dedicated_database: false,
+}
+const certificate = {
+  id: 'paudit_1', occurred_at: '2026-10-16T09:00:00', operator_name: 'Otto Operator', tenant_id: 'ten_old',
+  certificate: { slug: 'oldco', erased_at: '2026-10-16T09:00:00', rows_total: 812, files_removed: 4, tables: { processes: 3 }, secrets: {} },
 }
 const operator = { id: 'op1', name: 'Otto Operator', email: 'otto@hosting.test', csrf_token: 'c', session_expires_at: '', auth_method: 'local' }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  api.config.mockResolvedValue({ auth_mode: 'local', environment: 'development', sso_login_url: null })
+  api.config.mockResolvedValue({ auth_mode: 'local', environment: 'development', sso_login_url: null, region: '', regions: {} })
   api.tenants.mockResolvedValue([tenant])
   api.audit.mockResolvedValue([])
+  api.certificates.mockResolvedValue([])
 })
 
 describe('Operator console (Epic 38, US38.8)', () => {
@@ -130,5 +140,62 @@ describe('Operator console (Epic 38, US38.8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New invitation' }))
     await waitFor(() => expect(api.invite).toHaveBeenCalledWith('ten_1', 'ada@northwind.test'))
     expect(await screen.findByLabelText('Invitation URL')).toHaveValue('http://northwind.localhost:8000/api/auth/invitation/accept?token=t2')
+  })
+
+  it('waits out the deletion period, can restore, then erases after the slug is typed (US38.13)', async () => {
+    api.me.mockResolvedValue(operator)
+    api.tenants.mockResolvedValue([
+      { ...tenant, status: 'deleting', suspended_at: '2026-09-01T00:00:00', delete_after: '2999-01-01T00:00:00' },
+    ])
+    api.changeStatus.mockResolvedValue({ ...tenant, status: 'suspended' })
+    const { unmount } = render(<OperatorConsole />)
+    const row = (await screen.findByText('Northwind')).closest('tr')!
+    expect(row).toHaveTextContent('erasable from')
+    expect(row).toHaveTextContent('No data export made')
+    expect(screen.queryByRole('button', { name: 'Erase' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    await waitFor(() => expect(api.changeStatus).toHaveBeenCalledWith('ten_1', 'restore'))
+    unmount()
+
+    api.tenants.mockResolvedValue([{
+      ...tenant, status: 'deleting', delete_after: '2026-01-01T00:00:00',
+      last_export: { status: 'downloaded', created_at: '2026-09-01T00:00:00', downloaded_at: '2026-09-01T01:00:00' },
+    }])
+    api.erase.mockResolvedValue({ ...certificate, tenant_id: 'ten_1', certificate: { ...certificate.certificate, slug: 'northwind' } })
+    render(<OperatorConsole />)
+    expect((await screen.findByText('Northwind')).closest('tr')!).toHaveTextContent('Data export downloaded')
+    fireEvent.click(screen.getByRole('button', { name: 'Erase' }))
+    const erase = screen.getByRole('button', { name: 'Erase northwind' })
+    expect(erase).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Type northwind to confirm'), { target: { value: 'northwind' } })
+    fireEvent.click(erase)
+    await waitFor(() => expect(api.erase).toHaveBeenCalledWith('ten_1', 'northwind'))
+    expect(await screen.findByRole('status', { name: 'Tenant erased' })).toHaveTextContent('812 rows and 4 files')
+  })
+
+  it('lists deletion certificates, with the full certificate on request', async () => {
+    api.me.mockResolvedValue(operator)
+    api.certificates.mockResolvedValue([certificate])
+    render(<OperatorConsole />)
+    const section = await screen.findByRole('region', { name: 'Deletion certificates' })
+    await waitFor(() => expect(section).toHaveTextContent('oldco'))
+    expect(section).toHaveTextContent('812 rows, 4 files')
+    fireEvent.click(screen.getByRole('button', { name: 'Certificate' }))
+    expect(section).toHaveTextContent('"processes": 3')
+  })
+
+  it("says which region this deployment serves and links the others' consoles (US38.15)", async () => {
+    api.me.mockResolvedValue(operator)
+    api.config.mockResolvedValue({
+      auth_mode: 'local', environment: 'development', sso_login_url: null, region: 'EU',
+      regions: { EU: 'https://ops.eu.example', US: 'https://ops.us.example' },
+    })
+    api.tenants.mockResolvedValue([{ ...tenant, region: 'EU', dedicated_database: true }])
+    render(<OperatorConsole />)
+    const region = await screen.findByLabelText('Deployment region')
+    expect(region).toHaveTextContent('serves region EU')
+    expect(screen.getByRole('link', { name: 'US' })).toHaveAttribute('href', 'https://ops.us.example')
+    expect(screen.queryByRole('link', { name: 'EU' })).not.toBeInTheDocument()
+    expect((await screen.findByText('Northwind')).closest('tr')!).toHaveTextContent('own database')
   })
 })

@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**251 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**256 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -209,6 +209,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/host` | public | Public: tells the frontend whether to show a tenant's app or the operator console on this host. |
 | GET | `/api/operator/audit` | public |  |
 | GET | `/api/operator/config` | public |  |
+| GET | `/api/operator/deletion-certificates` | public | US38.13: one per erased tenant. |
 | POST | `/api/operator/login` | public | Development only (OPERATOR_AUTH_MODE=local, refused in production). |
 | POST | `/api/operator/logout` | public |  |
 | GET | `/api/operator/me` | public |  |
@@ -216,6 +217,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/operator/oidc/login` | public |  |
 | GET | `/api/operator/tenants` | public |  |
 | POST | `/api/operator/tenants` | public | US38.12: a tenant, its first host, and how its first admin gets in -- an invitation to their email, or the tenant's IdP with its admins grou |
+| POST | `/api/operator/tenants/{tenant_id}/erase` | public | US38.13: erases a deleted tenant's data once its waiting period is over -- every tenant row, its files and its secrets -- and keeps a deleti |
 | POST | `/api/operator/tenants/{tenant_id}/invitation` | public | US38.12: a new one-time link for the first admin (the earlier one stops working). Only while the tenant has no single sign-on and no admin. |
 | PUT | `/api/operator/tenants/{tenant_id}/limits` | public | US38.9: concurrent jobs, LLM requests per minute, monthly LLM budget. Empty means the deployment's default. |
 | GET | `/api/operator/tenants/{tenant_id}/support-grants` | public |  |
@@ -281,6 +283,9 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/organization/entities/{entity_id}/impact` | signed in | US28.8 / Epic 31 US31.9: which blueprints, agents, and suites were built against this entity. |
 | POST | `/api/organization/entities/{entity_id}/rerun-affected` | `context.edit` |  |
 | GET | `/api/organization/entities/{entity_id}/versions` | signed in |  |
+| GET | `/api/organization/exports` | `org.admin` |  |
+| POST | `/api/organization/exports` | `org.admin` |  |
+| GET | `/api/organization/exports/{export_id}/download` | `org.admin` | Once: the archive is marked used before it's sent, and removed after. |
 | PUT | `/api/organization/llm-policy` | `org.admin` | Epic 31, US31.8: the organization-wide model policy, used where a business unit has none of its own. |
 | GET | `/api/organization/llm-provider-key` | `org.admin` | Epic 38, US38.11: whose key the default model provider is called with. |
 | PUT | `/api/organization/llm-provider-key` | `org.admin` | Use the organization's own key for the default model provider (a reference to its secret), or the hosting company's (null). Usage is the org |

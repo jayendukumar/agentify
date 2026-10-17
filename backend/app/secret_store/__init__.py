@@ -129,6 +129,45 @@ def resolve(ref: str, tenant_slug: str | None) -> str | None:
     return None
 
 
+def _tenant_keys(keys: list[str], tenant_slug: str, other_slugs: list[str]) -> tuple[list[str], list[str]]:
+    """The keys that are this tenant's, and those that might also be
+    another's: `TENANT_ACME_EU_X` is tenant `acme`'s secret `eu_x`, or
+    tenant `acme-eu`'s secret `x`. Those are left alone."""
+    prefix = storage_key(tenant_slug, "")
+    longer = [storage_key(s, "") for s in other_slugs if s != tenant_slug]
+    longer = [p for p in longer if p.startswith(prefix)]
+    mine = [k for k in keys if k.startswith(prefix) and len(k) > len(prefix)]
+    return ([k for k in mine if not any(k.startswith(p) for p in longer)],
+            [k for k in mine if any(k.startswith(p) for p in longer)])
+
+
+def erase(tenant_slug: str, *, other_slugs: list[str]) -> dict:
+    """Epic 38, US38.13: removes a deleted tenant's secrets where the store
+    can, and lists those it can't (names only). Mounted files are deleted;
+    environment variables belong to the deployment's configuration, so
+    they're dropped from this process and listed for the operator to
+    remove there."""
+    settings = get_settings()
+    if settings.secrets_backend == "files":
+        directory = Path(settings.secrets_dir)
+        names = [p.name for p in directory.iterdir() if p.is_file()] if directory.is_dir() else []
+        mine, ambiguous = _tenant_keys(names, tenant_slug, other_slugs)
+        removed = []
+        for name in mine:
+            try:
+                (directory / name).unlink()
+                removed.append(name)
+            except OSError:
+                pass
+        return {"backend": "files", "removed": sorted(removed), "not_removed": sorted(set(mine) - set(removed)),
+                "ambiguous_kept": sorted(ambiguous)}
+    mine, ambiguous = _tenant_keys(list(os.environ), tenant_slug, other_slugs)
+    for key in mine:
+        os.environ.pop(key, None)
+    return {"backend": "env", "removed": [], "remove_from_deployment_environment": sorted(mine),
+            "ambiguous_kept": sorted(ambiguous)}
+
+
 def where_to_put(ref: str, tenant_slug: str) -> str:
     """For an operator: where the store looks for this reference."""
     if not is_ref(ref):

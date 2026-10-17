@@ -2187,3 +2187,19 @@ export interface ProviderKeyStatus {
   location: string | null
   provider: string
 }
+
+// Epic 38, US38.13: an admin's export of the organization's data.
+export interface TenantExport {
+  id: string
+  status: 'queued' | 'running' | 'ready' | 'downloaded' | 'failed' | 'expired'
+  requested_by_name: string
+  created_at: string
+  finished_at: string | null
+  downloaded_at: string | null
+  downloaded_by_name: string | null
+  size_bytes: number | null
+  file_count: number | null
+  rows: number | null
+  error: string | null
+  expires_at: string | null
+}

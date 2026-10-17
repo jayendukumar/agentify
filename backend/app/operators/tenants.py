@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.auth import support
@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.db.models import (
     JobModel,
     LlmUsageMonthlyModel,
+    PlatformAuditEventModel,
     ProcessModel,
     SessionModel,
     SupportGrantModel,
@@ -29,7 +30,7 @@ from app.db.models import (
 from app.db.session import get_session_factory
 from app.ids import new_id
 from app.llm import metering
-from app.tenancy import tenant_scope
+from app.tenancy import lifecycle, residency, tenant_scope
 from app.tenancy.hosts import normalize_host
 from app.tenancy.identity import with_host
 from app.tenancy.limits import forget_cached_limits
@@ -91,8 +92,12 @@ def create(platform_db: Session, *, slug: str, display_name: str, host: str, reg
         raise TenantError(f"A tenant '{slug}' already exists")
     if platform_db.get(TenantDomainModel, host) is not None:
         raise TenantError(f"Host '{host}' already reaches a tenant")
+    try:
+        region = residency.region_for_new_tenant(region)
+    except residency.ResidencyError as exc:
+        raise TenantError(str(exc)) from exc
     tenant = TenantModel(id=new_id("ten"), slug=slug, display_name=display_name.strip() or slug.title(),
-                         region=(region or "").strip() or None, created_via=created_via)
+                         region=region, created_via=created_via)
     platform_db.add(tenant)
     platform_db.flush()
     platform_db.add(TenantDomainModel(host=host, tenant_id=tenant.id))
@@ -113,23 +118,38 @@ def set_limits(tenant: TenantModel, values: dict) -> dict:
     return before
 
 
-TRANSITIONS = {
-    "suspend": ({"active"}, "suspended"),
-    "activate": ({"suspended"}, "active"),
-    # Deleting the data (export first, a waiting period, a certificate) is
-    # US38.13; until then a deleted tenant is unreachable and kept.
-    "delete": ({"suspended"}, "deleting"),
-}
+TRANSITIONS = lifecycle.TRANSITIONS
 
 
 def change_status(platform_db: Session, tenant: TenantModel, action: str) -> str:
-    allowed, to = TRANSITIONS[action]
-    if tenant.status not in allowed:
-        raise TenantError(
-            "Suspend the tenant first" if action == "delete" else f"A {tenant.status} tenant can't be {to}"
-        )
-    before, tenant.status = tenant.status, to
-    return before
+    """US38.13: suspend, activate, delete (starts the wait before erasure),
+    restore (a deleted tenant back to suspended)."""
+    del platform_db
+    try:
+        return lifecycle.change_status(tenant, action)
+    except lifecycle.LifecycleError as exc:
+        raise TenantError(str(exc)) from exc
+
+
+def erase(platform_db: Session, tenant: TenantModel, *, operator_name: str) -> dict:
+    """US38.13: erases the tenant's data (as the tenant), then -- on the
+    platform side -- strips its details from the platform log's earlier
+    entries and removes its `tenants` and `tenant_domains` rows. Returns
+    the deletion certificate, which the caller records."""
+    others = list(platform_db.scalars(select(TenantModel.slug).where(TenantModel.id != tenant.id)))
+    try:
+        erasure = lifecycle.erase(tenant, other_slugs=others)
+    except lifecycle.LifecycleError as exc:
+        raise TenantError(str(exc)) from exc
+    cert = lifecycle.certificate(tenant, erasure, operator_name=operator_name)
+    # Earlier entries named the first admin's email or the IdP; keep what
+    # happened and when, not who at the tenant.
+    platform_db.execute(update(PlatformAuditEventModel).where(PlatformAuditEventModel.tenant_id == tenant.id)
+                        .values(detail={"slug": tenant.slug, "erased": True}))
+    platform_db.execute(delete(TenantDomainModel).where(TenantDomainModel.tenant_id == tenant.id))
+    platform_db.delete(tenant)
+    platform_db.flush()
+    return cert
 
 
 # ---- support ------------------------------------------------------------------------

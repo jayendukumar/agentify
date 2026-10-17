@@ -26,7 +26,7 @@ def normalize_host(host: str) -> str:
 
 
 def to_tenant(row: TenantModel) -> Tenant:
-    return Tenant(id=row.id, slug=row.slug, display_name=row.display_name, status=row.status)
+    return Tenant(id=row.id, slug=row.slug, display_name=row.display_name, status=row.status, region=row.region)
 
 
 def tenant_for_host(session: Session, host: str) -> Tenant | None:

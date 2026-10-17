@@ -24,6 +24,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import get_settings
 
+from . import residency
 from .context import reset_current_tenant, set_current_tenant
 from .hosts import normalize_host, resolve_host
 
@@ -60,6 +61,11 @@ class TenantMiddleware:
         tenant = await run_in_threadpool(resolve_host, host)
         if tenant is None:
             await _not_found()(scope, receive, send)
+            return
+        if not residency.serves(tenant.region):
+            # US38.15: another region's tenant; its own deployment serves it.
+            response = JSONResponse({"detail": "This organization is served from its own region."}, status_code=421)
+            await response(scope, receive, send)
             return
         if not tenant.active:
             response = JSONResponse(

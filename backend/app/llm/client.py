@@ -11,6 +11,7 @@ import openai
 
 from app import secret_store
 from app.config import Settings, get_settings
+from app.tenancy import residency
 from app.tenancy.context import current_tenant_id
 from app.tenancy.identity import current_slug
 
@@ -190,6 +191,12 @@ class LLMClient:
         route = current_route.get()
         if route is not None and route.blocked_reason:
             raise LLMPolicyError(route.blocked_reason)
+        # Epic 38, US38.15: a regional deployment's calls stay in its region.
+        self_hosted = route is not None and route.base_url
+        refusal = residency.model_call_refusal(
+            (route.provider_region or "") if self_hosted else self._settings.llm_provider_region)
+        if refusal:
+            raise LLMPolicyError(refusal)
         # Epic 38, US38.11: whose key pays; US38.9: the tenant's budget (on
         # the platform's key) and requests per minute.
         client, payer = self._client_and_payer(route)

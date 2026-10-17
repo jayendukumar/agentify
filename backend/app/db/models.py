@@ -82,6 +82,13 @@ class TenantModel(Base):
     # in by invitation or through the tenant's IdP: never by local sign-in)
     # or `cli` (python -m app.tenancy, and the tenants that came before).
     created_via: Mapped[str] = mapped_column(String, nullable=False, default="cli", server_default="cli")
+    # US38.13: when it was last suspended, and -- once an operator deletes
+    # it -- the earliest time its data may be erased.
+    suspended_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    delete_after: Mapped[datetime | None] = mapped_column(nullable=True)
+    # US38.14: its own database, as a secret reference to the app role's
+    # URL (`secret://tenant/database_url`). NULL: the shared database.
+    database_ref: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class TenantDomainModel(Base):
@@ -791,6 +798,30 @@ class TenantInvitationModel(TenantScoped, Base):
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     redeemed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     redeemed_by_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class TenantExportModel(TenantScoped, Base):
+    """Epic 38, US38.13: an archive of everything the tenant holds -- every
+    tenant table as JSON, its files and its audit log -- made by a job for
+    an admin, who downloads it once. The file is removed when downloaded,
+    or after TENANT_EXPORT_RETENTION_HOURS."""
+
+    __tablename__ = "tenant_exports"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    # queued | running | ready | downloaded | failed | expired
+    status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
+    requested_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    requested_by_name: Mapped[str] = mapped_column(String, nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    downloaded_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    downloaded_by_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    file_count: Mapped[int | None] = mapped_column(nullable=True)
+    table_counts: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class SupportEntryModel(TenantScoped, Base):

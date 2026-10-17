@@ -7,6 +7,9 @@ export interface OperatorConfig {
   auth_mode: 'local' | 'oidc' | 'none'
   environment: string
   sso_login_url: string | null
+  // US38.15: the region this deployment serves ('' for none), and every region's console.
+  region: string
+  regions: Record<string, string>
 }
 
 export interface Operator {
@@ -81,7 +84,38 @@ export interface Tenant {
   effective_limits: TenantLimits
   created_via: string
   first_admin: FirstAdmin | null
+  // US38.13: suspended since; once deleted, the earliest time it may be erased.
+  suspended_at: string | null
+  delete_after: string | null
+  last_export: LastExport | null
+  // US38.14
+  dedicated_database: boolean
 }
+
+export interface LastExport {
+  status: string
+  created_at: string
+  downloaded_at: string | null
+}
+
+// US38.13: kept in the platform log when a tenant's data is erased.
+export interface DeletionCertificate {
+  id: string
+  occurred_at: string
+  operator_name: string
+  tenant_id: string | null
+  certificate: {
+    slug: string
+    erased_at: string
+    rows_total: number
+    files_removed: number
+    tables: Record<string, number>
+    secrets: Record<string, unknown>
+    [key: string]: unknown
+  }
+}
+
+export type StatusAction = 'suspend' | 'activate' | 'delete' | 'restore'
 
 export interface OperatorGrant {
   id: string
@@ -133,8 +167,14 @@ export const operatorApi = {
   createTenant: (body: TenantCreate) => call<TenantCreated>('/tenants', { method: 'POST', body: JSON.stringify(body) }),
   invite: (tenantId: string, email: string) =>
     call<TenantCreated>(`/tenants/${tenantId}/invitation`, { method: 'POST', body: JSON.stringify({ email }) }),
-  changeStatus: (tenantId: string, action: 'suspend' | 'activate' | 'delete') =>
+  changeStatus: (tenantId: string, action: StatusAction) =>
     call<Tenant>(`/tenants/${tenantId}/${action}`, { method: 'POST' }),
+  erase: (tenantId: string, confirmSlug: string) =>
+    call<DeletionCertificate>(`/tenants/${tenantId}/erase`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm_slug: confirmSlug }),
+    }),
+  certificates: () => call<DeletionCertificate[]>('/deletion-certificates'),
   setLimits: (tenantId: string, limits: TenantLimits) =>
     call<Tenant>(`/tenants/${tenantId}/limits`, { method: 'PUT', body: JSON.stringify(limits) }),
   grants: (tenantId: string) => call<OperatorGrant[]>(`/tenants/${tenantId}/support-grants`),

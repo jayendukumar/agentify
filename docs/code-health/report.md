@@ -1,22 +1,22 @@
 # Code health report
 
-_Generated 2026-10-16 by `python -m tools.code_health report`. Do not edit by hand: rerun the command (or `python -m tools.docs sync`) to refresh it. How each measure is computed is described in [tools/code_health/README.md](../../tools/code_health/README.md)._
+_Generated 2026-10-17 by `python -m tools.code_health report`. Do not edit by hand: rerun the command (or `python -m tools.docs sync`) to refresh it. How each measure is computed is described in [tools/code_health/README.md](../../tools/code_health/README.md)._
 
 ## Scorecard
 
 | Measure | Backend (Python) | Frontend (TS/React) | Target | Status |
 |---|---|---|---|---|
-| Production code (non-blank lines) | 27,613 | 16,692 | - |  |
-| Test code (non-blank lines) | 11,359 | 3,520 | - |  |
-| Functions measured | 1319 | 637 | - |  |
-| Mean cognitive complexity / function | 4.41 | 4.79 | <= 6 | OK |
-| Functions over cognitive 15 | 89 | 50 | ratchet: must not rise |  |
-| Functions over cyclomatic 10 | 130 | 69 | ratchet: must not rise |  |
-| Duplicated lines | 0.35% | 0.08% | <= 5.0% | OK |
-| Structural duplication (renamed copies) | 3.6% | 0.62% | ratchet |  |
+| Production code (non-blank lines) | 28,571 | 17,013 | - |  |
+| Test code (non-blank lines) | 11,869 | 3,635 | - |  |
+| Functions measured | 1376 | 653 | - |  |
+| Mean cognitive complexity / function | 4.36 | 4.77 | <= 6 | OK |
+| Functions over cognitive 15 | 89 | 51 | ratchet: must not rise |  |
+| Functions over cyclomatic 10 | 132 | 70 | ratchet: must not rise |  |
+| Duplicated lines | 0.34% | 0.08% | <= 5.0% | OK |
+| Structural duplication (renamed copies) | 3.48% | 0.61% | ratchet |  |
 | Import cycles (module level, import-time) | 0 | 0 | 0 | OK |
 | Package cycles (incl. lazy imports) | 1 | 1 | ratchet |  |
-| Unused definitions / exports | 14 | 11 | ratchet |  |
+| Unused definitions / exports | 15 | 11 | ratchet |  |
 | Unused dependencies | 2 | 0 | 0 | **Attention** |
 | Mutation score (mean of measured modules) | 0.74 | - | >= 0.7 | OK |
 
@@ -63,12 +63,12 @@ Cognitive complexity measures how hard a function is to *read* (nesting is penal
 
 Copy-paste clones of at least 70 tokens and 6 lines, ignoring whitespace and comments, in production code.
 
-**Backend:** 96 of 27,613 lines (0.35%) sit in 4 exact clone pairs; 3.6% sit in 39 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
+**Backend:** 96 of 28,571 lines (0.34%) sit in 4 exact clone pairs; 3.48% sit in 39 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
 
 | Tokens | Lines | First copy | Second copy |
 |---|---|---|---|
 | 90 | 12 | `backend/app/twin/engine.py:516-527` | `backend/app/twin/engine.py:566-577` |
-| 89 | 12 | `backend/app/api/oidc.py:126-137` | `backend/app/api/operator.py:197-206` |
+| 89 | 12 | `backend/app/api/oidc.py:126-137` | `backend/app/api/operator.py:201-210` |
 | 85 | 11 | `backend/app/auth/support.py:140-150` | `backend/app/tenancy/onboarding.py:171-181` |
 | 85 | 14 | `backend/app/db/repository.py:1378-1391` | `backend/app/db/repository.py:1965-1978` |
 
@@ -78,14 +78,14 @@ Largest structural clones (backend):
 |---|---|---|---|
 | 283 | 34 | `backend/app/api/orchestration.py:45-78` | `backend/app/api/twin.py:57-90` |
 | 242 | 34 | `backend/app/api/evaluation.py:11-44` | `backend/app/api/orchestration.py:12-43` |
-| 191 | 27 | `backend/app/main.py:143-168` | `backend/app/main.py:157-183` |
+| 199 | 28 | `backend/app/main.py:144-170` | `backend/app/main.py:158-185` |
 | 185 | 33 | `backend/app/db/repository.py:1693-1724` | `backend/app/db/repository.py:2088-2120` |
 | 149 | 27 | `backend/app/db/repository.py:942-968` | `backend/app/db/repository.py:1693-1718` |
 | 149 | 27 | `backend/app/db/repository.py:942-968` | `backend/app/db/repository.py:2088-2113` |
-| 143 | 17 | `backend/app/db/models.py:1032-1045` | `backend/app/db/models.py:1144-1160` |
+| 143 | 17 | `backend/app/db/models.py:1063-1076` | `backend/app/db/models.py:1175-1191` |
 | 132 | 29 | `backend/app/db/repository.py:1304-1330` | `backend/app/db/repository.py:1888-1916` |
 
-**Frontend:** 14 of 16,692 lines (0.08%) sit in 1 exact clone pairs; 0.62% sit in 2 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
+**Frontend:** 14 of 17,013 lines (0.08%) sit in 1 exact clone pairs; 0.61% sit in 2 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
 
 | Tokens | Lines | First copy | Second copy |
 |---|---|---|---|
@@ -106,7 +106,7 @@ Files that are both complicated and frequently changed. Score = commits touching
 |---|---|---|---|---|---|
 | `backend/app/db/repository.py` | 23 | 2,864 | 337 | 2168 | 7,751 |
 | `backend/app/twin/engine.py` | 9 | 1,054 | 219 | 596 | 1,971 |
-| `frontend/src/api/client.ts` | 28 | 1,601 | 67 | 1160 | 1,876 |
+| `frontend/src/api/client.ts` | 28 | 1,601 | 68 | 1175 | 1,904 |
 | `frontend/src/pages/BlueprintPage.tsx` | 12 | 542 | 106 | 420 | 1,272 |
 | `backend/app/twin/orchestrator.py` | 5 | 1,304 | 246 | 685 | 1,230 |
 | `backend/app/oracles/service.py` | 4 | 755 | 241 | 582 | 964 |
@@ -114,10 +114,10 @@ Files that are both complicated and frequently changed. Score = commits touching
 | `frontend/src/pages/DiagramPage.tsx` | 8 | 326 | 68 | 261 | 544 |
 | `backend/app/context/ingestion.py` | 3 | 665 | 175 | 553 | 525 |
 | `frontend/src/components/OrchestrationPanel.tsx` | 5 | 525 | 103 | 461 | 515 |
-| `backend/app/llm/client.py` | 6 | 378 | 81 | 306 | 486 |
+| `backend/app/llm/client.py` | 6 | 378 | 85 | 313 | 510 |
 | `backend/app/api/organization.py` | 4 | 665 | 117 | 526 | 468 |
 | `backend/app/batches/results.py` | 2 | 519 | 201 | 434 | 402 |
-| `backend/app/config.py` | 14 | 333 | 28 | 273 | 392 |
+| `backend/app/config.py` | 14 | 333 | 28 | 288 | 392 |
 | `backend/app/twin/test_builder.py` | 2 | 564 | 177 | 491 | 354 |
 
 ## 4. Coupling and dependency cycles
@@ -134,9 +134,9 @@ Ca = how many internal packages depend on this one; Ce = how many it depends on;
 | `app.llm` | 14 | 7 | 0.33 |
 | `app.ids` | 19 | 0 | 0.0 |
 | `app.schemas` | 18 | 1 | 0.05 |
+| `app.tenancy` | 13 | 6 | 0.32 |
 | `app.config` | 18 | 0 | 0.0 |
-| `app.tenancy` | 13 | 5 | 0.28 |
-| `app.jobs` | 7 | 10 | 0.59 |
+| `app.jobs` | 8 | 10 | 0.56 |
 | `app.connectors` | 5 | 11 | 0.69 |
 | `app.batches` | 5 | 10 | 0.67 |
 | `app.oracles` | 5 | 10 | 0.67 |
@@ -164,15 +164,15 @@ Ca = how many internal packages depend on this one; Ce = how many it depends on;
 | Module | Ca (in) | Ce (out) | Instability |
 |---|---|---|---|
 | `app.db.repository` | 29 | 44 | 0.6 |
-| `app.db.models` | 60 | 0 | 0.0 |
-| `app.ids` | 42 | 0 | 0.0 |
-| `app.config` | 40 | 0 | 0.0 |
-| `app.main` | 1 | 39 | 0.97 |
-| `app.api.deps` | 29 | 10 | 0.26 |
+| `app.db.models` | 66 | 0 | 0.0 |
+| `app.config` | 44 | 0 | 0.0 |
+| `app.ids` | 44 | 0 | 0.0 |
+| `app.main` | 1 | 40 | 0.98 |
+| `app.api.deps` | 30 | 10 | 0.25 |
+| `app.db.session` | 23 | 4 | 0.15 |
+| `app.jobs.worker` | 9 | 14 | 0.61 |
 | `app.tenancy.identity` | 18 | 5 | 0.22 |
 | `app.api.organization` | 1 | 21 | 0.95 |
-| `app.db.session` | 20 | 2 | 0.09 |
-| `app.context.repository` | 15 | 6 | 0.29 |
 
 ### Frontend directories
 
@@ -193,7 +193,7 @@ Ca = how many internal packages depend on this one; Ce = how many it depends on;
 ### Cycles
 
 - Backend module cycles at import time: **0**
-- Backend module cycles including function-level (lazy) imports: **2** (64 lazy import edges in total -- usually a sign a cycle was dodged rather than removed)
+- Backend module cycles including function-level (lazy) imports: **3** (70 lazy import edges in total -- usually a sign a cycle was dodged rather than removed)
 - Backend package cycles including lazy imports: **1**
 - Frontend file cycles: **0**, directory cycles: **1**
 
@@ -203,13 +203,14 @@ Ca = how many internal packages depend on this one; Ce = how many it depends on;
 
 **Backend module cycles (incl. lazy imports):**
 
-- `app.api.batches` <-> `app.api.connectors` <-> `app.api.process_twin` <-> `app.connectors.jobs` <-> `app.context.jobs` <-> `app.jobs.worker` <-> `app.main` <-> `app.oracles.jobs` ... (9 nodes)
+- `app.api.batches` <-> `app.api.connectors` <-> `app.api.data_export` <-> `app.api.process_twin` <-> `app.connectors.jobs` <-> `app.context.jobs` <-> `app.jobs.worker` <-> `app.main` ... (11 nodes)
+- `app.db.session` <-> `app.tenancy.databases` (2 nodes)
 - `app.context.consumers` <-> `app.db.repository` (2 nodes)
 
 ## 5. Dead code and unused dependencies
 
-- Python: **14** definitions never referenced; **6** referenced only by tests.
-- TypeScript: **11** exports never imported; **4** imported only by tests; **84** exported but only used inside their own file (drop the `export`); **0** files unreachable from `main.tsx`.
+- Python: **15** definitions never referenced; **6** referenced only by tests.
+- TypeScript: **11** exports never imported; **4** imported only by tests; **85** exported but only used inside their own file (drop the `export`); **0** files unreachable from `main.tsx`.
 
 Name-based detection: confirm before deleting (a dynamic `getattr`, a string route, or an external caller can keep a symbol alive).
 
@@ -223,22 +224,23 @@ Name-based detection: confirm before deleting (a dynamic `getattr`, a string rou
 | `list_context_documents` | function | `backend/app/context/repository.py:438` |
 | `cited_entities` | function | `backend/app/context/resolver.py:399` |
 | `list_schema_changes` | function | `backend/app/db/repository.py:331` |
-| `_set_transaction_tenant` | function | `backend/app/db/session.py:47` |
+| `_set_transaction_tenant` | function | `backend/app/db/session.py:74` |
 | `registered_kinds` | function | `backend/app/jobs/worker.py:61` |
 | `grand_total_cost_usd` | method | `backend/app/llm/usage.py:144` |
 | `Timestamped` | class | `backend/app/schemas/common.py:55` |
 | `VersionDiffRequest` | class | `backend/app/schemas/versions.py:30` |
+| `run_export` | function | `backend/app/tenancy/export.py:200` |
 | `is_console_tenant` | function | `backend/app/tenancy/onboarding.py:210` |
-| `updateAgentGovernance` | export | `frontend/src/api/client.ts:519` |
-| `pushToRegistry` | export | `frontend/src/api/client.ts:653` |
-| `cancelTwinRun` | export | `frontend/src/api/client.ts:755` |
-| `resumeTwinRun` | export | `frontend/src/api/client.ts:759` |
-| `updateOrganization` | export | `frontend/src/api/client.ts:924` |
-| `listPolicyPassages` | export | `frontend/src/api/client.ts:996` |
-| `getProcessScope` | export | `frontend/src/api/client.ts:1009` |
-| `previewContextPack` | export | `frontend/src/api/client.ts:1022` |
-| `getDataset` | export | `frontend/src/api/client.ts:1149` |
-| `addDatasetRows` | export | `frontend/src/api/client.ts:1163` |
+| `updateAgentGovernance` | export | `frontend/src/api/client.ts:537` |
+| `pushToRegistry` | export | `frontend/src/api/client.ts:671` |
+| `cancelTwinRun` | export | `frontend/src/api/client.ts:773` |
+| `resumeTwinRun` | export | `frontend/src/api/client.ts:777` |
+| `updateOrganization` | export | `frontend/src/api/client.ts:942` |
+| `listPolicyPassages` | export | `frontend/src/api/client.ts:1014` |
+| `getProcessScope` | export | `frontend/src/api/client.ts:1027` |
+| `previewContextPack` | export | `frontend/src/api/client.ts:1040` |
+| `getDataset` | export | `frontend/src/api/client.ts:1167` |
+| `addDatasetRows` | export | `frontend/src/api/client.ts:1181` |
 | `DocumentDetail` | export | `frontend/src/api/types.ts:72` |
 
 | Manifest | Package | Why flagged |
@@ -252,28 +254,28 @@ Production lines per API endpoint and per implemented user story, at every commi
 
 |  | First commit | Latest commit | Change |
 |---|---|---|---|
-| Production lines | 2,985 | 43,863 | x14.7 |
-| Test lines | 1,577 | 14,697 | x9.3 |
-| API endpoints | 22 | 238 | x10.8 |
+| Production lines | 2,985 | 44,305 | x14.8 |
+| Test lines | 1,577 | 14,879 | x9.4 |
+| API endpoints | 22 | 240 | x10.9 |
 | User stories implemented | 21 | 241 | x11.5 |
-| Lines per endpoint | 136 | 184 |  |
-| Lines per implemented story | 142 | 182 |  |
+| Lines per endpoint | 136 | 185 |  |
+| Lines per implemented story | 142 | 184 |  |
 | Test lines per production line | 0.53 | 0.34 |  |
 
 ```mermaid
 xychart-beta
     title "Production lines per implemented story (lower is better)"
-    x-axis ["09-18", "09-18", "09-19", "09-19", "09-19", "09-19", "09-19", "09-20", "09-20", "09-20", "09-21", "09-22", "09-24", "09-24", "09-29", "09-29", "09-30", "10-11", "10-11", "10-12", "10-13", "10-14", "10-14", "10-15", "10-15", "10-15", "10-15", "10-16", "10-16", "10-16"]
+    x-axis ["09-18", "09-18", "09-19", "09-19", "09-19", "09-20", "09-20", "09-22", "09-24", "09-29", "09-29", "10-09", "10-11", "10-13", "10-14", "10-15", "10-15", "10-15", "10-16", "10-16", "10-17"]
     y-axis "Lines per story"
-    line [142, 165, 244, 272, 246, 267, 267, 172, 158, 161, 160, 167, 171, 175, 166, 162, 157, 154, 154, 164, 164, 164, 164, 166, 166, 176, 167, 170, 179, 182]
+    line [142, 218, 272, 265, 267, 172, 161, 165, 171, 166, 162, 157, 154, 164, 164, 164, 166, 176, 170, 180, 184]
 ```
 
 ```mermaid
 xychart-beta
     title "Production lines (bars) vs implemented stories x100 (line)"
-    x-axis ["09-18", "09-18", "09-19", "09-19", "09-19", "09-19", "09-19", "09-20", "09-20", "09-20", "09-21", "09-22", "09-24", "09-24", "09-29", "09-29", "09-30", "10-11", "10-11", "10-12", "10-13", "10-14", "10-14", "10-15", "10-15", "10-15", "10-15", "10-16", "10-16", "10-16"]
-    bar [2985, 3456, 5131, 5707, 6404, 6941, 6941, 7041, 7438, 8526, 10393, 10861, 11101, 11400, 14081, 16076, 16688, 19104, 19104, 32987, 32993, 37042, 37042, 37618, 37618, 39839, 40213, 40983, 43206, 43863]
-    line [2100, 2100, 2100, 2100, 2600, 2600, 2600, 4100, 4700, 5300, 6500, 6500, 6500, 6500, 8500, 9900, 10600, 12400, 12400, 20100, 20100, 22600, 22600, 22600, 22600, 22600, 24100, 24100, 24100, 24100]
+    x-axis ["09-18", "09-18", "09-19", "09-19", "09-19", "09-20", "09-20", "09-22", "09-24", "09-29", "09-29", "10-09", "10-11", "10-13", "10-14", "10-15", "10-15", "10-15", "10-16", "10-16", "10-17"]
+    bar [2985, 4578, 5707, 6892, 6941, 7041, 8526, 10714, 11101, 13139, 16076, 16688, 19104, 32993, 37042, 37042, 37618, 39839, 40983, 43439, 44305]
+    line [2100, 2100, 2100, 2600, 2600, 4100, 5300, 6500, 6500, 7900, 9900, 10600, 12400, 20100, 22600, 22600, 22600, 22600, 24100, 24100, 24100]
 ```
 
 ## 7. Mutation score

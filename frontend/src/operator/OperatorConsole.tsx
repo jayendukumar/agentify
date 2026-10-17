@@ -8,10 +8,12 @@ import BrandLogo from '../components/BrandLogo'
 import '../auth/LoginPage.css'
 import {
   operatorApi,
+  type DeletionCertificate,
   type Operator,
   type OperatorConfig,
   type OperatorGrant,
   type PlatformEvent,
+  type StatusAction,
   type Tenant,
   type TenantCreated,
   type TenantLimits,
@@ -255,22 +257,103 @@ function CreateTenant({ onCreated }: { onCreated: (created: TenantCreated) => vo
   )
 }
 
-function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: () => void }) {
+// US38.13: whether the admin took their data before the tenant goes.
+function exportText(tenant: Tenant): string {
+  const last = tenant.last_export
+  if (!last) return 'No data export made'
+  if (last.status === 'downloaded') return `Data export downloaded ${when(last.downloaded_at)}`
+  return `Data export ${last.status} (${when(last.created_at)})`
+}
+
+function erasable(tenant: Tenant): boolean {
+  return tenant.status === 'deleting' && tenant.delete_after !== null && new Date(`${tenant.delete_after}Z`) <= new Date()
+}
+
+// US38.13: erasing is final; the operator types the slug to confirm.
+function Erase({ tenant, onErased }: { tenant: Tenant; onErased: (cert: DeletionCertificate) => void }) {
+  const [slug, setSlug] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setError(null)
+    try {
+      onErased(await operatorApi.erase(tenant.id, slug))
+    } catch (err) {
+      setError(message(err, `Could not erase ${tenant.slug}`))
+    }
+  }
+
+  return (
+    <form className="identity-form" onSubmit={submit} aria-label="Erase tenant">
+      <p>
+        Erasing removes every row, file and secret of <strong>{tenant.display_name}</strong>, for good. A deletion
+        certificate (counts per table) is kept in the platform log. {exportText(tenant)}.
+      </p>
+      <label>
+        Type {tenant.slug} to confirm
+        <input value={slug} onChange={(e) => setSlug(e.target.value)} autoComplete="off" />
+      </label>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="registry-entry-actions">
+        <button type="submit" disabled={slug !== tenant.slug}>Erase {tenant.slug}</button>
+      </div>
+    </form>
+  )
+}
+
+function Certificates({ certificates }: { certificates: DeletionCertificate[] }) {
+  const [open, setOpen] = useState<string | null>(null)
+  if (certificates.length === 0) return <p className="meta">No tenant has been erased.</p>
+  return (
+    <ul>
+      {certificates.map((cert) => (
+        <li key={cert.id}>
+          {cert.certificate.slug} <span className="meta">({cert.tenant_id})</span>: erased {when(cert.occurred_at)} by{' '}
+          {cert.operator_name} -- {cert.certificate.rows_total} rows, {cert.certificate.files_removed} files{' '}
+          <button type="button" className="button-secondary" onClick={() => setOpen(open === cert.id ? null : cert.id)}>
+            {open === cert.id ? 'Hide' : 'Certificate'}
+          </button>
+          {open === cert.id && <pre className="certificate">{JSON.stringify(cert.certificate, null, 2)}</pre>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function OtherRegions({ config }: { config: OperatorConfig }) {
+  const others = Object.entries(config.regions).filter(([region]) => region !== config.region)
+  if (others.length === 0) return null
+  return (
+    <>
+      {' '}Other regions:{' '}
+      {others.map(([region, url], i) => (
+        <span key={region}>{i > 0 && ', '}<a href={url}>{region}</a></span>
+      ))}
+    </>
+  )
+}
+
+function Console({ operator, config, onSignedOut }: { operator: Operator; config: OperatorConfig; onSignedOut: () => void }) {
   const [tenants, setTenants] = useState<Tenant[] | null>(null)
   const [events, setEvents] = useState<PlatformEvent[]>([])
   const [open, setOpen] = useState<string | null>(null)
   const [limitsOpen, setLimitsOpen] = useState<string | null>(null)
   const [invitation, setInvitation] = useState<TenantCreated | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [eraseOpen, setEraseOpen] = useState<string | null>(null)
+  const [certificates, setCertificates] = useState<DeletionCertificate[]>([])
+  const [erased, setErased] = useState<DeletionCertificate | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     operatorApi.tenants().then(setTenants).catch((err) => setError(message(err, 'Could not load tenants')))
     operatorApi.audit().then(setEvents).catch(() => setEvents([]))
+    operatorApi.certificates().then(setCertificates).catch(() => setCertificates([]))
   }, [])
   useEffect(load, [load])
 
-  async function change(tenant: Tenant, action: 'suspend' | 'activate' | 'delete') {
+  async function change(tenant: Tenant, action: StatusAction) {
     setError(null)
     setConfirmDelete(null)
     try {
@@ -314,7 +397,19 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
       <main className="page" id="main-content">
         <h1>Tenants</h1>
         <p className="meta">Usage is counts and costs only. To look inside a tenant, its admin grants support access.</p>
+        {config.region && (
+          <p className="meta" aria-label="Deployment region">
+            This deployment serves region <strong>{config.region}</strong>: its tenants' data and model calls stay there.
+            <OtherRegions config={config} />
+          </p>
+        )}
         {error && <p className="error" role="alert">{error}</p>}
+        {erased && (
+          <div className="support-banner" role="status" aria-label="Tenant erased">
+            Erased {erased.certificate.slug}: {erased.certificate.rows_total} rows and {erased.certificate.files_removed}{' '}
+            files. The deletion certificate is in the platform log.
+          </div>
+        )}
         {invitation && <InvitationLink created={invitation} />}
         {tenants && (
           <table className="data-table">
@@ -327,8 +422,18 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
             <tbody>
               {tenants.map((tenant) => (
                 <tr key={tenant.id}>
-                  <td>{tenant.display_name} <span className="meta">({tenant.slug})</span></td>
-                  <td><span className="badge">{tenant.status}</span></td>
+                  <td>
+                    {tenant.display_name} <span className="meta">({tenant.slug}{tenant.region ? `, ${tenant.region}` : ''})</span>
+                    {tenant.dedicated_database && <> <span className="badge">own database</span></>}
+                  </td>
+                  <td>
+                    <span className="badge">{tenant.status}</span>
+                    {tenant.status === 'suspended' && tenant.suspended_at && <span className="meta"> since {when(tenant.suspended_at)}</span>}
+                    {tenant.status === 'deleting' && tenant.delete_after && (
+                      <span className="meta"> {erasable(tenant) ? 'can be erased now' : `erasable from ${when(tenant.delete_after)}`}</span>
+                    )}
+                    {tenant.status !== 'active' && <div className="meta">{exportText(tenant)}</div>}
+                  </td>
                   <td>{tenant.hosts.join(', ')}</td>
                   <td>{tenant.usage?.users ?? '--'}</td>
                   <td>{tenant.usage?.processes ?? '--'}</td>
@@ -375,11 +480,35 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
                         )}
                       </>
                     )}
+                    {tenant.status === 'deleting' && (
+                      <>
+                        <button type="button" className="button-secondary" onClick={() => change(tenant, 'restore')}>Restore</button>{' '}
+                        {erasable(tenant) && (
+                          <button type="button" className="button-secondary" onClick={() => setEraseOpen(eraseOpen === tenant.id ? null : tenant.id)}>
+                            Erase
+                          </button>
+                        )}
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        )}
+        {eraseOpen && tenants?.find((t) => t.id === eraseOpen) && (
+          <section aria-label="Erase">
+            <h2>Erase: {tenants.find((t) => t.id === eraseOpen)!.display_name}</h2>
+            <Erase
+              key={eraseOpen}
+              tenant={tenants.find((t) => t.id === eraseOpen)!}
+              onErased={(cert) => {
+                setEraseOpen(null)
+                setErased(cert)
+                load()
+              }}
+            />
+          </section>
         )}
         {limitsOpen && tenants?.find((t) => t.id === limitsOpen) && (
           <section aria-label="Limits">
@@ -408,6 +537,10 @@ function Console({ operator, onSignedOut }: { operator: Operator; onSignedOut: (
               load()
             }}
           />
+        </section>
+        <section aria-label="Deletion certificates">
+          <h2>Deletion certificates</h2>
+          <Certificates certificates={certificates} />
         </section>
         <section>
           <h2>Platform audit log</h2>
@@ -439,6 +572,7 @@ export default function OperatorConsole() {
   }, [])
 
   if (loading) return <p className="loading-state" role="status">Loading the operator console...</p>
-  if (!operator) return config ? <SignIn config={config} onSignedIn={setOperator} /> : null
-  return <Console operator={operator} onSignedOut={() => setOperator(null)} />
+  if (!config) return null
+  if (!operator) return <SignIn config={config} onSignedIn={setOperator} />
+  return <Console operator={operator} config={config} onSignedOut={() => setOperator(null)} />
 }

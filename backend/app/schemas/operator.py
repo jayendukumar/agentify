@@ -21,6 +21,10 @@ class OperatorConfig(BaseModel):
     auth_mode: Literal["local", "oidc", "none"]
     environment: str
     sso_login_url: str | None = None
+    # US38.15: the region this deployment serves ("" for none), and the
+    # operator console of every region.
+    region: str = ""
+    regions: dict[str, str] = Field(default_factory=dict)
 
 
 class OperatorLogin(BaseModel):
@@ -69,6 +73,13 @@ class TenantOut(BaseModel):
     # US38.12: tenants an operator created; how their first admin gets in.
     created_via: str = "cli"
     first_admin: FirstAdminOut | None = None
+    # US38.13: when it was suspended; once deleted, when it may be erased;
+    # and whether its admin made (and took) an export.
+    suspended_at: datetime | None = None
+    delete_after: datetime | None = None
+    last_export: LastExportOut | None = None
+    # US38.14: in a database of its own.
+    dedicated_database: bool = False
 
 
 class TenantIdp(BaseModel):
@@ -94,6 +105,28 @@ class TenantCreate(BaseModel):
     # US38.12: how its first admin gets in -- exactly one of these.
     first_admin_email: str | None = None
     idp: TenantIdp | None = None
+
+
+class LastExportOut(BaseModel):
+    status: str
+    created_at: datetime
+    downloaded_at: datetime | None = None
+
+
+class TenantErase(BaseModel):
+    """US38.13: the operator types the slug to confirm."""
+
+    confirm_slug: str
+
+
+class DeletionCertificate(BaseModel):
+    """US38.13: kept in the platform log when a tenant's data is erased."""
+
+    id: str
+    occurred_at: datetime
+    operator_name: str
+    tenant_id: str | None
+    certificate: dict
 
 
 class FirstAdminOut(BaseModel):

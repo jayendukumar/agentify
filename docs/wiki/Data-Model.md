@@ -1,9 +1,9 @@
 # Data Model
 
-Last reviewed: 2026-10-16 · Sources: `backend/app/db/models.py`, `backend/migrations`
+Last reviewed: 2026-10-17 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**73 tables, 787 columns (94 JSON), 170 foreign keys, 40 Alembic migrations.**
+**74 tables, 804 columns (95 JSON), 171 foreign keys, 42 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -579,6 +579,11 @@ erDiagram
     tenant_invitations {
         string id PK
     }
+    tenant_exports {
+        string id PK
+        string status
+        json table_counts
+    }
     contributions {
         bigint seq PK
         string actor_id FK
@@ -662,6 +667,8 @@ erDiagram
 | User | active -> deactivated (history kept, every session revoked) | `users.active` |
 | Session | live -> revoked (signed out, by user, by admin, deactivation, refresh-token reuse) or expired (idle 30 min / 12 h cap) | `sessions.revoked_at`, `last_used_at`, `expires_at` |
 | Session token | issued -> rotated (kept, to detect reuse) -> deleted with its session | `session_tokens.rotated_at` |
+| Tenant | active -> suspended -> deleting (waits `TENANT_DELETION_WAIT_DAYS`; restore goes back) -> erased: every tenant row, file and secret removed, the `tenants` row too, a deletion certificate kept in the platform log (US38.13) | `tenants.status`, `suspended_at`, `delete_after`; `platform_audit_events` (`tenant_erased`) |
+| Tenant export | queued -> running -> ready -> downloaded (once) / expired / failed | `tenant_exports.status` |
 
 ## Table catalogue
 
@@ -1703,6 +1710,26 @@ Epic 38, US38.12: the one-time link that lets a new tenant's first admin in, to 
 | `redeemed_at` | datetime | yes |  |
 | `redeemed_by_user_id` | string | yes |  |
 
+#### `tenant_exports` (TenantExportModel)
+
+Epic 38, US38.13: an archive of everything the tenant holds -- every tenant table as JSON, its files and its audit log -- made by a job for an admin, who downloads it once. The file is removed when downloaded, or after TENANT_EXPORT_RETENTION_HOURS.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `status` | string | no |  |
+| `requested_by` | string | yes |  |
+| `requested_by_name` | string | no |  |
+| `job_id` | string | yes |  |
+| `created_at` | datetime | no |  |
+| `finished_at` | datetime | yes |  |
+| `downloaded_at` | datetime | yes |  |
+| `downloaded_by_name` | string | yes |  |
+| `size_bytes` | bigint | yes |  |
+| `file_count` | int | yes |  |
+| `table_counts` | json | no |  |
+| `error` | text | yes |  |
+
 #### `contributions` (ContributionModel)
 
 Epic 37, US37.3: who changed a process or an agent, how, and at what risk tier. `seq` orders contributions globally; a change set awaiting approval is "this object's contributions after the last approved one" (app/auth/sod.py), which is what decides who may approve it.
@@ -1796,6 +1823,9 @@ Epic 38, US38.1: one customer of this deployment. Every other table is the tenan
 | `llm_requests_per_minute` | int | yes |  |
 | `llm_monthly_budget_usd` | float | yes |  |
 | `created_via` | string | no |  |
+| `suspended_at` | datetime | yes |  |
+| `delete_after` | datetime | yes |  |
+| `database_ref` | string | yes |  |
 
 #### `tenant_domains` (TenantDomainModel)
 

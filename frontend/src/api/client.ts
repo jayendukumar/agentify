@@ -117,6 +117,7 @@ import type {
   TestBuilderContext,
   TwinBaseline,
   TwinEnvironment,
+  TenantExport,
   TwinEnvironmentCreate,
   TwinRun,
   TwinScenario,
@@ -346,6 +347,23 @@ export function setProviderKey(keyRef: string | null): Promise<ProviderKeyStatus
 // Epic 38, US38.9: this organization's LLM usage and cost per month, and its limits.
 export function getUsage(): Promise<UsageOverview> {
   return request('/api/usage')
+}
+
+// Epic 38, US38.13: an archive of everything this organization holds, made
+// by a job and downloaded once.
+export function listTenantExports(): Promise<TenantExport[]> {
+  return request('/api/organization/exports')
+}
+
+export function requestTenantExport(): Promise<TenantExport> {
+  return request('/api/organization/exports', { method: 'POST' })
+}
+
+// A zip file, not JSON. The server marks it used before sending it.
+export async function downloadTenantExport(exportId: string): Promise<Blob> {
+  const response = await apiFetch(`/api/organization/exports/${exportId}/download`)
+  if (!response.ok) throw await failure(response)
+  return response.blob()
 }
 
 // Which app this host serves: a tenant's, or the operator console (US38.8).

@@ -1,20 +1,20 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1319,
-   "mean_cyclomatic": 4.61,
-   "mean_cognitive": 4.41,
+   "functions": 1376,
+   "mean_cyclomatic": 4.57,
+   "mean_cognitive": 4.36,
    "max_cognitive": 98,
    "over_cognitive_limit": 89,
-   "over_cyclomatic_limit": 130
+   "over_cyclomatic_limit": 132
   },
   "frontend": {
-   "functions": 637,
+   "functions": 653,
    "mean_cyclomatic": 4.72,
-   "mean_cognitive": 4.79,
+   "mean_cognitive": 4.77,
    "max_cognitive": 93,
-   "over_cognitive_limit": 50,
-   "over_cyclomatic_limit": 69
+   "over_cognitive_limit": 51,
+   "over_cyclomatic_limit": 70
   },
   "limits": {
    "cognitive": 15,
@@ -157,6 +157,15 @@
     "cognitive": 52
    },
    {
+    "lang": "typescript",
+    "file": "frontend/src/operator/OperatorConsole.tsx",
+    "name": "Console",
+    "line": 337,
+    "length": 224,
+    "cyclomatic": 48,
+    "cognitive": 52
+   },
+   {
     "lang": "python",
     "file": "backend/app/bpmn/validation.py",
     "name": "_validate",
@@ -190,15 +199,6 @@
     "line": 35,
     "length": 200,
     "cyclomatic": 41,
-    "cognitive": 50
-   },
-   {
-    "lang": "typescript",
-    "file": "frontend/src/pages/VersionsPage.tsx",
-    "name": "VersionsPage",
-    "line": 27,
-    "length": 222,
-    "cyclomatic": 34,
     "cognitive": 50
    }
   ],
@@ -297,9 +297,9 @@
  },
  "duplication": {
   "backend": {
-   "loc": 27613,
+   "loc": 28571,
    "duplicated_lines": 96,
-   "percent": 0.35,
+   "percent": 0.34,
    "clones": [
     {
      "tokens": 90,
@@ -317,8 +317,8 @@
      "a_start": 126,
      "a_end": 137,
      "b_file": "backend/app/api/operator.py",
-     "b_start": 197,
-     "b_end": 206,
+     "b_start": 201,
+     "b_end": 210,
      "lines": 12
     },
     {
@@ -343,7 +343,7 @@
     }
    ],
    "clone_count": 4,
-   "structural_percent": 3.6,
+   "structural_percent": 3.48,
    "structural_clone_count": 39,
    "structural_clones": [
     {
@@ -367,14 +367,14 @@
      "lines": 34
     },
     {
-     "tokens": 191,
+     "tokens": 199,
      "a_file": "backend/app/main.py",
-     "a_start": 143,
-     "a_end": 168,
+     "a_start": 144,
+     "a_end": 170,
      "b_file": "backend/app/main.py",
-     "b_start": 157,
-     "b_end": 183,
-     "lines": 27
+     "b_start": 158,
+     "b_end": 185,
+     "lines": 28
     },
     {
      "tokens": 185,
@@ -409,11 +409,11 @@
     {
      "tokens": 143,
      "a_file": "backend/app/db/models.py",
-     "a_start": 1032,
-     "a_end": 1045,
+     "a_start": 1063,
+     "a_end": 1076,
      "b_file": "backend/app/db/models.py",
-     "b_start": 1144,
-     "b_end": 1160,
+     "b_start": 1175,
+     "b_end": 1191,
      "lines": 17
     },
     {
@@ -429,11 +429,11 @@
     {
      "tokens": 131,
      "a_file": "backend/app/db/models.py",
-     "a_start": 1052,
-     "a_end": 1090,
+     "a_start": 1083,
+     "a_end": 1121,
      "b_file": "backend/app/db/models.py",
-     "b_start": 1122,
-     "b_end": 1142,
+     "b_start": 1153,
+     "b_end": 1173,
      "lines": 39
     },
     {
@@ -469,11 +469,11 @@
     {
      "tokens": 126,
      "a_file": "backend/app/db/models.py",
-     "a_start": 1185,
-     "a_end": 1192,
+     "a_start": 1216,
+     "a_end": 1223,
      "b_file": "backend/app/db/models.py",
-     "b_start": 1229,
-     "b_end": 1238,
+     "b_start": 1260,
+     "b_end": 1269,
      "lines": 10
     },
     {
@@ -526,12 +526,12 @@
     {
      "file": "backend/app/api/operator.py",
      "duplicated_lines": 10,
-     "percent": 2.8
+     "percent": 2.5
     }
    ]
   },
   "frontend": {
-   "loc": 16692,
+   "loc": 17013,
    "duplicated_lines": 14,
    "percent": 0.08,
    "clones": [
@@ -547,7 +547,7 @@
     }
    ],
    "clone_count": 1,
-   "structural_percent": 0.62,
+   "structural_percent": 0.61,
    "structural_clone_count": 2,
    "structural_clones": [
     {
@@ -685,9 +685,9 @@
    },
    {
     "node": "app.jobs",
-    "afferent": 7,
+    "afferent": 8,
     "efferent": 10,
-    "instability": 0.59
+    "instability": 0.56
    },
    {
     "node": "app.llm",
@@ -758,8 +758,8 @@
    {
     "node": "app.tenancy",
     "afferent": 13,
-    "efferent": 5,
-    "instability": 0.28
+    "efferent": 6,
+    "instability": 0.32
    },
    {
     "node": "app.twin",
@@ -777,33 +777,45 @@
    },
    {
     "node": "app.db.models",
-    "afferent": 60,
-    "efferent": 0,
-    "instability": 0.0
-   },
-   {
-    "node": "app.ids",
-    "afferent": 42,
+    "afferent": 66,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.config",
-    "afferent": 40,
+    "afferent": 44,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.ids",
+    "afferent": 44,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.main",
     "afferent": 1,
-    "efferent": 39,
-    "instability": 0.97
+    "efferent": 40,
+    "instability": 0.98
    },
    {
     "node": "app.api.deps",
-    "afferent": 29,
+    "afferent": 30,
     "efferent": 10,
-    "instability": 0.26
+    "instability": 0.25
+   },
+   {
+    "node": "app.db.session",
+    "afferent": 23,
+    "efferent": 4,
+    "instability": 0.15
+   },
+   {
+    "node": "app.jobs.worker",
+    "afferent": 9,
+    "efferent": 14,
+    "instability": 0.61
    },
    {
     "node": "app.tenancy.identity",
@@ -818,22 +830,10 @@
     "instability": 0.95
    },
    {
-    "node": "app.db.session",
-    "afferent": 20,
-    "efferent": 2,
-    "instability": 0.09
-   },
-   {
     "node": "app.context.repository",
     "afferent": 15,
     "efferent": 6,
     "instability": 0.29
-   },
-   {
-    "node": "app.jobs.worker",
-    "afferent": 8,
-    "efferent": 13,
-    "instability": 0.62
    },
    {
     "node": "app.llm",
@@ -854,10 +854,10 @@
     "instability": 0.17
    },
    {
-    "node": "app.context.resolver",
-    "afferent": 9,
-    "efferent": 8,
-    "instability": 0.47
+    "node": "app.tenancy.context",
+    "afferent": 18,
+    "efferent": 0,
+    "instability": 0.0
    }
   ],
   "frontend_dirs": [
@@ -931,27 +931,27 @@
   "frontend_files_top": [
    {
     "node": "frontend/src/api/types.ts",
-    "afferent": 71,
+    "afferent": 72,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "frontend/src/api/client.ts",
-    "afferent": 53,
+    "afferent": 54,
     "efferent": 1,
     "instability": 0.02
+   },
+   {
+    "node": "frontend/src/App.tsx",
+    "afferent": 1,
+    "efferent": 21,
+    "instability": 0.95
    },
    {
     "node": "frontend/src/auth/AuthContext.tsx",
     "afferent": 20,
     "efferent": 2,
     "instability": 0.09
-   },
-   {
-    "node": "frontend/src/App.tsx",
-    "afferent": 1,
-    "efferent": 20,
-    "instability": 0.95
    },
    {
     "node": "frontend/src/pages/BlueprintPage.tsx",
@@ -997,13 +997,19 @@
    [
     "app.api.batches",
     "app.api.connectors",
+    "app.api.data_export",
     "app.api.process_twin",
     "app.connectors.jobs",
     "app.context.jobs",
     "app.jobs.worker",
     "app.main",
     "app.oracles.jobs",
-    "app.process_twin.jobs"
+    "app.process_twin.jobs",
+    "app.tenancy.export"
+   ],
+   [
+    "app.db.session",
+    "app.tenancy.databases"
    ],
    [
     "app.context.consumers",
@@ -1068,7 +1074,7 @@
     "frontend/src/components"
    ]
   ],
-  "deferred_import_count": 64
+  "deferred_import_count": 70
  },
  "dead_code": {
   "python": [
@@ -1088,7 +1094,7 @@
    },
    {
     "file": "backend/app/llm/client.py",
-    "line": 97,
+    "line": 98,
     "name": "_client_for",
     "kind": "method",
     "status": "test-only"
@@ -1172,7 +1178,7 @@
    },
    {
     "file": "backend/app/db/session.py",
-    "line": 47,
+    "line": 74,
     "name": "_set_transaction_tenant",
     "kind": "function",
     "status": "unused"
@@ -1203,6 +1209,13 @@
     "line": 30,
     "name": "VersionDiffRequest",
     "kind": "class",
+    "status": "unused"
+   },
+   {
+    "file": "backend/app/tenancy/export.py",
+    "line": 200,
+    "name": "run_export",
+    "kind": "function",
     "status": "unused"
    },
    {
@@ -1776,29 +1789,36 @@
    },
    {
     "file": "frontend/src/operator/api.ts",
-    "line": 21,
+    "line": 24,
     "name": "TenantUsage",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/operator/api.ts",
-    "line": 39,
+    "line": 42,
     "name": "FirstAdmin",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/operator/api.ts",
-    "line": 45,
+    "line": 48,
     "name": "TenantIdp",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/operator/api.ts",
-    "line": 56,
+    "line": 59,
     "name": "TenantCreate",
+    "kind": "export",
+    "status": "export-unneeded"
+   },
+   {
+    "file": "frontend/src/operator/api.ts",
+    "line": 95,
+    "name": "LastExport",
     "kind": "export",
     "status": "export-unneeded"
    },
@@ -1832,70 +1852,70 @@
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 519,
+    "line": 537,
     "name": "updateAgentGovernance",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 653,
+    "line": 671,
     "name": "pushToRegistry",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 755,
+    "line": 773,
     "name": "cancelTwinRun",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 759,
+    "line": 777,
     "name": "resumeTwinRun",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 924,
+    "line": 942,
     "name": "updateOrganization",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 996,
+    "line": 1014,
     "name": "listPolicyPassages",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1009,
+    "line": 1027,
     "name": "getProcessScope",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1022,
+    "line": 1040,
     "name": "previewContextPack",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1149,
+    "line": 1167,
     "name": "getDataset",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1163,
+    "line": 1181,
     "name": "addDatasetRows",
     "kind": "export",
     "status": "unused"
@@ -1943,9 +1963,9 @@
    "file": "frontend/src/api/client.ts",
    "commits": 28,
    "lines_changed": 1601,
-   "cognitive": 67,
-   "loc": 1160,
-   "score": 1876
+   "cognitive": 68,
+   "loc": 1175,
+   "score": 1904
   },
   {
    "file": "frontend/src/pages/BlueprintPage.tsx",
@@ -2007,9 +2027,9 @@
    "file": "backend/app/llm/client.py",
    "commits": 6,
    "lines_changed": 378,
-   "cognitive": 81,
-   "loc": 306,
-   "score": 486
+   "cognitive": 85,
+   "loc": 313,
+   "score": 510
   },
   {
    "file": "backend/app/api/organization.py",
@@ -2032,7 +2052,7 @@
    "commits": 14,
    "lines_changed": 333,
    "cognitive": 28,
-   "loc": 273,
+   "loc": 288,
    "score": 392
   },
   {
@@ -2052,6 +2072,14 @@
    "score": 345
   },
   {
+   "file": "frontend/src/operator/OperatorConsole.tsx",
+   "commits": 3,
+   "lines_changed": 460,
+   "cognitive": 109,
+   "loc": 540,
+   "score": 327
+  },
+  {
    "file": "backend/app/scim/service.py",
    "commits": 2,
    "lines_changed": 443,
@@ -2060,28 +2088,20 @@
    "score": 316
   },
   {
+   "file": "frontend/src/App.tsx",
+   "commits": 16,
+   "lines_changed": 295,
+   "cognitive": 18,
+   "loc": 181,
+   "score": 288
+  },
+  {
    "file": "frontend/src/pages/UsersPage.tsx",
    "commits": 4,
    "lines_changed": 342,
    "cognitive": 71,
    "loc": 281,
    "score": 284
-  },
-  {
-   "file": "backend/app/auth/oidc.py",
-   "commits": 3,
-   "lines_changed": 643,
-   "cognitive": 91,
-   "loc": 396,
-   "score": 273
-  },
-  {
-   "file": "backend/app/bpmn/chat_ops.py",
-   "commits": 3,
-   "lines_changed": 264,
-   "cognitive": 91,
-   "loc": 215,
-   "score": 273
   }
  ],
  "growth": [
@@ -2674,6 +2694,26 @@
    "endpoints": 238,
    "stories": 269,
    "stories_implemented": 241
+  },
+  {
+   "commit": "1adc728",
+   "date": "2026-10-17",
+   "subject": "Build Epic 38 US38.12: create a tenant and its first admin",
+   "prod_loc": 44305,
+   "test_loc": 14879,
+   "endpoints": 240,
+   "stories": 269,
+   "stories_implemented": 241
+  },
+  {
+   "commit": "3927e5f",
+   "date": "2026-10-17",
+   "subject": "Add How the Platform Works wiki page",
+   "prod_loc": 44305,
+   "test_loc": 14879,
+   "endpoints": 240,
+   "stories": 269,
+   "stories_implemented": 241
   }
  ],
  "mutation": {
@@ -3003,9 +3043,9 @@
   }
  },
  "size": {
-  "backend_prod_loc": 27613,
-  "backend_test_loc": 11359,
-  "frontend_prod_loc": 16692,
-  "frontend_test_loc": 3520
+  "backend_prod_loc": 28571,
+  "backend_test_loc": 11869,
+  "frontend_prod_loc": 17013,
+  "frontend_test_loc": 3635
  }
 }

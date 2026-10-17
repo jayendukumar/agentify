@@ -69,6 +69,7 @@ def _load_handlers() -> None:
     from app.context import jobs as _context_jobs  # noqa: F401
     from app.oracles import jobs as _oracle_jobs  # noqa: F401
     from app.process_twin import jobs as _process_twin_jobs  # noqa: F401
+    from app.tenancy import export as _tenant_export  # noqa: F401
 
 
 def _active_tenants() -> list[str]:
@@ -166,9 +167,16 @@ class Worker:
             return
         self._turn = (self._turn + 1) % len(tenants)
         rotated = tenants[self._turn:] + tenants[: self._turn]
+        ready = []
         for limits in rotated:
-            with tenant_scope(limits.tenant_id):
-                self._prepare_tenant()
+            # US38.14: one tenant's unreachable database holds up only that tenant.
+            try:
+                with tenant_scope(limits.tenant_id):
+                    self._prepare_tenant()
+                ready.append(limits)
+            except Exception as exc:
+                logger.warning("job_worker_tenant_skipped", extra={"tenant_id": limits.tenant_id, "error": str(exc)})
+        rotated = ready
         # Least served here first; the rotation breaks ties.
         order = sorted(rotated, key=lambda t: self._running_here(t.tenant_id))
         for job_id, kind, tenant_id in self._claim_fairly(order):
@@ -203,8 +211,12 @@ class Worker:
                 kinds = [kind for kind, n in free.items() if n > 0]
                 if not kinds:
                     return claimed
-                with tenant_scope(limits.tenant_id):
-                    job = self._claim_one(kinds, limits.max_concurrent_jobs)
+                try:
+                    with tenant_scope(limits.tenant_id):
+                        job = self._claim_one(kinds, limits.max_concurrent_jobs)
+                except Exception as exc:
+                    logger.warning("job_worker_tenant_skipped", extra={"tenant_id": limits.tenant_id, "error": str(exc)})
+                    continue
                 if job is None:
                     continue
                 free[job[1]] -= 1

@@ -216,6 +216,21 @@ class Settings(BaseSettings):
     operator_session_hours: int = Field(default=8, ge=1)
     # The longest support grant a tenant admin can give.
     support_max_hours: int = Field(default=72, ge=1)
+    # Epic 38, US38.13: a deleted tenant's data is erased no sooner than
+    # this many days after the operator deletes it (it must be suspended
+    # first), so a mistake can still be undone. A data export the admin
+    # hasn't downloaded is removed after `tenant_export_retention_hours`.
+    tenant_deletion_wait_days: float = Field(default=30, ge=0)
+    tenant_export_retention_hours: float = Field(default=72, gt=0)
+    # US38.15: the region this deployment serves (one deployment per
+    # region). Empty: no residency rules. When set, tenants are created
+    # only in this region, a tenant of another region isn't served here,
+    # and LLM calls must go to a provider hosted in it. `region_deployments`
+    # maps every region to its operator console's URL, as JSON
+    # ('{"EU": "https://ops.eu.axyntro.app"}'), so the console can say
+    # where to create a tenant of another region.
+    deployment_region: str = ""
+    region_deployments: dict[str, str] = Field(default_factory=dict)
 
     @property
     def operator_host_set(self) -> frozenset[str]:

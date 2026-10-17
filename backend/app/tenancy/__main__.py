@@ -17,6 +17,13 @@ save that locked everyone out:
     python -m app.tenancy identity set northwind --issuer http://localhost:8180/realms/northwind
         --client-id axyntro --secret-ref secret://tenant/oidc_client_secret --admin-group northwind-admins
     python -m app.tenancy identity reset northwind     # back to its defaults
+
+US38.14, a tenant in a database of its own (suspend it first; the
+reference's secret holds the app role's URL, `<name>_owner` the owner's):
+
+    python -m app.tenancy database attach acme --ref secret://tenant/database_url
+    python -m app.tenancy database detach acme         # back to the shared database
+    python -m app.tenancy database list
 """
 
 from __future__ import annotations
@@ -33,7 +40,7 @@ from app.db.models import GroupRoleMappingModel, TenantDomainModel, TenantIdenti
 from app.db.session import get_owner_engine
 from app.ids import new_id
 
-from . import identity
+from . import identity, lifecycle, residency
 from .hosts import normalize_host
 
 
@@ -97,6 +104,27 @@ def _identity(session: Session, tenant: TenantModel, args: argparse.Namespace) -
     print(f"{tenant.slug}: identity settings saved (not tested against the IdP -- use the Directory page's test)")
 
 
+def _database(args: argparse.Namespace) -> None:
+    from app.ids import utcnow
+
+    from . import databases
+
+    with Session(get_owner_engine()) as session:
+        if args.action == "list":
+            for slug, ref in databases.tenant_databases(session.connection()):
+                print(f"{slug}	{ref}")
+            return
+        now = utcnow().replace(tzinfo=None)
+        try:
+            if args.action == "attach":
+                result = databases.attach(session, args.slug, args.ref, now=now)
+            else:
+                result = databases.detach(session, args.slug, now=now)
+        except databases.DedicatedDatabaseError as exc:
+            sys.exit(str(exc))
+        print(f"Moved {result['rows']} rows. Activate {args.slug} when you're ready.")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.tenancy", description="Manage tenants (Epic 38).")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -130,8 +158,18 @@ def main(argv: list[str] | None = None) -> None:
     idp_set.add_argument("--scim-link-claim", default="sub")
     idp_set.add_argument("--no-jit", action="store_true", help="only people provisioned beforehand may sign in")
     idp_set.add_argument("--admin-group", help="map this IdP group to Admin, if the tenant has no mappings yet")
+    database = commands.add_parser("database", help="a tenant's own database (US38.14)")
+    database_commands = database.add_subparsers(dest="action", required=True)
+    database_commands.add_parser("list")
+    attach = database_commands.add_parser("attach")
+    attach.add_argument("slug")
+    attach.add_argument("--ref", default="secret://tenant/database_url")
+    database_commands.add_parser("detach").add_argument("slug")
     args = parser.parse_args(argv)
 
+    if args.command == "database":
+        _database(args)
+        return
     with Session(get_owner_engine()) as session, session.begin():
         if args.command == "list":
             for tenant in session.scalars(select(TenantModel).order_by(TenantModel.slug)):
@@ -142,8 +180,12 @@ def main(argv: list[str] | None = None) -> None:
             if tenant is not None and args.command == "create":
                 sys.exit(f"Tenant '{args.slug}' already exists")
             if tenant is None:
+                try:
+                    region = residency.region_for_new_tenant(args.region)
+                except residency.ResidencyError as exc:
+                    sys.exit(str(exc))
                 tenant = TenantModel(
-                    id=new_id("ten"), slug=args.slug, display_name=args.name or args.slug.title(), region=args.region
+                    id=new_id("ten"), slug=args.slug, display_name=args.name or args.slug.title(), region=region
                 )
                 session.add(tenant)
                 session.flush()
@@ -154,7 +196,10 @@ def main(argv: list[str] | None = None) -> None:
         elif args.command == "add-host":
             _add_hosts(session, _tenant(session, args.slug), [args.host])
         else:
-            _tenant(session, args.slug).status = "suspended" if args.command == "suspend" else "active"
+            try:
+                lifecycle.change_status(_tenant(session, args.slug), args.command)
+            except lifecycle.LifecycleError as exc:
+                sys.exit(str(exc))
 
 
 if __name__ == "__main__":

@@ -112,8 +112,14 @@ def test_the_platform_role_cannot_touch_any_tenant_table():
         ]
         assert readable == []
         assert db.scalar(text("SELECT has_table_privilege('tenants', 'INSERT, UPDATE')"))
-        assert not db.scalar(text("SELECT has_table_privilege('tenants', 'DELETE, TRUNCATE')"))
+        # US38.13: it removes an erased tenant's own row (only once the
+        # tenant's rows are gone: foreign keys), and may only rewrite an
+        # audit event's detail, to strip an erased tenant's personal data.
+        assert db.scalar(text("SELECT has_table_privilege('tenants', 'DELETE')"))
+        assert not db.scalar(text("SELECT has_table_privilege('tenants', 'TRUNCATE')"))
         assert not db.scalar(text("SELECT has_table_privilege('platform_audit_events', 'UPDATE, DELETE')"))
+        assert db.scalar(text("SELECT has_column_privilege('platform_audit_events', 'detail', 'UPDATE')"))
+        assert not db.scalar(text("SELECT has_column_privilege('platform_audit_events', 'action', 'UPDATE')"))
 
 
 def test_without_a_tenant_nothing_is_visible_and_nothing_can_be_written(client):

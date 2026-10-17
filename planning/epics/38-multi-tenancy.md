@@ -6,10 +6,12 @@ boundary. Step 2 in progress: US38.6 (each tenant's own IdP) implemented
 (operator console, support access) 2026-10-16. Step 2 is complete.
 Step 3 complete: US38.9 (fair share, limits, usage), US38.10 (secrets,
 files, logs per tenant) and US38.11 (model policy, registries, provider
-key per tenant) implemented 2026-10-16. Step 4 in progress: US38.12
-(create a tenant and its first admin) implemented 2026-10-16; open:
-US38.13-38.15. Decisions confirmed 2026-10-15
-(see Notes).** Reverses the earlier
+key per tenant) implemented 2026-10-16. Step 4 complete: US38.12
+(create a tenant and its first admin) implemented 2026-10-16, US38.13
+(suspend, export, delete) 2026-10-17. Step 5, built ahead of a contract
+asking for it: US38.14 (a dedicated database) and US38.15 (data
+residency) 2026-10-17. All stories implemented. Decisions confirmed
+2026-10-15 (see Notes).** Reverses the earlier
 "tenancy is a later concern" calls (Epic 27, Epic 31 notes,
 `planning/enterprise-context-strategy.md` decision 1). Those were right
 for a local-first product, and a hosted offering is now the goal. Weakness
@@ -270,7 +272,8 @@ Deviations and decisions:
 
 - **Delete only marks the tenant `deleting`** (unreachable, data kept).
   Removing the data, with export, a waiting period and a certificate, is
-  US38.13; the platform role deliberately can't delete `tenants` rows.
+  US38.13; the platform role deliberately can't delete `tenants` rows
+  (since US38.13 it can, once the tenant's rows are gone).
 - **Usage counts are computed as each tenant**, by the app role under
   its row-level security, one short session per tenant: the platform
   role can't read tenant tables at all, and a cross-tenant view would
@@ -490,6 +493,126 @@ Deviations and decisions:
 - **If the tenant is created but its first admin step fails**, the tenant
   stays (its row is committed first, because the tenant's own rows
   reference it) and the console offers a new invitation.
+
+## US38.13 as built
+
+- **Lifecycle** (`app/tenancy/lifecycle.py`): active -> suspended ->
+  deleting -> erased, with activate and restore back. `tenants` gains
+  `suspended_at` and `delete_after` (migration `b1c2d3e4f5a6`). Delete
+  sets `delete_after` to now plus `TENANT_DELETION_WAIT_DAYS` (30);
+  restore clears it.
+- **Suspend:** already refused sign-ins, the API and SCIM on the tenant's
+  hosts (403) and paused its jobs (the worker walks active tenants only).
+  Now timestamped, and tested end to end: data is kept and back on
+  activation.
+- **Export** (`app/tenancy/export.py`, `app/api/data_export.py`): an
+  admin asks on the new Data export page (`POST
+  /api/organization/exports`); job `tenant_export` writes one zip as the
+  tenant: `manifest.json` (tenant, schema revision, counts),
+  `tables/<table>.json` for every tenant table (one repeatable-read
+  snapshot; the audit log is `tables/audit_events.json`) and `files/...`.
+  It's kept in the tenant's `_exports/` directory, downloaded once (marked
+  used in one UPDATE, then removed), and removed unclaimed after
+  `TENANT_EXPORT_RETENTION_HOURS` (72). Requests and downloads are
+  audited (`tenant_export_requested`, `tenant_export_downloaded`).
+- **Erase** (`POST /api/operator/tenants/{id}/erase`, the slug typed to
+  confirm): only for a `deleting` tenant past `delete_after`. One DELETE
+  per tenant table, children first, in one transaction as the tenant
+  under row-level security, then every table is counted again and must
+  be empty; then its files directory and its secrets
+  (`secret_store.erase`). The console then strips the tenant's earlier
+  platform events to `{slug, erased}` and deletes its `tenant_domains`
+  and `tenants` rows.
+- **Certificate:** platform event `tenant_erased` holds rows per table,
+  totals, files and bytes removed, what happened to secrets, times and
+  the operator; listed at `GET /api/operator/deletion-certificates` and
+  in the console. Table names and counts only.
+- **Console:** suspended since, erasable from, the tenant's last export,
+  Restore and Erase, and the certificates.
+- **Tests.** `tests/test_tenant_lifecycle.py` (9). Live:
+  `testing/tenancy/smoke_lifecycle.py` (26/26), which checks as the
+  database owner that no row of the erased tenant is left in any table.
+
+Deviations and decisions (decision log, 2026-10-17):
+
+- **The console's role may delete `tenants` and `tenant_domains` rows
+  and update a platform event's `detail`**, nothing more; still no
+  privilege on any tenant table.
+- **Export before suspension.** A suspended tenant can't ask for or
+  download one; an operator can reactivate briefly.
+- **No credential hashes or sign-ins in flight in the archive.**
+- **Environment secrets are listed, not deleted:** the app can't change
+  the deployment's configuration. Mounted secret files are deleted.
+  Names that might belong to another tenant are kept.
+- **No encryption key to destroy yet:** the certificate says so. Object
+  storage (weakness 4) brings per-tenant keys.
+- **Erasing runs in the request**, not as a job: the tenant's jobs don't
+  run once it's suspended, and the operator waits for the certificate.
+
+## US38.14 as built
+
+- **`tenants.database_ref`** (migration `c2d3e4f5a6b7`): a secret
+  reference to the app role's URL of the tenant's own database;
+  `<name>_owner` holds the owner's, for migrations.
+- **Routing** (`app/db/session.py` `TenantSession.get_bind`,
+  `app/tenancy/databases.py`): a session working as a tenant with a
+  database of its own sends statements there; statements touching only
+  platform tables stay on the shared database. The reference is read at
+  most every 30 seconds per process. A missing secret is an error.
+- **Migrations** run against every tenant database after the shared one
+  (`migrations/env.py`), so the schema never differs. Row-level security
+  stays on there.
+- **Moving** (`python -m app.tenancy database attach|detach|list`): the
+  tenant must have been suspended for 30 seconds. Attach migrates the new
+  database, copies the tenant's `tenants` row in (for foreign keys),
+  copies every tenant table parents first, moves sequences past the
+  copied ids, checks the app role sees every row, sets the reference and
+  erases the rows from the shared database. Detach does the reverse.
+- **Worker:** one tenant's unreachable database now skips only that
+  tenant (found running it live).
+- **Console:** an "own database" badge.
+- **Tests.** `tests/test_tenant_dedicated_database.py` (7), against a
+  second database on the test server. Live:
+  `testing/tenancy/smoke_dedicated_database.py` (12/12), inside the API
+  container against the stack's Postgres.
+
+Deviations and decisions:
+
+- **A direct table copy, not export and import:** the export leaves out
+  credential hashes on purpose, so it can't restore a tenant faithfully.
+  The copy uses the same table walk (`app/tenancy/data.py`).
+- **Files stay where they are** (`DOCUMENT_STORAGE_PATH`): the story is
+  about the database. A dedicated bucket comes with object storage.
+- **Erasing a tenant with its own database** erases its rows there; the
+  certificate says to drop the database, which the app doesn't do.
+- **The live smoke backdates the suspension** instead of waiting the 30
+  seconds, so the running API (which isn't given the secret) still had
+  the tenant cached as shared; in real use the wait prevents that.
+
+## US38.15 as built
+
+- **`DEPLOYMENT_REGION`** names the region a deployment serves, and
+  `REGION_DEPLOYMENTS` every region's console (`app/tenancy/residency.py`).
+  Unset, nothing changes.
+- **Creating a tenant** (console and CLI) gives it this region; another
+  region is refused, naming that region's console.
+- **Serving:** a tenant recorded in another region gets 421 here, so a
+  misdirected host name can't serve it from the wrong region.
+- **Model calls** (`LLMClient.complete`) must go to a provider hosted in
+  the region: `LLM_PROVIDER_REGION`, or a self-hosted endpoint's
+  `provider_region` in the model policy. Unknown counts as outside.
+  Business-unit residency (US31.8) still narrows it.
+- **Console:** shows the region it serves and links the other regions'
+  consoles.
+- **Tests.** `tests/test_tenant_residency.py` (4). Not run live: it
+  needs a second region's deployment; the tests run against the real
+  database and the real LLM client up to the provider call.
+
+Deviations and decisions:
+
+- **The deployment has the region:** one deployment per region, as the
+  story says. Moving a tenant between regions stays out of scope (an
+  export, then a new tenant in the other region).
 
 ## User Stories
 

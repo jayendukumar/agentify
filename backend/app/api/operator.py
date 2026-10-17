@@ -32,18 +32,21 @@ from app.schemas.operator import (
     OperatorLogout,
     OperatorMe,
     PlatformAuditEvent,
-    SupportEntry,
-    SupportGrantForOperator,
+    DeletionCertificate,
     FirstAdminOut,
     InvitationCreate,
+    LastExportOut,
+    SupportEntry,
+    SupportGrantForOperator,
     TenantCreate,
     TenantCreated,
+    TenantErase,
     TenantIdp,
     TenantOut,
     TenantUsage,
 )
 from app.schemas.usage import TenantLimitsIn, TenantLimitsOut
-from app.tenancy import identity, onboarding
+from app.tenancy import identity, lifecycle, onboarding
 from app.tenancy.hosts import normalize_host
 from app.tenancy.limits import limits_of
 
@@ -128,6 +131,7 @@ def operator_config(request: Request) -> OperatorConfig:
     return OperatorConfig(
         auth_mode=mode, environment=settings.environment,
         sso_login_url=f"{_config(request).api_url}/api/operator/oidc/login" if mode == "oidc" else None,
+        region=settings.deployment_region, regions=settings.region_deployments,
     )
 
 
@@ -244,15 +248,20 @@ def operator_logout(record: OperatorSession, db: PlatformDb, request: Request, r
 
 
 def _tenant_out(db: Session, tenant: TenantModel, with_usage: bool = True) -> TenantOut:
-    usage = first = None
+    usage = first = export = None
     if with_usage and tenant.status != "deleting":
         u = tenants.usage(tenant.id)
         usage = TenantUsage(**u.__dict__)
         first = FirstAdminOut(**onboarding.first_admin(tenant.id).__dict__)
+    if with_usage:
+        last = lifecycle.last_export(tenant.id)
+        export = LastExportOut(**last.__dict__) if last is not None else None
     effective = limits_of(tenant)
     return TenantOut(id=tenant.id, slug=tenant.slug, display_name=tenant.display_name, status=tenant.status,
                      region=tenant.region, created_at=tenant.created_at, hosts=tenants.hosts(db, tenant.id),
                      usage=usage, created_via=tenant.created_via, first_admin=first,
+                     suspended_at=tenant.suspended_at, delete_after=tenant.delete_after, last_export=export,
+                     dedicated_database=bool(tenant.database_ref),
                      limits=TenantLimitsIn(**{name: getattr(tenant, name) for name in tenants.LIMIT_FIELDS}),
                      effective_limits=TenantLimitsOut(**{name: getattr(effective, name)
                                                          for name in tenants.LIMIT_FIELDS}))
@@ -354,6 +363,35 @@ def invite_first_admin(tenant_id: str, body: InvitationCreate, record: OperatorS
     )
 
 
+@router.post("/tenants/{tenant_id}/erase", response_model=DeletionCertificate)
+def erase_tenant(tenant_id: str, body: TenantErase, record: OperatorSession, db: PlatformDb,
+                 request: Request) -> DeletionCertificate:
+    """US38.13: erases a deleted tenant's data once its waiting period is
+    over -- every tenant row, its files and its secrets -- and keeps a
+    deletion certificate in the platform log."""
+    tenant = _tenant(db, tenant_id)
+    if body.confirm_slug.strip() != tenant.slug:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Type the tenant's slug ({tenant.slug}) to confirm")
+    try:
+        lifecycle.check_erasable(tenant)
+    except lifecycle.LifecycleError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    try:
+        cert = tenants.erase(db, tenant, operator_name=record.operator.name)
+    except tenants.TenantError as exc:
+        db.rollback()
+        auth.record(db, operator=record.operator, action="tenant_erased", outcome="failed", request=request,
+                    tenant_id=tenant_id, detail={"slug": tenant.slug, "reason": str(exc)})
+        db.commit()
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    event = auth.record(db, operator=record.operator, action="tenant_erased", request=request, tenant_id=tenant_id,
+                        detail=cert)
+    db.flush()
+    db.refresh(event)
+    return DeletionCertificate(id=event.id, occurred_at=event.occurred_at, operator_name=event.operator_name,
+                               tenant_id=tenant_id, certificate=cert)
+
+
 @router.post("/tenants/{tenant_id}/{action}", response_model=TenantOut)
 def change_tenant_status(tenant_id: str, action: str, record: OperatorSession, db: PlatformDb,
                          request: Request) -> TenantOut:
@@ -417,6 +455,17 @@ def enter_tenant(tenant_id: str, grant_id: str, record: OperatorSession, db: Pla
                 detail={"slug": tenant.slug, "grant_id": grant.id, "access": grant.access})
     return SupportEntry(url=tenants.entry_url(tenants.hosts(db, tenant.id), token),
                         expires_in_seconds=int(support.ENTRY_LIFETIME.total_seconds()))
+
+
+@router.get("/deletion-certificates", response_model=list[DeletionCertificate])
+def deletion_certificates(record: OperatorSession, db: PlatformDb) -> list[DeletionCertificate]:
+    """US38.13: one per erased tenant."""
+    del record
+    rows = db.scalars(select(PlatformAuditEventModel).where(PlatformAuditEventModel.action == "tenant_erased",
+                                                            PlatformAuditEventModel.outcome == "success")
+                      .order_by(PlatformAuditEventModel.occurred_at.desc()))
+    return [DeletionCertificate(id=r.id, occurred_at=r.occurred_at, operator_name=r.operator_name,
+                                tenant_id=r.tenant_id, certificate=r.detail) for r in rows]
 
 
 @router.get("/audit", response_model=list[PlatformAuditEvent])

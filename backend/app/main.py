@@ -16,6 +16,7 @@ from app.api import (
     bpmn,
     catalog,
     connectors,
+    data_export,
     datasets,
     operator,
     oracles,
@@ -150,6 +151,7 @@ app.include_router(directory.router)
 app.include_router(scim.router)
 app.include_router(governance.router)
 app.include_router(usage.router)
+app.include_router(data_export.router)
 app.include_router(processes.router)
 app.include_router(documents.router)
 app.include_router(bpmn.router)

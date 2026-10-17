@@ -58,7 +58,7 @@ DOMAINS: dict[str, list[str]] = {
     "Identity and access (Epics 9-10, 37, 38)": [
         "users", "user_roles", "user_identities", "sessions", "session_tokens", "oidc_login_requests",
         "scim_tokens", "directory_groups", "directory_group_members", "group_role_mappings", "tenant_identity",
-        "support_grants", "support_entries", "tenant_invitations", "contributions", "approvals", "audit_events",
+        "support_grants", "support_entries", "tenant_invitations", "tenant_exports", "contributions", "approvals", "audit_events",
     ],
     "Platform (Epics 31, 38)": [
         "jobs", "tenants", "tenant_domains", "operators", "operator_sessions", "operator_login_requests",
