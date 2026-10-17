@@ -14,6 +14,10 @@ system, run on the host at :9100.
   so the smoke test can kill an agent while a call is in flight.
 - `/_fail`: POST {"on": true} makes production lookups answer 503, so the
   smoke test can open the agent's circuit breaker.
+- `/hooks/agent-done`: not core banking's, but the loan system's callback
+  endpoint (US39.4), hosted here so the smoke test needs one service.
+  Records the raw body and signature; `/_hooks` lists them, and
+  `/_hooks_fail` {"times": n} makes the next n answer 503.
 
     python testing/runtime/core_banking_standin.py
 """
@@ -36,6 +40,8 @@ calls: list[dict[str, Any]] = []
 accounts: dict[str, dict[str, Any]] = {}
 slow = {"seconds": 0.0}
 failing = {"on": False}
+hooks: list[dict[str, Any]] = []
+hooks_failing = {"times": 0}
 
 SPEC = {
     "openapi": "3.0.0",
@@ -136,6 +142,27 @@ def open_account(body: dict[str, Any], request: Request, authorization: str | No
     return accounts[idempotency_key]
 
 
+@app.post("/hooks/agent-done")
+async def agent_done(request: Request) -> dict[str, bool]:
+    hooks.append({"at": time.time(), "body": (await request.body()).decode(),
+                  "signature": request.headers.get("axyntro-signature")})
+    if hooks_failing["times"] > 0:
+        hooks_failing["times"] -= 1
+        raise HTTPException(503, "The loan system is restarting")
+    return {"ok": True}
+
+
+@app.get("/_hooks")
+def recorded_hooks() -> list[dict[str, Any]]:
+    return hooks
+
+
+@app.post("/_hooks_fail")
+def set_hooks_failing(body: dict[str, int]) -> dict[str, int]:
+    hooks_failing["times"] = int(body.get("times", 0))
+    return hooks_failing
+
+
 @app.get("/_calls")
 def recorded() -> list[dict[str, Any]]:
     return calls
@@ -159,6 +186,8 @@ def reset() -> dict[str, bool]:
     accounts.clear()
     slow["seconds"] = 0.0
     failing["on"] = False
+    hooks.clear()
+    hooks_failing["times"] = 0
     return {"ok": True}
 
 

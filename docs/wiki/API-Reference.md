@@ -375,7 +375,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | POST | `/api/processes/{process_id}/review-tasks/{task_id}/resolve` | `runtime.review` | Close an escalated case by hand, with the outcome reached. |
 | POST | `/api/processes/{process_id}/review-tasks/{task_id}/to-dataset` | `agent.test` | US39.10: a person's answer on a live case becomes a golden row. |
 | GET | `/api/runtime/clients` | `org.admin` |  |
-| POST | `/api/runtime/clients` | `org.admin` | The token is shown once; only its hash is kept. |
+| POST | `/api/runtime/clients` | `org.admin` | The token and the callback signing secret are shown once; only the token's hash is kept. |
 | POST | `/api/runtime/clients/{client_id}/revoke` | `org.admin` |  |
 | GET | `/api/runtime/inbox` | signed in | US39.10: the tasks this person may act on, soonest due first. |
 | POST | `/api/runtime/kill` | `runtime.stop` | US39.11: every agent in the organization. Needs the stop permission organization-wide. |

@@ -779,8 +779,6 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
     _record_outcome(execution, outcome, resumed=bool(decision))
     _after(session, execution, deployment)
     session.commit()
-    if outcome.status in TERMINAL_RUN_STATUSES:
-        await _callback(execution)
     return {"status": execution.status}
 ```
 

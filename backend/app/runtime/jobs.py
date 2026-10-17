@@ -2,8 +2,10 @@
 
 `submit` takes a case from a tenant's system and queues it as a
 `runtime_execution` job, after checking the deployment's caps (US39.9:
-429 with the reason when one is reached). The handler runs it through the
-shared executor with production ports:
+429 with the reason when one is reached) and the input against the input
+schema (app/runtime/inputs.py: 422). Internal triggers reach `submit`
+through a `runtime_submit` job (`queue_submission`). The handler runs a
+case through the shared executor with production ports:
 
 - tools: app/runtime/adapters.py, bound per deployment, behind the
   deployment's circuit breakers;
@@ -15,7 +17,8 @@ shared executor with production ports:
   crash loses none that happened.
 
 A case that ends ESCALATED opens an escalation task. After every case,
-the pause rules are checked (US39.12). While a deployment is paused, new
+the pause rules are checked (US39.12), and a case that ended is
+reported to its callback URL (app/runtime/callbacks.py). While a deployment is paused, new
 cases are refused, or held and retried every 30 seconds when it queues
 instead (`when_paused`); cases already running finish.
 
@@ -33,13 +36,9 @@ twice. Otherwise the case starts again as a new attempt.
 
 from __future__ import annotations
 
-import fnmatch
-import logging
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
 
-import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -59,14 +58,15 @@ from app.llm import ToolCall, ToolDefinition
 from app.schemas.agents import AgentDefinition
 from app.schemas.run import TERMINAL_RUN_STATUSES, RunStatus, RunStep
 
-from . import limits, reviews
+from . import callbacks, limits, reviews
 from .adapters import Binding, ProductionTools, is_mutating
 from .deployments import bindings_of, pause_if_needed
 from .executor import ExecutionOutcome, RunCancelled, execute
+from .inputs import input_problems
 from .instructions import run_instructions
 
-logger = logging.getLogger("app.runtime")
 JOB_KIND = "runtime_execution"
+SUBMIT_JOB_KIND = "runtime_submit"
 PAUSED_RETRY_SECONDS = 30
 
 
@@ -79,24 +79,13 @@ class SubmitError(Exception):
 
 @dataclass
 class Caller:
-    """Who started the execution: a runtime client (US39.4)."""
+    """Who started the execution (US39.4): a runtime client through the
+    API (`trigger="api"`), or an internal trigger through the job queue,
+    such as a scheduled sweep (no client, `trigger` names it)."""
 
-    client_id: str
+    client_id: str | None
     label: str
-
-
-def _input_problems(definition: AgentDefinition, data: Any) -> list[str]:
-    if not isinstance(data, dict):
-        return ["the input must be a JSON object"]
-    missing = [f.name for f in definition.input_schema if f.name not in data]
-    return [f"missing input field '{name}'" for name in missing]
-
-
-def _callback_allowed(url: str) -> bool:
-    parsed = urlparse(url)
-    patterns = [p.strip() for p in get_settings().runtime_callback_hosts.split(",") if p.strip()]
-    host = (parsed.hostname or "").lower()
-    return parsed.scheme in ("http", "https") and any(fnmatch.fnmatch(host, p) for p in patterns)
+    trigger: str = "api"
 
 
 def refusal(deployment: AgentDeploymentModel) -> str | None:
@@ -131,7 +120,7 @@ def submit(session: Session, deployment: AgentDeploymentModel, caller: Caller, *
     execution = AgentExecutionModel(
         id=new_id("exe"), deployment_id=deployment.id, process_id=deployment.process_id,
         artifact_version=deployment.artifact_version, identity_id=deployment.identity_id,
-        client_id=caller.client_id, idempotency_key=idempotency_key, status="QUEUED", input=data,
+        client_id=caller.client_id, trigger=caller.trigger, idempotency_key=idempotency_key, status="QUEUED", input=data,
         callback_url=callback_url, requested_by=(requested_by or "").strip() or None, deviations=[], attempt=0,
         step_count=0, total_tokens=0, turns_used=0,
     )
@@ -141,8 +130,8 @@ def submit(session: Session, deployment: AgentDeploymentModel, caller: Caller, *
     audit.record(
         session, actor=None, actor_type="service", actor_name=caller.label, action="runtime_execution_submitted",
         object_type="agent_execution", object_id=execution.id, process_id=deployment.process_id,
-        detail={"deployment_id": deployment.id, "client_id": caller.client_id, "identity_id": deployment.identity_id,
-                "requested_by": execution.requested_by},
+        detail={"deployment_id": deployment.id, "client_id": caller.client_id, "trigger": caller.trigger,
+                "identity_id": deployment.identity_id, "requested_by": execution.requested_by},
     )
     return execution, True
 
@@ -166,10 +155,10 @@ def _check_admissible(session: Session, deployment: AgentDeploymentModel, data: 
         limits.check_caps(session, deployment)
     except limits.LimitExceeded as exc:
         raise SubmitError(429, f"This agent is at a limit: {exc}") from exc
-    problems = _input_problems(AgentDefinition.model_validate(deployment.snapshot["definition"]), data)
+    problems = input_problems(AgentDefinition.model_validate(deployment.snapshot["definition"]), data)
     if problems:
         raise SubmitError(422, "; ".join(problems))
-    if callback_url and not _callback_allowed(callback_url):
+    if callback_url and not callbacks.allowed(callback_url):
         raise SubmitError(422, "That callback host isn't allowed (RUNTIME_CALLBACK_HOSTS)")
 
 
@@ -216,16 +205,6 @@ def _finish(execution: AgentExecutionModel, status: RunStatus, reason: str | Non
     execution.completed_at = utcnow()
     if reason:
         execution.deviations = [*execution.deviations, {"reason": reason, "step_index": None}]
-
-
-async def _callback(execution: AgentExecutionModel) -> None:
-    if not execution.callback_url or not _callback_allowed(execution.callback_url):
-        return
-    try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-            await client.post(execution.callback_url, json={"execution_id": execution.id, "status": execution.status})
-    except httpx.HTTPError as exc:
-        logger.warning("runtime_callback_failed", extra={"execution_id": execution.id, "error": type(exc).__name__})
 
 
 class _AwaitReview:
@@ -308,6 +287,7 @@ def _after(session: Session, execution: AgentExecutionModel, deployment: AgentDe
         reviews.open_escalation(session, execution, deployment)
     if execution.status in TERMINAL_RUN_STATUSES:
         pause_if_needed(session, deployment)
+        callbacks.notify_caller(session, execution)
 
 
 @dataclass
@@ -347,7 +327,8 @@ class _Recorder:
             self.session, actor=None, actor_type="agent", actor_name=self.identity.display_name,
             action="agent_tool_call", object_type="agent_execution", object_id=self.execution.id,
             process_id=self.execution.process_id,
-            detail={"identity_id": self.identity.id, "on_behalf_of": self.execution.client_id,
+            detail={"identity_id": self.identity.id,
+                    "on_behalf_of": self.execution.client_id or f"trigger:{self.execution.trigger}",
                     "system": binding.system_name, "operation": call.arguments.get("operation"),
                     "status_code": status_code},
         )
@@ -382,6 +363,8 @@ def _admit(session: Session, execution: AgentExecutionModel | None, payload: dic
         return {"skipped": True}  # waiting for its review
     if _ended_before_starting(session, execution, deployment, definition, resuming=bool(decision)) or (
             not decision and _held_while_paused(session, execution, deployment)):
+        if execution.status in TERMINAL_RUN_STATUSES:
+            callbacks.notify_caller(session, execution)
         session.commit()
         return {"status": execution.status}
     return deployment, definition, decision
@@ -422,9 +405,50 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
     _record_outcome(execution, outcome, resumed=bool(decision))
     _after(session, execution, deployment)
     session.commit()
-    if outcome.status in TERMINAL_RUN_STATUSES:
-        await _callback(execution)
     return {"status": execution.status}
+
+
+# ---- internal triggers ------------------------------------------------------------------
+
+
+def queue_submission(session: Session, deployment_id: str, *, data: dict[str, Any], idempotency_key: str,
+                     trigger: str, requested_by: str | None = None) -> None:
+    """US39.4: starts a case from inside the platform (a scheduled sweep,
+    another job) the way a runtime client would through the API: same
+    checks, same idempotency. A cap that is reached is retried with
+    backoff; any other refusal is recorded in the audit log and the job's
+    result."""
+    queue.enqueue(session, SUBMIT_JOB_KIND,
+                  {"deployment_id": deployment_id, "input": data, "idempotency_key": idempotency_key,
+                   "trigger": trigger, "requested_by": requested_by},
+                  max_attempts=5, dedupe_key=f"runtime-submit:{deployment_id}:{idempotency_key}")
+
+
+@handler(SUBMIT_JOB_KIND)
+async def runtime_submit(payload: dict[str, Any], session: Session) -> dict[str, Any]:
+    trigger = payload["trigger"]
+    deployment = session.get(AgentDeploymentModel, payload["deployment_id"])
+    try:
+        if deployment is None:
+            raise SubmitError(404, f"Deployment '{payload['deployment_id']}' not found")
+        execution, created = submit(session, deployment, Caller(client_id=None, label=f"trigger:{trigger}",
+                                                                trigger=trigger),
+                                    data=payload["input"], idempotency_key=payload["idempotency_key"],
+                                    callback_url=None, requested_by=payload.get("requested_by"))
+    except SubmitError as exc:
+        if exc.status == 429:
+            raise  # a cap: try again later
+        session.rollback()
+        audit.record(
+            session, actor=None, actor_type="service", actor_name=f"trigger:{trigger}",
+            action="runtime_execution_refused", object_type="agent_deployment", object_id=payload["deployment_id"],
+            process_id=deployment.process_id if deployment else None,
+            detail={"trigger": trigger, "status": exc.status, "reason": exc.detail,
+                    "idempotency_key": payload["idempotency_key"]},
+            outcome="refused",
+        )
+        return {"refused": exc.status, "reason": exc.detail}
+    return {"execution_id": execution.id, "created": created}
 
 
 def steps_of(session: Session, execution_id: str) -> list[ExecutionStepModel]:

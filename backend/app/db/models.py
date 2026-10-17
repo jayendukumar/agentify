@@ -1979,13 +1979,17 @@ class AdapterBindingModel(TenantScoped, Base):
 class RuntimeClientModel(TenantScoped, Base):
     """Epic 39, US39.4: a system of the tenant that may start executions:
     a bearer token, shown once and stored as a SHA-256 hash (the SCIM
-    token pattern, US37.10)."""
+    token pattern, US37.10). `deployment_ids` limits it to some
+    deployments (None: all of the tenant's); `signing_secret` signs its
+    callbacks (app/runtime/callbacks.py), so it's kept, not hashed."""
 
     __tablename__ = "runtime_clients"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     label: Mapped[str] = mapped_column(String, nullable=False)
     token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    deployment_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    signing_secret: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -2007,6 +2011,8 @@ class AgentExecutionModel(TenantScoped, Base):
     artifact_version: Mapped[int] = mapped_column(nullable=False)
     identity_id: Mapped[str] = mapped_column(String, nullable=False)
     client_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # US39.4: "api" for a runtime client, else the internal trigger's name.
+    trigger: Mapped[str] = mapped_column(String, nullable=False, default="api", server_default="api")
     idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="QUEUED", index=True)
     input: Mapped[dict | None] = mapped_column(JSON, nullable=True)

@@ -3950,3 +3950,62 @@ Cases arrive from a system, not a signed-in person, so "nobody approves
 a case they triggered" has no user to compare with. The caller passes
 `requested_by` (the person in its own system), and a reviewer whose name
 or email matches is refused.
+
+## 2026-10-17 -- Epic 39 US39.4 completed (ways to start an agent)
+
+### Input types are checked only where the format names a type
+
+An input field's `format` is free text the blueprint model wrote
+("string", "number", "date (YYYY-MM-DD)", "currency code", "PDF").
+`app/runtime/inputs.py` checks a field's type only when the whole format,
+without parentheses, is a type name ("number", "date", "boolean",
+"list of ..."). Anything else accepts any value that isn't null. Guessing
+from descriptions would go wrong: "phone number" isn't a number, and a
+"currency code" is text. A wrong guess refuses real cases that the twin
+passed. Missing and null fields are refused for every format.
+
+### Callback signing secrets are kept, not hashed
+
+A runtime client's token is stored as a hash, but its callback signing
+secret can't be: the server needs the value to compute the HMAC. It sits
+on `runtime_clients` behind row-level security, as webhook secrets do in
+most SaaS products, and is shown once at creation. Keying the HMAC with
+the token's hash was considered. It gains nothing, because the hash is
+in the same row, and it ties signing to the token's lifetime. Clients
+created before this change have no secret, and their callbacks go
+unsigned. Moving the secret into the secret store goes with the Critical
+Review's secrets-manager item.
+
+### Callbacks are a job, so a caller that's down still hears
+
+Step 2 posted the callback once, inline, and logged any failure. It is
+now a `runtime_callback` job (5 attempts with the queue's backoff), and
+it is also queued when a kill ends a case that never started. Moving it
+out of the execution handler also means a slow caller no longer holds
+a production worker. Seen live: the stand-in's receiver was down for
+the first attempt, and the retry delivered.
+
+### Internal triggers go through `submit`, and a cap means "later"
+
+A scheduled sweep starts a case with `jobs.queue_submission`. That queues
+a `runtime_submit` job, which calls the same `submit` the API does, so
+the checks and idempotency are the same. The caller is the trigger's
+name (`agent_executions.trigger`), not a client. A 429 (a cap) raises,
+so the queue retries with backoff, because a sweep should wait rather
+than lose the case. Any other refusal is final and is audited as
+`runtime_execution_refused`. A production-only worker now needs all
+three kinds in `JOB_WORKER_KINDS`.
+
+### A client limited to some deployments gets 404 for the rest
+
+`runtime_clients.deployment_ids` (null means all of them) closes step 2's
+open item. A 404 (not 403) answers for a deployment outside the limit,
+so a client can't probe which deployment ids exist, the same answer
+another tenant's client gets.
+
+### Found live: callback timestamps had no timezone
+
+The first live callback carried `completed_at` as
+`2026-10-17T08:02:12.567861`. The columns are naive UTC, and a caller
+would read that as its own local time. Tests had only checked that the
+field was present. The callback now marks the time as UTC (`+00:00`).

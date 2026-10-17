@@ -60,6 +60,9 @@ services:
       # the local stand-in of a production system and Keycloak as its
       # authorization server (testing/runtime/). Local only.
       RUNTIME_HTTP_HOSTS: ${RUNTIME_HTTP_HOSTS:-host.docker.internal,keycloak}
+      # US39.4: hosts an execution's callback_url may name (the stand-in
+      # hosts the smoke test's callback receiver). Local only.
+      RUNTIME_CALLBACK_HOSTS: ${RUNTIME_CALLBACK_HOSTS:-host.docker.internal}
       # The stand-in's client secret for Meridian's agent, referenced from
       # a binding as secret://tenant/core_banking_secret. Local only.
       TENANT_MERIDIAN_CORE_BANKING_SECRET: agent-loans-dev-only-secret

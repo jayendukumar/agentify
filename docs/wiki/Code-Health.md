@@ -11,10 +11,10 @@ the committed baseline (`docs/code-health/baseline.json`).
 <!-- BEGIN GENERATED: code-health-summary -->
 | Measure | Value |
 |---|---|
-| Production lines (backend / frontend) | 31,112 / 17,282 |
+| Production lines (backend / frontend) | 31,294 / 17,282 |
 | Functions over cognitive complexity 15 | 90 / 51 |
 | Most complex function | `run_orchestration` (98) |
-| Duplication, exact / structural (backend) | 0.23% / 3.59% |
+| Duplication, exact / structural (backend) | 0.23% / 3.57% |
 | Import cycles (import-time / incl. lazy imports) | 0 / 4 |
 | Top hotspot | `backend/app/db/repository.py` |
 | Mutation score (modules measured) | `rules.py` 68%, `gateway.py` 84%, `results.py` 72%, `orchestrator.py` 56%, `efficiency.py` 76%, `records.py` 88% |

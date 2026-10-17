@@ -8,7 +8,8 @@ Two audiences:
   agent, or every agent in the tenant is one action each (US39.11).
 - **The tenant's own systems** (`/runtime/v1/...`): start an execution
   and read its result, with a runtime client's bearer token (US39.4),
-  the way the IdP reaches `/scim/v2`.
+  the way the IdP reaches `/scim/v2`. A client limited to some
+  deployments gets 404 for the others, as if they didn't exist.
 """
 
 from __future__ import annotations
@@ -264,7 +265,7 @@ def get_execution(process_id: str, execution_id: str, db: DbDep, user: CurrentUs
     if e is None or e.process_id != process_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Execution '{execution_id}' not found")
     return Execution(
-        **_execution_summary(e).model_dump(), identity_id=e.identity_id, client_id=e.client_id,
+        **_execution_summary(e).model_dump(), identity_id=e.identity_id, client_id=e.client_id, trigger=e.trigger,
         requested_by=e.requested_by, input=e.input, final_output=e.final_output, deviations=e.deviations,
         resolution=e.resolution,
         steps=[RunStep.model_validate(s.step) for s in jobs.steps_of(db, e.id)],
@@ -434,13 +435,22 @@ def list_clients(db: DbDep, user: OrgAdminDep) -> list[RuntimeClient]:
 
 @tenant_router.post("/clients", response_model=RuntimeClientCreated, status_code=201)
 def create_client(body: RuntimeClientIn, db: DbDep, user: OrgAdminDep) -> RuntimeClientCreated:
-    """The token is shown once; only its hash is kept."""
+    """The token and the callback signing secret are shown once; only the
+    token's hash is kept."""
+    if body.deployment_ids is not None:
+        unknown = [d for d in body.deployment_ids if db.get(AgentDeploymentModel, d) is None]
+        if unknown:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                                detail=f"Unknown deployments: {', '.join(unknown)}")
     token = "axr_" + secrets.token_urlsafe(32)
-    row = RuntimeClientModel(id=new_id("rtc"), label=body.label, token_hash=_hash(token), created_by=user.id)
+    signing_secret = "axs_" + secrets.token_urlsafe(32)
+    row = RuntimeClientModel(id=new_id("rtc"), label=body.label, token_hash=_hash(token), created_by=user.id,
+                             deployment_ids=body.deployment_ids, signing_secret=signing_secret)
     db.add(row)
     db.flush()
     db.refresh(row)
-    return RuntimeClientCreated(**RuntimeClient.model_validate(row, from_attributes=True).model_dump(), token=token)
+    return RuntimeClientCreated(**RuntimeClient.model_validate(row, from_attributes=True).model_dump(), token=token,
+                                signing_secret=signing_secret)
 
 
 @tenant_router.post("/clients/{client_id}/revoke", response_model=RuntimeClient)
@@ -461,7 +471,7 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def runtime_client(db: DbDep, authorization: Annotated[str | None, Header()] = None) -> jobs.Caller:
+def runtime_client(db: DbDep, authorization: Annotated[str | None, Header()] = None) -> RuntimeClientModel:
     scheme, _, token = (authorization or "").partition(" ")
     row = None
     if scheme.lower() == "bearer" and token:
@@ -472,10 +482,10 @@ def runtime_client(db: DbDep, authorization: Annotated[str | None, Header()] = N
     now = utcnow().replace(tzinfo=None)
     if row.last_used_at is None or now - row.last_used_at > timedelta(minutes=1):
         row.last_used_at = now
-    return jobs.Caller(client_id=row.id, label=row.label)
+    return row
 
 
-ClientDep = Annotated[jobs.Caller, Depends(runtime_client)]
+ClientDep = Annotated[RuntimeClientModel, Depends(runtime_client)]
 
 
 def _accepted(e: AgentExecutionModel) -> ExecutionAccepted:
@@ -486,7 +496,7 @@ def _accepted(e: AgentExecutionModel) -> ExecutionAccepted:
 def start_execution(deployment_id: str, body: ExecutionIn, db: DbDep, caller: ClientDep, response: Response,
                     idempotency_key: Annotated[str | None, Header()] = None) -> ExecutionAccepted:
     deployment = db.get(AgentDeploymentModel, deployment_id)
-    if deployment is None:
+    if deployment is None or (caller.deployment_ids is not None and deployment_id not in caller.deployment_ids):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Deployment '{deployment_id}' not found")
     if body.callback_url:
         try:
@@ -494,7 +504,8 @@ def start_execution(deployment_id: str, body: ExecutionIn, db: DbDep, caller: Cl
         except UnsafeProductionEndpoint as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"callback_url: {exc}") from exc
     try:
-        execution, created = jobs.submit(db, deployment, caller, data=body.input,
+        execution, created = jobs.submit(db, deployment, jobs.Caller(client_id=caller.id, label=caller.label),
+                                         data=body.input,
                                          idempotency_key=idempotency_key or "", callback_url=body.callback_url,
                                          requested_by=body.requested_by)
     except jobs.SubmitError as exc:
@@ -507,7 +518,7 @@ def start_execution(deployment_id: str, body: ExecutionIn, db: DbDep, caller: Cl
 @client_router.get("/executions/{execution_id}", response_model=ExecutionAccepted)
 def read_execution(execution_id: str, db: DbDep, caller: ClientDep) -> ExecutionAccepted:
     e = db.get(AgentExecutionModel, execution_id)
-    if e is None or e.client_id != caller.client_id:
+    if e is None or e.client_id != caller.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Execution '{execution_id}' not found")
     return _accepted(e)
 

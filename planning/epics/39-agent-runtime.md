@@ -4,8 +4,9 @@
 executor (US39.1); deployments, executions, the API trigger, identity,
 adapters, credentials, guardrails failing closed, the kill switch
 (US39.2-39.8, US39.11); the review inbox, limits and circuit breakers,
-automatic pause (US39.9, US39.10, US39.12). Open items are listed under
-each step's "as built". Decisions confirmed 2026-10-17 (see Notes).**
+automatic pause (US39.9, US39.10, US39.12). US39.4 completed 2026-10-17
+(typed input, internal triggers, client limits, signed callbacks). Open
+items are listed under each step's "as built". Decisions confirmed 2026-10-17 (see Notes).**
 Weakness 3 in the wiki's Critical Review ("Agents never run in
 production") and item 4 of its recommended order.
 Section 3 of the enterprise-readiness deck ("Production agent runtime").
@@ -305,6 +306,42 @@ Deviations from the stories, decided while building:
   may let one call through at once; the first result decides the state.
 - **The drift pause trigger** waits for US39.15.
 - **Retention and redaction** of stored payloads (US39.3) are still open.
+
+## US39.4 completed (step 2's open items)
+
+- **Code.** `app/runtime/inputs.py` checks each input field's type where
+  its format names one ("number", "date", "boolean", "list of ...").
+  Free-text formats ("currency code", "PDF") take any value. Missing or
+  null fields are refused, and every problem is listed in the 422.
+  `app/runtime/callbacks.py` turns the callback into a `runtime_callback`
+  job (5 attempts with backoff). The job signs the body
+  (`Axyntro-Signature: t=..,v1=HMAC-SHA256("<t>.<body>")`) with the
+  client's signing secret, shown once at creation, and also runs when a
+  kill ends a case that never started. `jobs.queue_submission` and the
+  `runtime_submit` job start a case from an internal trigger (a scheduled
+  sweep) through the same `submit`. A cap retries later; other
+  refusals are audited. Runtime clients take an optional `deployment_ids`
+  and get 404 outside it. Migration `f5a6b7c8d9e0` adds
+  `agent_executions.trigger` and `runtime_clients.deployment_ids` and
+  `signing_secret`. A production-only worker runs
+  `JOB_WORKER_KINDS=runtime_execution,runtime_submit,runtime_callback`.
+- **Tests.** `tests/test_runtime_triggers.py` (9): format typing; 422
+  with every problem listed and no model call; a sweep through the queue
+  (trigger recorded, no client, the same key twice is one case); an
+  internal trigger refused like the API and audited; at a cap it retries;
+  a client limited to other deployments gets 404, and an unknown id in the
+  limit gets 422; a callback retried after a 500 and signed, verified by
+  HMAC; a kill before start queues the callback; a callback host that
+  isn't allowed gets 422.
+- **Live.** `testing/runtime/smoke_runtime_triggers.py` (19/19 on
+  2026-10-17), with the same stand-in and realm. The stand-in now also
+  hosts the loan system's callback receiver (`/hooks/agent-done`). A
+  number where the schema says string got 422. A real case's callback
+  failed once and was retried, and its signature checked out. A sweep
+  queued through `runtime_submit` completed with no client, and queuing
+  the same key again started nothing.
+- **Still a deviation:** runtime clients authenticate with a bearer token,
+  not OAuth client credentials (see step 2).
 
 ## User Stories
 

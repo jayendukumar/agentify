@@ -125,6 +125,7 @@ class ExecutionSummary(BaseModel):
 class Execution(ExecutionSummary):
     identity_id: str
     client_id: str | None = None
+    trigger: str = "api"
     requested_by: str | None = None
     input: dict[str, Any] | None = None
     final_output: dict[str, Any] | None = None
@@ -202,6 +203,8 @@ class ExecutionAccepted(BaseModel):
 class RuntimeClient(BaseModel):
     id: str
     label: str
+    # None: may start any of the tenant's deployments.
+    deployment_ids: list[str] | None = None
     created_at: datetime
     last_used_at: datetime | None = None
     revoked_at: datetime | None = None
@@ -209,7 +212,11 @@ class RuntimeClient(BaseModel):
 
 class RuntimeClientIn(BaseModel):
     label: str = Field(min_length=1, max_length=200)
+    deployment_ids: list[str] | None = None
 
 
 class RuntimeClientCreated(RuntimeClient):
+    """Both secrets are shown once."""
+
     token: str
+    signing_secret: str

@@ -92,7 +92,7 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | Package | Files | Lines | Purpose (from its docstring) |
 |---|---|---|---|
 | `app/agents` | 3 | 241 | Epic 12, US12.1/US12.2: deterministic mapping from a blueprint node's AgentSpec (Epic 7) to a portable AgentDefinition. No LLM call here -- the blueprint evalua |
-| `app/api` | 34 | 4,836 |  |
+| `app/api` | 34 | 4,847 |  |
 | `app/auth` | 9 | 1,668 | Epic 37, US37.6: the append-only audit trail. |
 | `app/batches` | 3 | 849 | Epic 34: batch execution at volume. |
 | `app/blueprint` | 3 | 219 | Epic 7 / agentic-blueprint-evaluator skill: the system instructions + JSON response contract for per-node automation feasibility evaluation. Same prompt-with-ex |
@@ -102,17 +102,17 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | `app/connectors` | 7 | 658 | Epic 31, US31.2: read-only connectors to systems of record. |
 | `app/context` | 13 | 2,389 | Epics 27-28: the organization context layer -- see planning/enterprise-context-strategy.md. |
 | `app/datasets` | 3 | 548 | Epic 32: labelled datasets and ground truth. |
-| `app/db` | 4 | 3,992 | SQLAlchemy ORM models for Epic 2 (Business Process Knowledge Store) -- processes, documents, the extracted process schema (actors/elements/ source_refs/flows),  |
+| `app/db` | 4 | 3,998 | SQLAlchemy ORM models for Epic 2 (Business Process Knowledge Store) -- processes, documents, the extracted process schema (actors/elements/ source_refs/flows),  |
 | `app/gap_analysis` | 3 | 282 | Epic 11: the system instructions + JSON response contract for gap analysis. Same prompt-with-explicit-schema-contract pattern as app/chat/prompts.py/app/bluepri |
 | `app/ingestion` | 7 | 824 | US2.3: local embedding generation for extracted document content. |
-| `app/jobs` | 3 | 352 | Epic 31, US31.1: the durable job queue. |
+| `app/jobs` | 3 | 353 | Epic 31, US31.1: the durable job queue. |
 | `app/llm` | 8 | 844 |  |
 | `app/operators` | 3 | 273 | Epic 38, US38.8: the operator console -- the hosting company's own view of the deployment, separate from every tenant. |
 | `app/oracles` | 5 | 818 | Epic 33: scalable oracles -- rules, label-first generation, metamorphic relations, calibrated judges. |
 | `app/process_twin` | 4 | 604 | Epic 36: the process digital twin -- the whole process run over many cases, measured against today. |
 | `app/registry` | 4 | 222 | Epic 13, US13.1: the registry connector interface every registry backend implements identically -- the local reference connector (app/registry/local.py) today,  |
-| `app/runtime` | 9 | 1,882 | Epic 39: the agent runtime -- the one execution loop the twin and production both run agents through (`executor.py`). |
-| `app/schemas` | 29 | 2,625 |  |
+| `app/runtime` | 11 | 2,040 | Epic 39: the agent runtime -- the one execution loop the twin and production both run agents through (`executor.py`). |
+| `app/schemas` | 29 | 2,631 |  |
 | `app/scim` | 3 | 491 | Epic 37, US37.10: the inbound SCIM 2.0 server (RFC 7643/7644) the customer's IdP provisions users and groups through. Not Epic 31's outbound ScimConnector, whic |
 | `app/secret_store` | 1 | 139 | Epic 38, US38.10: each tenant's secrets, kept apart. |
 | `app/tenancy` | 14 | 1,467 | Epic 38: many organizations ("tenants") on one deployment, kept apart by Postgres row-level security. See planning/epics/38-multi-tenancy.md. |

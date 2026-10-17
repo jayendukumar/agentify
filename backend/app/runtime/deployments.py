@@ -47,7 +47,7 @@ from app.schemas.agents import AgentDefinition
 from app.schemas.run import NON_TERMINAL_RUN_STATUSES
 from app.tenancy.identity import current_slug
 
-from . import credentials, limits, reviews
+from . import callbacks, credentials, limits, reviews
 from .adapters import UnsafeProductionEndpoint, check_production_endpoint, is_mutating
 
 LIVE = ("active", "paused")
@@ -330,6 +330,7 @@ def _stop(session: Session, deployment: AgentDeploymentModel, *, status: str, re
         execution.status = "KILLED"
         execution.completed_at = utcnow()
         execution.deviations = [{"reason": f"Stopped before it started: {reason}", "step_index": None}]
+        callbacks.notify_caller(session, execution)
         for job in session.scalars(select(JobModel).where(JobModel.dedupe_key.like(f"runtime:{execution.id}%"),
                                                          JobModel.status == "queued")):
             job.status = "cancelled"

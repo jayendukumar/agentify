@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-17 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**83 tables, 926 columns (111 JSON), 198 foreign keys, 44 Alembic migrations.**
+**83 tables, 929 columns (112 JSON), 198 foreign keys, 45 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -546,6 +546,7 @@ erDiagram
     }
     runtime_clients {
         string id PK
+        json deployment_ids
         string created_by FK
     }
     agent_executions {
@@ -1646,13 +1647,15 @@ Epic 39, US39.6/US39.7: one tool contract of a deployment bound to a real system
 
 #### `runtime_clients` (RuntimeClientModel)
 
-Epic 39, US39.4: a system of the tenant that may start executions: a bearer token, shown once and stored as a SHA-256 hash (the SCIM token pattern, US37.10).
+Epic 39, US39.4: a system of the tenant that may start executions: a bearer token, shown once and stored as a SHA-256 hash (the SCIM token pattern, US37.10). `deployment_ids` limits it to some deployments (None: all of the tenant's); `signing_secret` signs its callbacks (app/runtime/callbacks.py), so it's kept, not hashed.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | string | no | primary key |
 | `label` | string | no |  |
 | `token_hash` | string | no |  |
+| `deployment_ids` | json | yes |  |
+| `signing_secret` | string | yes |  |
 | `created_at` | datetime | no |  |
 | `created_by` | string | yes | -> `users.id` (set null) |
 | `last_used_at` | datetime | yes |  |
@@ -1670,6 +1673,7 @@ Epic 39, US39.3: one real case run by a deployment. Summary columns are kept up 
 | `artifact_version` | int | no |  |
 | `identity_id` | string | no |  |
 | `client_id` | string | yes |  |
+| `trigger` | string | no |  |
 | `idempotency_key` | string | no |  |
 | `status` | string | no | indexed |
 | `input` | json | yes |  |
