@@ -2244,3 +2244,164 @@ export interface RuntimeNotification {
   created_at: string
   read_at: string | null
 }
+
+// Epic 39, step 4 (US39.13-39.15): the Runtime page.
+export interface RuntimeMetrics {
+  window: 'hour' | 'day' | 'week'
+  since: string
+  executions: number
+  by_status: Record<string, number>
+  finished: number
+  error_rate: Rate
+  escalation_rate: Rate
+  latency_seconds: { p50: number | null; p95: number | null }
+  cost_usd: number
+  cost_per_case_usd: number | null
+  tokens: number
+  tools: Record<string, { calls: number; errors: number; not_sent: number }>
+  tool_errors: number
+  policy_denials: number
+  escalations: number
+  reviews: {
+    opened: number
+    open: number
+    approved: number
+    rejected: number
+    reject_rate: Rate
+    wait_minutes_median: number | null
+    waiting_now_minutes_max: number
+  }
+  stops: { action: string; at: string; reason: string | null }[]
+  shadow_copies: number
+}
+
+interface DriftSummary {
+  status: 'ok' | 'drift' | 'input_drift' | 'not_enough' | 'no_baseline'
+  flagged: string[]
+  reading: string | null
+  checked_at: string
+  cases: number | null
+}
+
+export interface DriftFinding {
+  metric: string
+  baseline: unknown
+  live: unknown
+  statistic: string
+  flagged: boolean
+  reading: string
+}
+
+export interface DriftCheck {
+  status: DriftSummary['status']
+  reading: string | null
+  checked_at: string
+  window_days: number
+  min_executions: number
+  action: 'notify' | 'pause'
+  cases?: number
+  baseline: { available: boolean; reason?: string; runs?: number; pass_rate?: Rate; frozen_at?: string; batch_id?: string }
+  behaviour?: DriftFinding[]
+  inputs?: DriftFinding[]
+  flagged?: string[]
+}
+
+export interface VersionNumbers {
+  cases: number
+  decision_mix: Record<string, number>
+  escalation_rate: Rate
+  error_rate: Rate
+  cost_per_case_usd: number | null
+}
+
+export interface RolloutComparison {
+  deployment_id: string
+  version: number
+  against: { deployment_id: string; version: number; status: string } | null
+  stage: string
+  decision_field: string
+  numbers: { new: VersionNumbers; old: VersionNumbers | null }
+  paired: {
+    pairs: number
+    agreement: Rate
+    with_known_outcome: number
+    fixed: string[]
+    regressed: string[]
+    accuracy_old: Rate
+    accuracy_new: Rate
+    p_value: number
+  } | null
+  reading: string
+  method: string
+}
+
+export interface AlertRule {
+  id?: string
+  name?: string | null
+  metric: string
+  window: 'hour' | 'day' | 'week'
+  op: '>' | '>=' | '<' | '<='
+  threshold: number
+  min_executions?: number
+  webhook?: string | null
+  action?: 'notify' | 'pause'
+}
+
+interface FiredAlert {
+  rule: AlertRule
+  value: number
+  message: string
+  at: string
+  link: string
+}
+
+export interface RuntimeDeployment {
+  id: string
+  process_id: string
+  process_name: string
+  agent_artifact_id: string
+  agent_name: string
+  artifact_version: number
+  status: 'pending' | 'shadow' | 'active' | 'paused' | 'killed' | 'retired'
+  traffic_share: number | null
+  shadow_started_at: string | null
+  previous_deployment_id: string | null
+  activated_at: string | null
+  stop_reason: string | null
+  pause_reason: string | null
+  alert_rules: AlertRule[]
+  telemetry: { otlp_endpoint?: string; headers?: Record<string, string> }
+  drift_rule: { enabled: boolean; action: 'notify' | 'pause'; window_days: number; min_executions: number }
+  has_baseline: boolean
+}
+
+export interface RuntimeOverviewRow {
+  deployment: RuntimeDeployment
+  metrics: RuntimeMetrics
+  drift: DriftSummary | null
+  alerts: FiredAlert[]
+}
+
+export interface RuntimeExecutionSummary {
+  id: string
+  deployment_id: string
+  artifact_version: number
+  status: string
+  attempt: number
+  step_count: number
+  total_cost_usd: number | null
+  total_tokens: number
+  created_at: string
+  completed_at: string | null
+  shadow_of: string | null
+  trigger: string
+}
+
+export interface RuntimeExecution extends RuntimeExecutionSummary {
+  identity_id: string
+  client_id: string | null
+  input: Record<string, unknown> | null
+  final_output: Record<string, unknown> | null
+  reported_outcome: Record<string, unknown> | null
+  steps: RunStep[]
+}

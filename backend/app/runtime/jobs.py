@@ -32,10 +32,19 @@ Restarts: a job whose worker died is claimed again after its lease. If
 the dead attempt had already sent a call that changes data, its outcome
 is unknown, so the execution ends ESCALATED rather than risk sending it
 twice. Otherwise the case starts again as a new attempt.
+
+US39.13, routing: a case sent to any deployment of an agent goes to the
+version that serves it -- the canary for its share of idempotency-key
+hashes, else the stable version -- and a copy goes to a version in shadow,
+as an execution of its own (`shadow_of`). A shadow case sends nothing
+that changes data, opens no review task and calls no callback: a
+checkpoint is approved on the spot, since nothing would be sent anyway.
+The same idempotency key finds the case on whichever version took it.
 """
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any
 
@@ -58,9 +67,9 @@ from app.llm import ToolCall, ToolDefinition
 from app.schemas.agents import AgentDefinition
 from app.schemas.run import TERMINAL_RUN_STATUSES, RunStatus, RunStep
 
-from . import callbacks, limits, reviews
+from . import callbacks, limits, monitoring, reviews
 from .adapters import Binding, ProductionTools, is_mutating
-from .deployments import bindings_of, pause_if_needed
+from .deployments import CARRY_ON, LIVE, bindings_of, pause_if_needed, siblings
 from .executor import ExecutionOutcome, RunCancelled, execute
 from .inputs import input_problems
 from .instructions import run_instructions
@@ -91,7 +100,7 @@ class Caller:
 def refusal(deployment: AgentDeploymentModel) -> str | None:
     """Why this deployment takes no new work, if it doesn't. A deployment
     paused with `when_paused="queue"` takes it and holds it."""
-    if deployment.status == "active":
+    if deployment.status in ("active", "shadow"):
         return None
     if deployment.status == "paused":
         return None if deployment.when_paused == "queue" else f"This agent is paused: {deployment.pause_reason}"
@@ -108,30 +117,77 @@ def _enqueue(session: Session, execution_id: str, *, tag: str = "", delay_second
                   delay_seconds=delay_seconds, dedupe_key=f"runtime:{execution_id}{tag}")
 
 
+def _bucket(group_key: str, idempotency_key: str) -> int:
+    return int(hashlib.sha256(f"{group_key}:{idempotency_key}".encode()).hexdigest()[:8], 16) % 100
+
+
+def route(session: Session, entry: AgentDeploymentModel, idempotency_key: str) -> AgentDeploymentModel:
+    """US39.13: the version of this agent that takes the case. A canary
+    takes its share of key hashes, so the same case always lands on the
+    same version. With nothing live, the deployment called answers (a
+    first version in shadow takes the case itself)."""
+    live = ([entry] if entry.status in LIVE else []) + siblings(session, entry, LIVE)
+    canary, stable = _split(live)
+    if canary is not None and stable is not None:
+        return canary if _bucket(entry.group_key, idempotency_key) < canary.traffic_share else stable
+    return entry if entry in live or not live else live[0]
+
+
+def _split(live: list[AgentDeploymentModel]) -> tuple[AgentDeploymentModel | None, AgentDeploymentModel | None]:
+    """The canary (a share of cases) and the stable version (the rest)."""
+    return (next((d for d in live if d.traffic_share), None), next((d for d in live if not d.traffic_share), None))
+
+
+def _new_execution(deployment: AgentDeploymentModel, caller: Caller, data: Any, key: str, **extra: Any) -> AgentExecutionModel:
+    return AgentExecutionModel(
+        id=new_id("exe"), deployment_id=deployment.id, process_id=deployment.process_id,
+        artifact_version=deployment.artifact_version, identity_id=deployment.identity_id,
+        client_id=caller.client_id, trigger=caller.trigger, idempotency_key=key, status="QUEUED", input=data,
+        deviations=[], attempt=0, step_count=0, total_tokens=0, turns_used=0, **extra,
+    )
+
+
+def _shadow_copies(session: Session, primary: AgentExecutionModel, served_by: AgentDeploymentModel,
+                   caller: Caller) -> None:
+    """A copy of the case for each version in shadow. A shadow version at a
+    cap simply misses the case: the live one still takes it."""
+    for shadow in siblings(session, served_by, ("shadow",)):
+        try:
+            limits.check_caps(session, shadow)
+        except limits.LimitExceeded:
+            continue
+        copy = _new_execution(shadow, Caller(client_id=caller.client_id, label=caller.label, trigger="shadow"),
+                              primary.input, primary.idempotency_key, shadow_of=primary.id)
+        session.add(copy)
+        session.flush()
+        _enqueue(session, copy.id)
+
+
 def submit(session: Session, deployment: AgentDeploymentModel, caller: Caller, *, data: Any,
            idempotency_key: str, callback_url: str | None,
            requested_by: str | None = None) -> tuple[AgentExecutionModel, bool]:
-    """Queues one case. The same idempotency key returns the same
-    execution (created=False); reused with different input, it's refused."""
+    """Queues one case on the version that serves it (`route`). The same
+    idempotency key returns the same execution (created=False); reused
+    with different input, it's refused."""
     existing = _same_case(session, deployment, idempotency_key, data)
     if existing is not None:
         return existing, False
+    entry = deployment
+    deployment = route(session, entry, idempotency_key)
     _check_admissible(session, deployment, data, callback_url)
-    execution = AgentExecutionModel(
-        id=new_id("exe"), deployment_id=deployment.id, process_id=deployment.process_id,
-        artifact_version=deployment.artifact_version, identity_id=deployment.identity_id,
-        client_id=caller.client_id, trigger=caller.trigger, idempotency_key=idempotency_key, status="QUEUED", input=data,
-        callback_url=callback_url, requested_by=(requested_by or "").strip() or None, deviations=[], attempt=0,
-        step_count=0, total_tokens=0, turns_used=0,
-    )
+    execution = _new_execution(deployment, caller, data, idempotency_key, callback_url=callback_url,
+                               requested_by=(requested_by or "").strip() or None)
     session.add(execution)
     session.flush()
     _enqueue(session, execution.id)
+    if deployment.status != "shadow":
+        _shadow_copies(session, execution, deployment, caller)
     audit.record(
         session, actor=None, actor_type="service", actor_name=caller.label, action="runtime_execution_submitted",
         object_type="agent_execution", object_id=execution.id, process_id=deployment.process_id,
         detail={"deployment_id": deployment.id, "client_id": caller.client_id, "trigger": caller.trigger,
-                "identity_id": deployment.identity_id, "requested_by": execution.requested_by},
+                "identity_id": deployment.identity_id, "requested_by": execution.requested_by,
+                **({"called": entry.id} if entry.id != deployment.id else {})},
     )
     return execution, True
 
@@ -139,8 +195,10 @@ def submit(session: Session, deployment: AgentDeploymentModel, caller: Caller, *
 def _same_case(session: Session, deployment: AgentDeploymentModel, key: str, data: Any) -> AgentExecutionModel | None:
     if not key or len(key) > 200:
         raise SubmitError(400, "An Idempotency-Key header (up to 200 characters) is required")
+    versions = [deployment.id, *(d.id for d in siblings(session, deployment, (*CARRY_ON, "killed", "pending")))]
     existing = session.scalar(select(AgentExecutionModel).where(
-        AgentExecutionModel.deployment_id == deployment.id, AgentExecutionModel.idempotency_key == key))
+        AgentExecutionModel.deployment_id.in_(versions), AgentExecutionModel.idempotency_key == key,
+        AgentExecutionModel.shadow_of.is_(None)).order_by(AgentExecutionModel.created_at).limit(1))
     if existing is not None and existing.input != data:
         raise SubmitError(409, "This Idempotency-Key was already used with a different input")
     return existing
@@ -215,6 +273,19 @@ class _AwaitReview:
         return None
 
 
+def in_shadow(execution: AgentExecutionModel, deployment: AgentDeploymentModel) -> bool:
+    """A copy of a live case, or a case of a version that only shadows."""
+    return execution.shadow_of is not None or deployment.status == "shadow"
+
+
+class _ShadowApproves:
+    """In shadow nothing that changes data is sent, so no one needs asking:
+    the checkpoint is approved and the case shows what it would do."""
+
+    async def decide(self, proposed_action: dict[str, Any]) -> str:
+        return "approve"
+
+
 @dataclass
 class _Circuit:
     session: Session
@@ -240,11 +311,14 @@ def _ended_before_starting(session: Session, execution: AgentExecutionModel, dep
                            definition: AgentDefinition, *, resuming: bool) -> bool:
     """Ends the execution without running it when its deployment stopped,
     or when a dead attempt may already have changed data."""
-    reason = refusal(deployment) if deployment.status != "paused" else None
+    # A retired version finishes what it accepted; killed or never
+    # activated, it runs nothing.
+    reason = refusal(deployment) if deployment.status not in ("paused", "retired") else None
     if reason:
         _finish(execution, "KILLED", f"Stopped before it started: {reason}")
         return True
-    if not resuming and execution.attempt > 0 and _sent_mutating_call(session, execution, definition):
+    if not resuming and execution.attempt > 0 and not execution.shadow_of and _sent_mutating_call(
+            session, execution, definition):
         _finish(execution, "ESCALATED", "The worker stopped after a call that changes data was sent; its outcome "
                                          "is unknown, so the case needs a person rather than a retry")
         reviews.open_escalation(session, execution, deployment)
@@ -280,14 +354,18 @@ def _add_usage(execution: AgentExecutionModel, outcome: ExecutionOutcome, *, res
 
 
 def _after(session: Session, execution: AgentExecutionModel, deployment: AgentDeploymentModel) -> None:
-    """Opens the inbox task the outcome calls for, and checks the pause rules."""
-    if execution.status == "WAITING_FOR_HUMAN":
-        reviews.open_checkpoint(session, execution, deployment)
-    elif execution.status == "ESCALATED":
-        reviews.open_escalation(session, execution, deployment)
+    """Opens the inbox task the outcome calls for, checks the pause rules,
+    alerts and drift, and exports the trace (US39.14-39.15). A shadow case
+    involves no one."""
+    if not in_shadow(execution, deployment):
+        if execution.status == "WAITING_FOR_HUMAN":
+            reviews.open_checkpoint(session, execution, deployment)
+        elif execution.status == "ESCALATED":
+            reviews.open_escalation(session, execution, deployment)
     if execution.status in TERMINAL_RUN_STATUSES:
         pause_if_needed(session, deployment)
         callbacks.notify_caller(session, execution)
+        monitoring.after_case(session, execution, deployment)
 
 
 @dataclass
@@ -315,7 +393,7 @@ class _Recorder:
             .join(AgentIdentityModel, AgentIdentityModel.id == AgentDeploymentModel.identity_id)
             .where(AgentDeploymentModel.id == self.deployment.id)
         ).one()
-        if current[0] not in ("active", "paused") or current[2] != "active":
+        if current[0] not in CARRY_ON or current[2] != "active":
             raise RunCancelled("KILLED", f"Stopped by the kill switch: {current[1] or 'the identity was revoked'}")
         self.execution.status = status
         self.session.commit()
@@ -388,8 +466,9 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
         artifact=definition,
         tools=_tools(deployment),
         tool_port=ProductionTools(_bindings(session, deployment, definition), execution_id=execution.id,
-                                  on_call=recorder.on_call, circuit=_Circuit(session, deployment)),
-        human_port=_AwaitReview(),
+                                  on_call=recorder.on_call, circuit=_Circuit(session, deployment),
+                                  shadow=in_shadow(execution, deployment)),
+        human_port=_ShadowApproves() if in_shadow(execution, deployment) else _AwaitReview(),
         inputs=execution.input or {},
         instructions=run_instructions(has_checkpoint=definition.human_checkpoint != "none",
                                       output_fields=output_fields, test_run=False),

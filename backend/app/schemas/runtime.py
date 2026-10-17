@@ -52,6 +52,11 @@ class DeploymentSummary(BaseModel):
     stopped_at: datetime | None = None
     stop_reason: str | None = None
     executions: dict[str, int] = {}
+    # US39.13: a canary's share of the agent's cases, when shadow began, and
+    # the version it would replace.
+    traffic_share: int | None = None
+    shadow_started_at: datetime | None = None
+    previous_deployment_id: str | None = None
 
 
 class ToolCircuit(BaseModel):
@@ -75,6 +80,11 @@ class Deployment(DeploymentSummary):
     paused_at: datetime | None = None
     pause_reason: str | None = None
     circuits: list[ToolCircuit] = []
+    # US39.14/US39.15
+    telemetry: dict[str, Any] = {}
+    alert_rules: list[dict[str, Any]] = []
+    drift_rule: dict[str, Any] = {}
+    has_baseline: bool = False
 
 
 class DeploymentSettingsIn(BaseModel):
@@ -92,6 +102,33 @@ class ResumeIn(BaseModel):
 
 class ActivateIn(BaseModel):
     shadow_waiver: str | None = None
+    # US39.13: all of the agent's cases, a canary share of them, or a copy
+    # of them in shadow.
+    rollout: Literal["full", "canary", "shadow"] = "full"
+    share: int | None = Field(default=None, ge=1, le=99)
+
+
+class PromoteIn(BaseModel):
+    share: int = Field(ge=1, le=100)
+
+
+class RollbackIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class MonitoringIn(BaseModel):
+    """US39.14/US39.15: given fields replace what's there."""
+
+    alert_rules: list[dict[str, Any]] | None = None
+    telemetry: dict[str, Any] | None = None
+    drift: dict[str, Any] | None = None
+
+
+class OutcomeIn(BaseModel):
+    """US39.15: what really happened to a case, from the caller's system --
+    e.g. {"decision": "approve", "accountId": "ACC-7"}."""
+
+    outcome: dict[str, Any]
 
 
 class StopIn(BaseModel):
@@ -120,17 +157,19 @@ class ExecutionSummary(BaseModel):
     total_tokens: int = 0
     created_at: datetime
     completed_at: datetime | None = None
+    trigger: str = "api"
+    shadow_of: str | None = None
 
 
 class Execution(ExecutionSummary):
     identity_id: str
     client_id: str | None = None
-    trigger: str = "api"
     requested_by: str | None = None
     input: dict[str, Any] | None = None
     final_output: dict[str, Any] | None = None
     deviations: list[TwinDeviation] = []
     resolution: dict[str, Any] | None = None
+    reported_outcome: dict[str, Any] | None = None
     steps: list[RunStep] = []
 
 
@@ -230,3 +269,21 @@ class RuntimeClientCreated(RuntimeClient):
 
     token: str | None = None
     signing_secret: str
+
+
+class RuntimeDeploymentView(Deployment):
+    """A row of the Runtime page (US39.14)."""
+
+    process_name: str
+    agent_artifact_id: str
+
+
+class RuntimeOverviewRow(BaseModel):
+    deployment: RuntimeDeploymentView
+    metrics: dict[str, Any]
+    drift: dict[str, Any] | None = None
+    alerts: list[dict[str, Any]] = []
+
+
+class AddedRows(BaseModel):
+    added: int

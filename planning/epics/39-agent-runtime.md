@@ -6,7 +6,9 @@ adapters, credentials, guardrails failing closed, the kill switch
 (US39.2-39.8, US39.11); the review inbox, limits and circuit breakers,
 automatic pause (US39.9, US39.10, US39.12). US39.4 completed 2026-10-17
 (typed input, internal triggers, client limits, signed callbacks, OAuth
-client credentials from the tenant's IdP). Open
+client credentials from the tenant's IdP). Step 4 implemented 2026-10-17:
+shadow, canary and rollback, live metrics, traces and alerts, drift
+against the twin, and the Runtime page (US39.13-39.15). Open
 items are listed under each step's "as built". Decisions confirmed 2026-10-17 (see Notes).**
 Weakness 3 in the wiki's Critical Review ("Agents never run in
 production") and item 4 of its recommended order.
@@ -352,6 +354,73 @@ Deviations from the stories, decided while building:
   Live: `testing/runtime/smoke_runtime_oauth.py` (18/18 on 2026-10-17)
   with Keycloak's service account client `loan-system` in realm
   `axyntro`.
+
+## Step 4 as built (US39.13-39.15)
+
+- **Code.** Rolling out (`app/runtime/deployments.py`): `activate` takes
+  `rollout` -- `full`, `canary` (with `share`) or `shadow` -- and
+  remembers the version it replaces (`previous_deployment_id`). `promote`
+  steps a shadow or canary up (5, 25, 100; at 100 the previous version
+  retires), approved under the same segregation rule as activation.
+  `rollback` retires a canary or shadow. Routing (`app/runtime/jobs.py`
+  `route`): a case sent to any deployment id of the agent goes to the
+  canary for its share of idempotency-key hashes, else to the stable
+  version, and a copy (`shadow_of`) goes to a version in shadow. In shadow
+  (`app/runtime/adapters.py`) reads go to the real system and calls that
+  change data are recorded, not sent; a checkpoint is approved on the
+  spot, and no review task or callback follows. Callers report what really
+  happened with `POST /runtime/v1/executions/{id}/outcome`.
+  `app/runtime/rollout.py` compares the new version with the previous one:
+  paired (agreement, McNemar where the outcome is known) for shadow
+  copies, rates only for a canary. `app/runtime/metrics.py` counts per
+  deployment over an hour, day or week. `app/runtime/monitoring.py` runs
+  after each case: alert rules (in-app, webhook, optional pause), the
+  drift check, and the trace export (`app/runtime/telemetry.py`, OTLP/HTTP
+  JSON, a `runtime_telemetry` job). `app/runtime/drift.py` freezes the
+  twin baseline at deployment and checks live behaviour and inputs
+  against it. The Runtime page (`frontend/src/pages/RuntimePage.tsx`,
+  `/runtime`) lists deployments with their numbers and drift. For each
+  one it shows the comparison, promote and rollback controls, the drift
+  findings with "add these cases to a dataset", the cases with the step
+  inspector, and alert rules and the collector endpoint (admins).
+  Migration `f7a8b9c0d1e2`.
+- **Tests.** `tests/test_runtime_rollout.py` (10): a shadow copy looks
+  the customer up for real and doesn't open the account, opens no review
+  task, and is paired with the live case; promote needs another person;
+  25% then 100% retires v1. A first version in shadow takes cases itself
+  and is scored against reported outcomes. A canary takes about its share
+  by key hash, a repeated key finds its case, and rollback sends new cases
+  back while accepted ones finish. A canary needs something live.
+  Metrics count statuses, failures and tool calls. An alert rule is
+  validated, notifies, calls its webhook and pauses. Traces reach the
+  collector with a span per step and no payloads. Drift goes from
+  no_baseline to not_enough to flagged (decision mix and an input field),
+  pauses, and its cases go to a dataset once. PSI and input profiles. A
+  baseline is frozen from a real batch, and absent without one.
+  `frontend/src/pages/RuntimePage.test.tsx` (3).
+- **Live.** `testing/runtime/smoke_runtime_rollout.py` (29/29 on
+  2026-10-17), with the same stand-in, which now also plays the OTLP
+  collector and the alert webhook, and with the loan system signing in
+  through Keycloak. The first run found that shadow withheld reads too
+  (decision log).
+- **Deviations:**
+  - **Email alerts aren't built** (no mail service): a rule with
+    `email` is refused. Owners are always notified in the app, and a
+    webhook can reach any paging tool.
+  - **Retired lets accepted cases finish.** This was a change to step 2's
+    behaviour, where retiring stopped them like a kill. A kill still does.
+  - **No live drift on a real baseline yet:** the smoke test's agent was
+    approved without a batch, so the live check shows "no baseline". The
+    baseline extraction is tested on a real batch in the unit tests, and
+    the check on a frozen baseline.
+  - **Metrics are computed on request** from executions, steps, reviews
+    and the audit log, not pre-aggregated. Fine at pilot volumes; a
+    rollup table is the step when a deployment runs thousands of cases a
+    day.
+  - **Rate-limit state:** alerts and drift checks are throttled by
+    timestamps on the deployment (`monitor_state`), not a lock, so two
+    workers finishing cases at the same moment may both evaluate and,
+    rarely, both fire the same alert.
 
 ## User Stories
 

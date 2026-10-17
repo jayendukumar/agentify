@@ -129,6 +129,13 @@ import type {
   VersionSummary,
   ReviewTask,
   RuntimeNotification,
+  AlertRule,
+  DriftCheck,
+  RolloutComparison,
+  RuntimeDeployment,
+  RuntimeExecution,
+  RuntimeExecutionSummary,
+  RuntimeOverviewRow,
 } from './types'
 
 // The session cookie (backend/app/api/auth.py) is SameSite=Lax with no
@@ -1437,4 +1444,54 @@ export function resolveReviewTask(
 
 export function listRuntimeNotifications(): Promise<RuntimeNotification[]> {
   return request('/api/runtime/notifications')
+}
+
+// Epic 39, step 4 (US39.13-39.15): rollout, live metrics and drift.
+export type MetricsWindow = 'hour' | 'day' | 'week'
+
+export function listRuntimeDeployments(window: MetricsWindow): Promise<RuntimeOverviewRow[]> {
+  return request(`/api/runtime/deployments?window=${window}`)
+}
+
+function deploymentPath(processId: string, deploymentId: string): string {
+  return `/api/processes/${processId}/deployments/${deploymentId}`
+}
+
+export function getRolloutComparison(processId: string, deploymentId: string): Promise<RolloutComparison> {
+  return request(`${deploymentPath(processId, deploymentId)}/comparison`)
+}
+
+export function promoteDeployment(processId: string, deploymentId: string, share: number): Promise<RuntimeDeployment> {
+  return request(`${deploymentPath(processId, deploymentId)}/promote`, { method: 'POST', body: JSON.stringify({ share }) })
+}
+
+export function rollbackDeployment(processId: string, deploymentId: string, reason: string): Promise<RuntimeDeployment> {
+  return request(`${deploymentPath(processId, deploymentId)}/rollback`, { method: 'POST', body: JSON.stringify({ reason }) })
+}
+
+export function getDrift(processId: string, deploymentId: string): Promise<DriftCheck> {
+  return request(`${deploymentPath(processId, deploymentId)}/drift`)
+}
+
+export function driftCasesToDataset(processId: string, deploymentId: string, datasetId: string): Promise<{ added: number }> {
+  return request(`${deploymentPath(processId, deploymentId)}/drift/to-dataset`, {
+    method: 'POST',
+    body: JSON.stringify({ dataset_id: datasetId }),
+  })
+}
+
+export function updateMonitoring(
+  processId: string,
+  deploymentId: string,
+  body: { alert_rules?: AlertRule[]; telemetry?: { otlp_endpoint?: string; headers?: Record<string, string> } },
+): Promise<RuntimeDeployment> {
+  return request(`${deploymentPath(processId, deploymentId)}/monitoring`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function listDeploymentExecutions(processId: string, deploymentId: string): Promise<RuntimeExecutionSummary[]> {
+  return request(`${deploymentPath(processId, deploymentId)}/executions`)
+}
+
+export function getRuntimeExecution(processId: string, executionId: string): Promise<RuntimeExecution> {
+  return request(`/api/processes/${processId}/executions/${executionId}`)
 }

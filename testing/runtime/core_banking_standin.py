@@ -18,6 +18,9 @@ system, run on the host at :9100.
   endpoint (US39.4), hosted here so the smoke test needs one service.
   Records the raw body and signature; `/_hooks` lists them, and
   `/_hooks_fail` {"times": n} makes the next n answer 503.
+- `/v1/traces`, `/v1/metrics`: an OpenTelemetry collector (OTLP/HTTP
+  JSON, US39.14), and `/hooks/alert`: the operations team's alert
+  webhook. `/_otel` and `/_alerts` list what they received.
 
     python testing/runtime/core_banking_standin.py
 """
@@ -42,6 +45,8 @@ slow = {"seconds": 0.0}
 failing = {"on": False}
 hooks: list[dict[str, Any]] = []
 hooks_failing = {"times": 0}
+otel: list[dict[str, Any]] = []
+alerts: list[dict[str, Any]] = []
 
 SPEC = {
     "openapi": "3.0.0",
@@ -152,6 +157,30 @@ async def agent_done(request: Request) -> dict[str, bool]:
     return {"ok": True}
 
 
+@app.post("/v1/traces")
+@app.post("/v1/metrics")
+async def otlp(request: Request) -> dict[str, Any]:
+    otel.append({"path": request.url.path, "body": (await request.body()).decode(),
+                 "headers": dict(request.headers)})
+    return {"partialSuccess": {}}
+
+
+@app.post("/hooks/alert")
+async def alert(request: Request) -> dict[str, bool]:
+    alerts.append(await request.json())
+    return {"ok": True}
+
+
+@app.get("/_otel")
+def recorded_otel() -> list[dict[str, Any]]:
+    return otel
+
+
+@app.get("/_alerts")
+def recorded_alerts() -> list[dict[str, Any]]:
+    return alerts
+
+
 @app.get("/_hooks")
 def recorded_hooks() -> list[dict[str, Any]]:
     return hooks
@@ -188,6 +217,8 @@ def reset() -> dict[str, bool]:
     failing["on"] = False
     hooks.clear()
     hooks_failing["times"] = 0
+    otel.clear()
+    alerts.clear()
     return {"ok": True}
 
 

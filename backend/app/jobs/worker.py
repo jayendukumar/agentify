@@ -152,8 +152,8 @@ class Worker:
         self._stopping = asyncio.Event()
         self._turn = 0
         # Epic 39, US39.3: `JOB_WORKER_KINDS=runtime_execution,runtime_submit,
-        # runtime_callback` makes a worker that runs production work and
-        # nothing else.
+        # runtime_callback,runtime_telemetry,runtime_alert` makes a worker
+        # that runs production work and nothing else.
         kinds = settings.job_worker_kinds.strip()
         self.kinds = None if kinds in ("", "all") else {k.strip() for k in kinds.split(",") if k.strip()}
 

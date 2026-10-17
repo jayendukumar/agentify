@@ -261,3 +261,23 @@ button.run-step-row-selected, button.run-step-row-selected:not(:disabled):hover 
 .inbox-fields dd { margin: 0; overflow-wrap: anywhere; }
 .inbox-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--axyntro-space-2); margin-top: var(--axyntro-space-2); }
 .inbox-actions label { display: flex; flex-direction: column; gap: var(--axyntro-space-1); flex: 1 1 14rem; }
+
+/* Epic 39, step 4: the Runtime page. */
+.status-warning { background: var(--axyntro-warning-bg); color: var(--axyntro-warning); }
+.segmented { display: inline-flex; flex-wrap: wrap; gap: var(--axyntro-space-1); margin: var(--axyntro-space-2) 0; }
+.runtime-table tr.selected td { background: var(--accent-soft); }
+.runtime-table td .badge { margin-left: var(--axyntro-space-1); }
+.runtime-detail { border-top: 1px solid var(--border); margin-top: var(--axyntro-space-4); padding-top: var(--axyntro-space-3); display: grid; gap: var(--axyntro-space-3); }
+.runtime-detail section { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: var(--axyntro-space-3); min-width: 0; }
+.runtime-detail h3 { margin-top: 0; }
+.runtime-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: var(--axyntro-space-2); margin: 0 0 var(--axyntro-space-2); }
+.runtime-metrics dt { color: var(--muted); font-size: 0.85em; }
+.runtime-metrics dd { margin: 0; overflow-wrap: anywhere; }
+.drift-findings, .runtime-executions { list-style: none; padding: 0; display: grid; gap: var(--axyntro-space-1); }
+.drift-findings li.flagged { font-weight: 600; }
+.runtime-execution pre { overflow-x: auto; }
+.runtime-steps { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: var(--axyntro-space-3); align-items: start; }
+@media (max-width: 720px) {
+  .runtime-steps { grid-template-columns: minmax(0, 1fr); }
+  .runtime-table { display: block; overflow-x: auto; }
+}

@@ -1,17 +1,17 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1553,
+   "functions": 1672,
    "mean_cyclomatic": 4.48,
-   "mean_cognitive": 4.2,
+   "mean_cognitive": 4.16,
    "max_cognitive": 98,
    "over_cognitive_limit": 90,
    "over_cyclomatic_limit": 133
   },
   "frontend": {
-   "functions": 666,
-   "mean_cyclomatic": 4.71,
-   "mean_cognitive": 4.75,
+   "functions": 710,
+   "mean_cyclomatic": 4.62,
+   "mean_cognitive": 4.61,
    "max_cognitive": 93,
    "over_cognitive_limit": 51,
    "over_cyclomatic_limit": 71
@@ -297,9 +297,9 @@
  },
  "duplication": {
   "backend": {
-   "loc": 31294,
+   "loc": 32691,
    "duplicated_lines": 72,
-   "percent": 0.23,
+   "percent": 0.22,
    "clones": [
     {
      "tokens": 89,
@@ -333,8 +333,8 @@
     }
    ],
    "clone_count": 3,
-   "structural_percent": 3.57,
-   "structural_clone_count": 47,
+   "structural_percent": 3.61,
+   "structural_clone_count": 49,
    "structural_clones": [
     {
      "tokens": 283,
@@ -412,9 +412,19 @@
      "a_start": 1759,
      "a_end": 1776,
      "b_file": "backend/app/db/models.py",
-     "b_start": 2080,
-     "b_end": 2096,
+     "b_start": 2108,
+     "b_end": 2124,
      "lines": 18
+    },
+    {
+     "tokens": 132,
+     "a_file": "backend/app/api/runtime.py",
+     "a_start": 221,
+     "a_end": 234,
+     "b_file": "backend/app/api/runtime.py",
+     "b_start": 308,
+     "b_end": 322,
+     "lines": 15
     },
     {
      "tokens": 132,
@@ -475,16 +485,6 @@
      "b_start": 1260,
      "b_end": 1269,
      "lines": 10
-    },
-    {
-     "tokens": 125,
-     "a_file": "backend/app/db/models.py",
-     "a_start": 1124,
-     "a_end": 1146,
-     "b_file": "backend/app/db/models.py",
-     "b_start": 1915,
-     "b_end": 1932,
-     "lines": 23
     }
    ],
    "worst_files": [
@@ -516,7 +516,7 @@
    ]
   },
   "frontend": {
-   "loc": 17282,
+   "loc": 18074,
    "duplicated_lines": 14,
    "percent": 0.08,
    "clones": [
@@ -532,7 +532,7 @@
     }
    ],
    "clone_count": 1,
-   "structural_percent": 0.6,
+   "structural_percent": 0.58,
    "structural_clone_count": 2,
    "structural_clones": [
     {
@@ -592,9 +592,9 @@
    },
    {
     "node": "app.batches",
-    "afferent": 5,
+    "afferent": 6,
     "efferent": 10,
-    "instability": 0.67
+    "instability": 0.62
    },
    {
     "node": "app.blueprint",
@@ -640,9 +640,9 @@
    },
    {
     "node": "app.datasets",
-    "afferent": 6,
+    "afferent": 7,
     "efferent": 4,
-    "instability": 0.4
+    "instability": 0.36
    },
    {
     "node": "app.db",
@@ -719,8 +719,8 @@
    {
     "node": "app.runtime",
     "afferent": 4,
-    "efferent": 13,
-    "instability": 0.76
+    "efferent": 15,
+    "instability": 0.79
    },
    {
     "node": "app.schemas",
@@ -761,26 +761,26 @@
   ],
   "backend_modules_top": [
    {
+    "node": "app.db.models",
+    "afferent": 77,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
     "node": "app.db.repository",
     "afferent": 30,
     "efferent": 44,
     "instability": 0.59
    },
    {
-    "node": "app.db.models",
-    "afferent": 72,
-    "efferent": 0,
-    "instability": 0.0
-   },
-   {
     "node": "app.ids",
-    "afferent": 49,
+    "afferent": 52,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.config",
-    "afferent": 47,
+    "afferent": 49,
     "efferent": 0,
     "instability": 0.0
    },
@@ -797,22 +797,28 @@
     "instability": 0.24
    },
    {
+    "node": "app.jobs.worker",
+    "afferent": 13,
+    "efferent": 16,
+    "instability": 0.55
+   },
+   {
     "node": "app.db.session",
     "afferent": 23,
     "efferent": 4,
     "instability": 0.15
    },
    {
-    "node": "app.jobs.worker",
-    "afferent": 11,
-    "efferent": 16,
-    "instability": 0.59
+    "node": "app.tenancy.identity",
+    "afferent": 21,
+    "efferent": 5,
+    "instability": 0.19
    },
    {
-    "node": "app.tenancy.identity",
-    "afferent": 20,
-    "efferent": 5,
-    "instability": 0.2
+    "node": "app.api.runtime",
+    "afferent": 1,
+    "efferent": 23,
+    "instability": 0.96
    },
    {
     "node": "app.auth.audit",
@@ -843,12 +849,6 @@
     "afferent": 16,
     "efferent": 6,
     "instability": 0.27
-   },
-   {
-    "node": "app.runtime.jobs",
-    "afferent": 2,
-    "efferent": 18,
-    "instability": 0.9
    }
   ],
   "frontend_dirs": [
@@ -922,25 +922,25 @@
   "frontend_files_top": [
    {
     "node": "frontend/src/api/types.ts",
-    "afferent": 73,
+    "afferent": 74,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "frontend/src/api/client.ts",
-    "afferent": 55,
+    "afferent": 56,
     "efferent": 1,
     "instability": 0.02
    },
    {
     "node": "frontend/src/App.tsx",
     "afferent": 1,
-    "efferent": 22,
+    "efferent": 23,
     "instability": 0.96
    },
    {
     "node": "frontend/src/auth/AuthContext.tsx",
-    "afferent": 20,
+    "afferent": 21,
     "efferent": 2,
     "instability": 0.09
    },
@@ -1002,6 +1002,8 @@
     "app.runtime.callbacks",
     "app.runtime.deployments",
     "app.runtime.jobs",
+    "app.runtime.monitoring",
+    "app.runtime.telemetry",
     "app.tenancy.export"
    ],
    [
@@ -1077,7 +1079,7 @@
     "frontend/src/components"
    ]
   ],
-  "deferred_import_count": 77
+  "deferred_import_count": 79
  },
  "dead_code": {
   "python": [
@@ -1125,7 +1127,7 @@
    },
    {
     "file": "backend/app/runtime/jobs.py",
-    "line": 414,
+    "line": 493,
     "name": "queue_submission",
     "kind": "function",
     "status": "test-only"
@@ -1862,70 +1864,70 @@
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 539,
+    "line": 546,
     "name": "updateAgentGovernance",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 673,
+    "line": 680,
     "name": "pushToRegistry",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 775,
+    "line": 782,
     "name": "cancelTwinRun",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 779,
+    "line": 786,
     "name": "resumeTwinRun",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 944,
+    "line": 951,
     "name": "updateOrganization",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1016,
+    "line": 1023,
     "name": "listPolicyPassages",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1029,
+    "line": 1036,
     "name": "getProcessScope",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1042,
+    "line": 1049,
     "name": "previewContextPack",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1169,
+    "line": 1176,
     "name": "getDataset",
     "kind": "export",
     "status": "unused"
    },
    {
     "file": "frontend/src/api/client.ts",
-    "line": 1183,
+    "line": 1190,
     "name": "addDatasetRows",
     "kind": "export",
     "status": "unused"
@@ -1966,7 +1968,7 @@
    "commits": 30,
    "lines_changed": 1654,
    "cognitive": 71,
-   "loc": 1206,
+   "loc": 1252,
    "score": 2130
   },
   {
@@ -2042,6 +2044,22 @@
    "score": 515
   },
   {
+   "file": "backend/app/jobs/worker.py",
+   "commits": 10,
+   "lines_changed": 362,
+   "cognitive": 49,
+   "loc": 236,
+   "score": 490
+  },
+  {
+   "file": "backend/app/config.py",
+   "commits": 17,
+   "lines_changed": 364,
+   "cognitive": 28,
+   "loc": 304,
+   "score": 476
+  },
+  {
    "file": "backend/app/api/organization.py",
    "commits": 4,
    "lines_changed": 665,
@@ -2050,20 +2068,12 @@
    "score": 468
   },
   {
-   "file": "backend/app/config.py",
-   "commits": 16,
-   "lines_changed": 360,
-   "cognitive": 28,
-   "loc": 300,
-   "score": 448
-  },
-  {
-   "file": "backend/app/jobs/worker.py",
-   "commits": 9,
-   "lines_changed": 357,
-   "cognitive": 49,
-   "loc": 236,
-   "score": 441
+   "file": "backend/app/api/runtime.py",
+   "commits": 4,
+   "lines_changed": 646,
+   "cognitive": 116,
+   "loc": 598,
+   "score": 464
   },
   {
    "file": "frontend/src/operator/OperatorConsole.tsx",
@@ -2082,36 +2092,28 @@
    "score": 402
   },
   {
+   "file": "backend/app/auth/oidc.py",
+   "commits": 4,
+   "lines_changed": 674,
+   "cognitive": 99,
+   "loc": 420,
+   "score": 396
+  },
+  {
+   "file": "backend/app/runtime/deployments.py",
+   "commits": 3,
+   "lines_changed": 427,
+   "cognitive": 129,
+   "loc": 462,
+   "score": 387
+  },
+  {
    "file": "backend/app/twin/test_builder.py",
    "commits": 2,
    "lines_changed": 564,
    "cognitive": 177,
    "loc": 491,
    "score": 354
-  },
-  {
-   "file": "frontend/src/components/TwinTestBuilder.tsx",
-   "commits": 3,
-   "lines_changed": 637,
-   "cognitive": 115,
-   "loc": 593,
-   "score": 345
-  },
-  {
-   "file": "frontend/src/App.tsx",
-   "commits": 18,
-   "lines_changed": 309,
-   "cognitive": 19,
-   "loc": 188,
-   "score": 342
-  },
-  {
-   "file": "backend/app/api/operator.py",
-   "commits": 5,
-   "lines_changed": 526,
-   "cognitive": 67,
-   "loc": 421,
-   "score": 335
   }
  ],
  "growth": [
@@ -2774,6 +2776,26 @@
    "endpoints": 265,
    "stories": 287,
    "stories_implemented": 259
+  },
+  {
+   "commit": "7dcb9e7",
+   "date": "2026-10-17",
+   "subject": "Build Epic 39 US39.4: typed input, internal triggers, signed callbacks",
+   "prod_loc": 48576,
+   "test_loc": 16815,
+   "endpoints": 265,
+   "stories": 287,
+   "stories_implemented": 259
+  },
+  {
+   "commit": "f965db3",
+   "date": "2026-10-17",
+   "subject": "Close US39.4's deviation: runtime clients sign in with the tenant's IdP",
+   "prod_loc": 48677,
+   "test_loc": 16925,
+   "endpoints": 265,
+   "stories": 287,
+   "stories_implemented": 259
   }
  ],
  "mutation": {
@@ -3103,9 +3125,9 @@
   }
  },
  "size": {
-  "backend_prod_loc": 31294,
-  "backend_test_loc": 13126,
-  "frontend_prod_loc": 17282,
-  "frontend_test_loc": 3689
+  "backend_prod_loc": 32691,
+  "backend_test_loc": 13554,
+  "frontend_prod_loc": 18074,
+  "frontend_test_loc": 3795
  }
 }

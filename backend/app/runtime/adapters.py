@@ -12,6 +12,12 @@ twin run may never call a production endpoint, and a production adapter
 may call nothing else. Checked when a binding is saved and again before
 every call. Only https, except hosts listed in `RUNTIME_HTTP_HOSTS` (a
 local stand-in of a production system).
+
+US39.13: in shadow, reads go to the real system as usual, and a call that
+would change data is checked like any other and then not sent: the model
+is told it was recorded, and the step keeps its arguments. "Would change
+data" is decided per call, by its HTTP method: a contract that may update
+also allows lookups, and those are reads.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ from .credentials import CredentialError, headers_for
 from .executor import EscalationRequired, ExecutionError, ToolResult
 
 _RETRY_STATUSES = {502, 503, 504}
+READ_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 class UnsafeProductionEndpoint(Exception):
@@ -132,11 +139,13 @@ class ProductionTools:
         execution_id: str,
         on_call: Callable[[Binding, ToolCall, int], Awaitable[None]] | None = None,
         circuit: Circuit | None = None,
+        shadow: bool = False,
     ) -> None:
         self.bindings = bindings
         self.execution_id = execution_id
         self.on_call = on_call
         self.circuit = circuit
+        self.shadow = shadow
 
     def _binding_for(self, system_name: str, call: ToolCall) -> tuple[Binding, ToolResult | None]:
         """The binding, or a refusal the model sees, before anything is sent."""
@@ -166,6 +175,9 @@ class ProductionTools:
         if refused is not None:
             return refused
         method, url, params, body = _request_parts(binding, call.arguments)
+        if self.shadow and is_mutating(binding.contract) and method.upper() not in READ_METHODS:
+            return ToolResult(response={"shadow": True, "sent": False, "operation": call.arguments.get("operation"),
+                                        "note": "Recorded and not sent: this version runs in shadow"})
         try:
             headers = await headers_for(binding.credential, scope_key=binding.binding_id, action=binding.contract.action)
         except CredentialError as exc:

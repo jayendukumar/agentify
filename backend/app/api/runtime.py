@@ -31,6 +31,7 @@ from app.config import get_settings
 from app.auth.permissions import Permission, has_permission
 from app.db import repository
 from app.db.models import (
+    ProcessModel,
     AgentDeploymentModel,
     AgentExecutionModel,
     AgentIdentityModel,
@@ -40,13 +41,14 @@ from app.db.models import (
 )
 from app.ids import new_id, utcnow
 from app.datasets import service as datasets
-from app.runtime import credentials, deployments, jobs, limits, reviews
+from app.runtime import credentials, deployments, drift, jobs, limits, metrics, monitoring, reviews, rollout
 from app.runtime.adapters import UnsafeProductionEndpoint, check_production_url
 from app.schemas.agents import AgentDefinition
 from app.schemas.datasets import DatasetRowInput
 from app.schemas.run import RunStep
 from app.schemas.runtime import (
     ActivateIn,
+    AddedRows,
     AdapterBinding,
     AdapterBindingIn,
     AgentIdentity,
@@ -59,6 +61,12 @@ from app.schemas.runtime import (
     ExecutionAccepted,
     ExecutionIn,
     ExecutionSummary,
+    MonitoringIn,
+    OutcomeIn,
+    PromoteIn,
+    RollbackIn,
+    RuntimeDeploymentView,
+    RuntimeOverviewRow,
     Notification,
     ResolutionIn,
     ResumeIn,
@@ -98,7 +106,8 @@ def _summary(db, d: AgentDeploymentModel) -> DeploymentSummary:
         agent_name=d.snapshot["definition"]["name"], artifact_version=d.artifact_version, environment=d.environment,
         status=d.status, created_by=d.created_by, created_at=d.created_at, approved_by=d.approved_by,
         activated_at=d.activated_at, stopped_at=d.stopped_at, stop_reason=d.stop_reason,
-        executions=jobs.counts_by_status(db, d.id),
+        executions=jobs.counts_by_status(db, d.id), traffic_share=d.traffic_share,
+        shadow_started_at=d.shadow_started_at, previous_deployment_id=d.previous_deployment_id,
     )
 
 
@@ -121,6 +130,8 @@ def _detail(db, d: AgentDeploymentModel) -> Deployment:
         review_sla_minutes=d.review_sla_minutes, when_paused=d.when_paused, paused_at=d.paused_at,
         pause_reason=d.pause_reason,
         circuits=[ToolCircuit.model_validate(c, from_attributes=True) for c in limits.circuits_of(db, d.id)],
+        telemetry=d.telemetry or {}, alert_rules=d.alert_rules or [], drift_rule=drift.rule(d),
+        has_baseline=bool(drift.baseline_of(d).get("available")),
     )
 
 
@@ -128,7 +139,7 @@ def _execution_summary(e: AgentExecutionModel) -> ExecutionSummary:
     return ExecutionSummary(
         id=e.id, deployment_id=e.deployment_id, artifact_version=e.artifact_version, status=e.status,
         attempt=e.attempt, step_count=e.step_count, total_cost_usd=e.total_cost_usd, total_tokens=e.total_tokens,
-        created_at=e.created_at, completed_at=e.completed_at,
+        created_at=e.created_at, completed_at=e.completed_at, trigger=e.trigger, shadow_of=e.shadow_of,
     )
 
 
@@ -207,7 +218,7 @@ def activate_deployment(process_id: str, deployment_id: str, body: ActivateIn, d
                         user: AgentApproveDep) -> Deployment:
     d = _deployment(db, process_id, deployment_id)
     try:
-        deployments.activate(db, d, user, shadow_waiver=body.shadow_waiver)
+        deployments.activate(db, d, user, shadow_waiver=body.shadow_waiver, rollout=body.rollout, share=body.share)
     except deployments.SegregationError as exc:
         audit.record_refusal(actor=user, action="activate_deployment", reason=str(exc), object_type="deployment",
                              object_id=d.id, process_id=process_id, request=request)
@@ -270,11 +281,105 @@ def get_execution(process_id: str, execution_id: str, db: DbDep, user: CurrentUs
     if e is None or e.process_id != process_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Execution '{execution_id}' not found")
     return Execution(
-        **_execution_summary(e).model_dump(), identity_id=e.identity_id, client_id=e.client_id, trigger=e.trigger,
+        **_execution_summary(e).model_dump(), identity_id=e.identity_id, client_id=e.client_id,
         requested_by=e.requested_by, input=e.input, final_output=e.final_output, deviations=e.deviations,
-        resolution=e.resolution,
+        resolution=e.resolution, reported_outcome=e.reported_outcome,
         steps=[RunStep.model_validate(s.step) for s in jobs.steps_of(db, e.id)],
     )
+
+
+# ---- US39.13: rolling out ------------------------------------------------------------
+
+
+@router.get("/deployments/{deployment_id}/comparison")
+def deployment_comparison(process_id: str, deployment_id: str, db: DbDep, user: CurrentUserDep) -> dict:
+    """The new version against the one it would replace, shown before each
+    step up."""
+    del user
+    return rollout.comparison(db, _deployment(db, process_id, deployment_id))
+
+
+@router.post("/deployments/{deployment_id}/promote", response_model=Deployment)
+def promote_deployment(process_id: str, deployment_id: str, body: PromoteIn, db: DbDep, request: Request,
+                       user: AgentApproveDep) -> Deployment:
+    d = _deployment(db, process_id, deployment_id)
+    reading = rollout.comparison(db, d)["reading"] if d.status in ("shadow", "active") else None
+    try:
+        deployments.promote(db, d, user, share=body.share, comparison=reading)
+    except deployments.SegregationError as exc:
+        audit.record_refusal(actor=user, action="promote_deployment", reason=str(exc), object_type="deployment",
+                             object_id=d.id, process_id=process_id, request=request)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except deployments.DeploymentError as exc:
+        raise _refused(exc) from exc
+    return _detail(db, d)
+
+
+@router.post("/deployments/{deployment_id}/rollback", response_model=Deployment)
+def rollback_deployment(process_id: str, deployment_id: str, body: RollbackIn, db: DbDep,
+                        user: RuntimeStopDep) -> Deployment:
+    d = _deployment(db, process_id, deployment_id)
+    try:
+        deployments.rollback(db, d, user, reason=body.reason)
+    except deployments.DeploymentError as exc:
+        raise _refused(exc) from exc
+    return _detail(db, d)
+
+
+# ---- US39.14/US39.15: watching it ------------------------------------------------------
+
+
+def _window(window: str) -> str:
+    if window not in metrics.WINDOWS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="window must be hour, day or week")
+    return window
+
+
+@router.get("/deployments/{deployment_id}/metrics")
+def deployment_metrics(process_id: str, deployment_id: str, db: DbDep, user: CurrentUserDep,
+                       window: str = "day") -> dict:
+    del user
+    return metrics.deployment_metrics(db, _deployment(db, process_id, deployment_id), _window(window))
+
+
+@router.get("/deployments/{deployment_id}/drift")
+def deployment_drift(process_id: str, deployment_id: str, db: DbDep, user: CurrentUserDep) -> dict:
+    """Checked now (and remembered, so a flag still notifies or pauses)."""
+    del user
+    return monitoring.check_drift(db, _deployment(db, process_id, deployment_id), force=True)
+
+
+@router.post("/deployments/{deployment_id}/drift/to-dataset", response_model=AddedRows)
+def drift_to_dataset(process_id: str, deployment_id: str, body: ToDatasetIn, db: DbDep,
+                     user: AgentTestDep) -> AddedRows:
+    """US39.15/Epic 32: the window's cases become dataset rows."""
+    d = _deployment(db, process_id, deployment_id)
+    dataset = datasets.get_dataset_model(db, process_id, body.dataset_id)
+    existing = {r.row_key for r in datasets.rows_at(db, dataset.id)}
+    rows = [r for r in drift.to_dataset_rows(db, d) if r["row_key"] not in existing]
+    try:
+        if rows:
+            datasets.add_rows(db, dataset, [DatasetRowInput.model_validate(r) for r in rows], created_by=user.id)
+    except datasets.DatasetError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return AddedRows(added=len(rows))
+
+
+@router.put("/deployments/{deployment_id}/monitoring", response_model=Deployment)
+def update_monitoring(process_id: str, deployment_id: str, body: MonitoringIn, db: DbDep,
+                      user: OrgAdminDep) -> Deployment:
+    """Alert rules, where traces go, and the drift rule (notify or pause)."""
+    d = _deployment(db, process_id, deployment_id)
+    before = {"alert_rules": d.alert_rules, "telemetry": d.telemetry, "drift": (d.pause_rules or {}).get("drift")}
+    try:
+        monitoring.apply_settings(d, alert_rules=body.alert_rules, telemetry_settings=body.telemetry,
+                                  drift_rule=body.drift)
+    except monitoring.SettingsError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    audit.record(db, actor=user, action="deployment_monitoring_changed", object_type="deployment", object_id=d.id,
+                 process_id=process_id, detail={"from": before, "to": body.model_dump(exclude_none=True)})
+    db.flush()
+    return _detail(db, d)
 
 
 @router.put("/deployments/{deployment_id}/settings", response_model=Deployment)
@@ -424,6 +529,28 @@ def inbox(db: DbDep, user: CurrentUserDep, include_closed: bool = False) -> list
     return out
 
 
+@tenant_router.get("/deployments", response_model=list[RuntimeOverviewRow])
+def runtime_overview(db: DbDep, user: CurrentUserDep, window: str = "day",
+                     include_ended: bool = False) -> list[RuntimeOverviewRow]:
+    """US39.14: the Runtime page -- each deployment with its numbers over
+    the window. Killed and retired ones only if they ran in it."""
+    del user
+    window = _window(window)
+    start = metrics.since(window)
+    names = dict(db.execute(select(ProcessModel.id, ProcessModel.name)).all())
+    rows = []
+    for d in db.scalars(select(AgentDeploymentModel).order_by(AgentDeploymentModel.created_at.desc())):
+        if d.status in ("killed", "retired") and not include_ended and not metrics.count_since(db, d.id, start):
+            continue
+        state = d.monitor_state or {}
+        rows.append(RuntimeOverviewRow(
+            deployment=RuntimeDeploymentView(**_detail(db, d).model_dump(), process_name=names.get(d.process_id, "")),
+            metrics=metrics.deployment_metrics(db, d, window), drift=state.get("drift"),
+            alerts=state.get("last_alerts") or [],
+        ))
+    return rows
+
+
 @tenant_router.get("/notifications", response_model=list[Notification])
 def notifications(db: DbDep, user: CurrentUserDep) -> list[Notification]:
     rows = db.scalars(select(RuntimeNotificationModel).where(RuntimeNotificationModel.user_id == user.id)
@@ -438,6 +565,25 @@ def list_clients(db: DbDep, user: OrgAdminDep) -> list[RuntimeClient]:
     return [RuntimeClient.model_validate(r, from_attributes=True) for r in rows]
 
 
+def _oauth_audience(db, body: RuntimeClientIn, idp: OidcProvider) -> str | None:
+    """The audience an OAuth client's tokens must carry; None for a
+    bearer-token client. Refuses what can't work."""
+    if body.oauth_client_id is None:
+        if body.oauth_audience is not None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="oauth_audience needs an oauth_client_id")
+        return None
+    if not idp.config.issuer:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                            detail="This tenant has no identity provider to issue the client's tokens; "
+                                   "leave out oauth_client_id to get a bearer token instead")
+    taken = db.scalar(select(RuntimeClientModel.id).where(
+        RuntimeClientModel.oauth_client_id == body.oauth_client_id, RuntimeClientModel.revoked_at.is_(None)))
+    if taken is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            detail=f"OAuth client '{body.oauth_client_id}' is already registered ({taken})")
+    return body.oauth_audience or get_settings().runtime_oauth_audience
+
+
 @tenant_router.post("/clients", response_model=RuntimeClientCreated, status_code=201)
 def create_client(body: RuntimeClientIn, db: DbDep, user: OrgAdminDep,
                   idp: Annotated[OidcProvider, Depends(get_oidc_provider)]) -> RuntimeClientCreated:
@@ -445,29 +591,11 @@ def create_client(body: RuntimeClientIn, db: DbDep, user: OrgAdminDep,
     IdP and no token is issued here. Without, it gets a bearer token. The
     token and the callback signing secret are shown once; only the token's
     hash is kept."""
-    if body.deployment_ids is not None:
-        unknown = [d for d in body.deployment_ids if db.get(AgentDeploymentModel, d) is None]
-        if unknown:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
-                                detail=f"Unknown deployments: {', '.join(unknown)}")
-    token = None
-    audience = None
-    if body.oauth_client_id is not None:
-        if not idp.config.issuer:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
-                                detail="This tenant has no identity provider to issue the client's tokens; "
-                                       "leave out oauth_client_id to get a bearer token instead")
-        taken = db.scalar(select(RuntimeClientModel.id).where(
-            RuntimeClientModel.oauth_client_id == body.oauth_client_id, RuntimeClientModel.revoked_at.is_(None)))
-        if taken is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT,
-                                detail=f"OAuth client '{body.oauth_client_id}' is already registered ({taken})")
-        audience = body.oauth_audience or get_settings().runtime_oauth_audience
-    elif body.oauth_audience is not None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
-                            detail="oauth_audience needs an oauth_client_id")
-    else:
-        token = "axr_" + secrets.token_urlsafe(32)
+    unknown = [d for d in body.deployment_ids or [] if db.get(AgentDeploymentModel, d) is None]
+    if unknown:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"Unknown deployments: {', '.join(unknown)}")
+    audience = _oauth_audience(db, body, idp)
+    token = None if body.oauth_client_id is not None else "axr_" + secrets.token_urlsafe(32)
     signing_secret = "axs_" + secrets.token_urlsafe(32)
     row = RuntimeClientModel(id=new_id("rtc"), label=body.label, token_hash=_hash(token) if token else None,
                              oauth_client_id=body.oauth_client_id, oauth_audience=audience, created_by=user.id,
@@ -575,6 +703,19 @@ def start_execution(deployment_id: str, body: ExecutionIn, db: DbDep, caller: Cl
     if not created:
         response.status_code = status.HTTP_200_OK
     return _accepted(execution)
+
+
+@client_router.post("/executions/{execution_id}/outcome", response_model=ExecutionAccepted)
+def report_outcome(execution_id: str, body: OutcomeIn, db: DbDep, caller: ClientDep) -> ExecutionAccepted:
+    """US39.13/US39.15: what really happened to the case. It is what a
+    shadow version is checked against, and live accuracy for drift."""
+    e = db.get(AgentExecutionModel, execution_id)
+    if e is None or e.client_id != caller.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Execution '{execution_id}' not found")
+    e.reported_outcome = body.outcome
+    e.reported_at = utcnow()
+    db.flush()
+    return _accepted(e)
 
 
 @client_router.get("/executions/{execution_id}", response_model=ExecutionAccepted)

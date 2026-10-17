@@ -5,12 +5,31 @@ A deployment pins one approved artifact version (its definition and the
 tool schemas the twin tested) and goes through:
 
     pending --activate--> active --kill--> killed
-                                 --retire--> retired
+           (or shadow)           --retire--> retired
                                  --pause--> paused --resume--> active
+    shadow --promote--> active (a canary, or all cases)
+    canary/shadow --rollback--> retired
 
 Paused (US39.12, by hand or by a pause rule) is a halt, not a stop:
 running cases finish, new ones are refused or queued, and resuming needs
-no new approval.
+no new approval. Retired takes no new cases either; the ones it already
+accepted finish on it. Killed stops them at their next step.
+
+US39.13, rolling out a new version of an agent that already runs:
+
+- **Shadow:** the new version gets a copy of every live case. Its reads go
+  to the real systems; calls that would change data are recorded and not
+  sent. Required first for an agent with a data-changing tool unless an
+  approver waives it. A first version in shadow, with nothing live yet,
+  takes the cases sent to it directly, and the caller reports what the
+  people actually did.
+- **Canary:** an active new version takes `traffic_share` percent of the
+  agent's new cases, chosen by a hash of the idempotency key, so a case
+  always lands on the same version. A caller keeps using whichever
+  deployment id it has; the case is routed within the agent.
+- **Promote** steps the share up (5, 25, 100); at 100 the previous version
+  retires. **Rollback** retires the canary or shadow: new cases go back to
+  the previous version, and cases already running finish where they are.
 
 Creating one needs `agent.deploy`; activating it needs `agent.approve`,
 held by someone who neither built the agent nor asked for the deployment
@@ -47,10 +66,12 @@ from app.schemas.agents import AgentDefinition
 from app.schemas.run import NON_TERMINAL_RUN_STATUSES
 from app.tenancy.identity import current_slug
 
-from . import callbacks, credentials, limits, reviews
+from . import callbacks, credentials, drift, limits, reviews
 from .adapters import UnsafeProductionEndpoint, check_production_endpoint, is_mutating
 
 LIVE = ("active", "paused")
+# Statuses a running case may carry on under (the kill switch stops the rest).
+CARRY_ON = (*LIVE, "shadow", "retired")
 
 
 class DeploymentError(Exception):
@@ -138,7 +159,10 @@ def create(session: Session, artifact: AgentArtifactModel, user: UserModel) -> A
     evidence = limits.twin_evidence(session, artifact.id, definition)
     deployment.limits = limits.default_limits(session, artifact.process_id, evidence)
     deployment.pause_rules = limits.default_pause_rules(evidence)
-    deployment.snapshot = {**deployment.snapshot, "twin_evidence": evidence}
+    # US39.15: what the twin measured on this version, frozen for drift.
+    deployment.snapshot = {**deployment.snapshot, "twin_evidence": evidence,
+                           "baseline": drift.baseline(session, artifact.id, artifact.version,
+                                                      [f.name for f in definition.input_schema])}
     session.add(deployment)
     session.flush()
     # Prefill each binding with the application's production endpoint and
@@ -241,8 +265,9 @@ def operation_differences(session: Session, deployment: AgentDeploymentModel, bi
     return differences
 
 
-def readiness(session: Session, deployment: AgentDeploymentModel) -> list[str]:
-    """Everything that stops this deployment from going active."""
+def readiness(session: Session, deployment: AgentDeploymentModel, *, shadow_ok: bool = False) -> list[str]:
+    """Everything that stops this deployment from going active (or, with
+    `shadow_ok`, into shadow, where nothing that changes data is sent)."""
     problems = []
     definition = AgentDefinition.model_validate(deployment.snapshot["definition"])
     identity = session.get(AgentIdentityModel, deployment.identity_id)
@@ -256,9 +281,9 @@ def readiness(session: Session, deployment: AgentDeploymentModel) -> list[str]:
                             "for its application in the catalog)")
             continue
         problems += [f"'{contract.system_name}' {p}" for p in _binding_problems(session, deployment, binding)]
-        if is_mutating(contract) and not deployment.shadow_waiver:
-            problems.append(f"'{contract.system_name}' changes data, so the agent runs in shadow first (US39.13, "
-                            "not built yet) or an approver waives that with a reason")
+        if is_mutating(contract) and not (shadow_ok or deployment.shadow_waiver or deployment.shadow_started_at):
+            problems.append(f"'{contract.system_name}' changes data, so the agent runs in shadow first (activate it "
+                            "with rollout 'shadow') or an approver waives that with a reason")
     return problems
 
 
@@ -287,43 +312,151 @@ def builders(session: Session, artifact_id: str) -> set[str]:
     return {a for a in actors if a}
 
 
-def activate(session: Session, deployment: AgentDeploymentModel, user: UserModel, *,
-             shadow_waiver: str | None) -> AgentDeploymentModel:
-    if deployment.status != "pending":
-        raise DeploymentError(f"only a pending deployment can be activated; this one is {deployment.status}")
+def _check_segregation(session: Session, deployment: AgentDeploymentModel, user: UserModel) -> None:
     if user.id == deployment.created_by:
         raise SegregationError("You asked for this deployment -- someone else must approve it")
     if user.id in builders(session, deployment.agent_artifact_id):
         raise SegregationError("You built or amended this agent -- someone else must approve running it")
+
+
+def siblings(session: Session, deployment: AgentDeploymentModel, statuses: tuple[str, ...]) -> list[AgentDeploymentModel]:
+    """Other deployments of the same agent in these statuses, oldest first."""
+    return list(session.scalars(select(AgentDeploymentModel).where(
+        AgentDeploymentModel.group_key == deployment.group_key, AgentDeploymentModel.process_id == deployment.process_id,
+        AgentDeploymentModel.status.in_(statuses), AgentDeploymentModel.id != deployment.id)
+        .order_by(AgentDeploymentModel.created_at)))
+
+
+def _check_share(share: int | None) -> int:
+    if share is None or not 1 <= share <= 99:
+        raise DeploymentError("a canary takes between 1 and 99 percent of cases")
+    return share
+
+
+def _replace(session: Session, deployment: AgentDeploymentModel, current: list[AgentDeploymentModel], actor: str) -> None:
+    """The new version takes every case; the ones it replaces retire."""
+    for other in current:
+        _stop(session, other, status="retired", reason=f"Replaced by version {deployment.artifact_version}", actor=actor)
+    deployment.status = "active"
+    deployment.traffic_share = None
+
+
+def _start_rollout(session: Session, deployment: AgentDeploymentModel, rollout: str, share: int | None,
+                   current: list[AgentDeploymentModel], actor: str) -> None:
+    if rollout == "shadow":
+        if siblings(session, deployment, ("shadow",)):
+            raise DeploymentError("another version of this agent is already in shadow; promote or roll it back first")
+        deployment.status = "shadow"
+        deployment.shadow_started_at = utcnow()
+    elif rollout == "canary":
+        if not current:
+            raise DeploymentError("nothing runs yet to compare a canary with: activate it for all cases")
+        _no_other_canary(current)
+        deployment.status = "active"
+        deployment.traffic_share = _check_share(share)
+    else:
+        _replace(session, deployment, current, actor)
+
+
+def _no_other_canary(current: list[AgentDeploymentModel]) -> None:
+    if any(c.traffic_share for c in current):
+        raise DeploymentError("a canary of this agent is already running; promote or roll it back first")
+
+
+def activate(session: Session, deployment: AgentDeploymentModel, user: UserModel, *,
+             shadow_waiver: str | None, rollout: str = "full", share: int | None = None) -> AgentDeploymentModel:
+    """`rollout`: "full" (all of the agent's cases; the live version
+    retires), "canary" (`share` percent, next to the live version) or
+    "shadow" (a copy of live cases, nothing that changes data sent)."""
+    if deployment.status != "pending":
+        raise DeploymentError(f"only a pending deployment can be activated; this one is {deployment.status}")
+    _check_segregation(session, deployment, user)
     if shadow_waiver is not None:
         deployment.shadow_waiver = shadow_waiver.strip() or None
-    problems = readiness(session, deployment)
+    problems = readiness(session, deployment, shadow_ok=rollout == "shadow")
     if problems:
         raise DeploymentError(problems)
-    # Activating a new version retires the one it replaces.
-    for other in session.scalars(select(AgentDeploymentModel).where(
-            AgentDeploymentModel.group_key == deployment.group_key, AgentDeploymentModel.process_id == deployment.process_id,
-            AgentDeploymentModel.status.in_(LIVE), AgentDeploymentModel.id != deployment.id)):
-        _stop(session, other, status="retired", reason=f"Replaced by version {deployment.artifact_version}",
-              actor=user.id)
-    deployment.status = "active"
+    current = siblings(session, deployment, LIVE)
+    deployment.previous_deployment_id = current[-1].id if current else None
+    _start_rollout(session, deployment, rollout, share, current, user.id)
     deployment.approved_by = user.id
-    deployment.activated_at = utcnow()
+    deployment.activated_at = utcnow() if deployment.status == "active" else None
+    audit.record(session, actor=user, action="deployment_activated", object_type="deployment", object_id=deployment.id,
+                 process_id=deployment.process_id,
+                 detail={"rollout": rollout, "share": deployment.traffic_share,
+                         "replaces": deployment.previous_deployment_id, "shadow_waiver": deployment.shadow_waiver})
     session.flush()
     return deployment
+
+
+def _check_promotable(session: Session, deployment: AgentDeploymentModel, user: UserModel, share: int) -> None:
+    canary = deployment.status in LIVE and bool(deployment.traffic_share)
+    if deployment.status != "shadow" and not canary:
+        takes_all = " and takes every case" if deployment.status in LIVE else ""
+        raise DeploymentError(f"only a version in shadow or a canary can be promoted; this one is "
+                              f"{deployment.status}{takes_all}")
+    _check_segregation(session, deployment, user)
+    if not 1 <= share <= 100:
+        raise DeploymentError("give a share between 1 and 100 percent")
+    problems = readiness(session, deployment) if deployment.status == "shadow" else []
+    if problems:
+        raise DeploymentError(problems)
+
+
+def promote(session: Session, deployment: AgentDeploymentModel, user: UserModel, *, share: int,
+            comparison: str | None = None) -> AgentDeploymentModel:
+    """US39.13: a shadow version starts taking cases, or a canary takes a
+    bigger share; at 100 it takes them all and the previous version
+    retires. Approved like an activation (not by who built or asked)."""
+    _check_promotable(session, deployment, user, share)
+    before = "shadow" if deployment.status == "shadow" else f"{deployment.traffic_share}%"
+    current = siblings(session, deployment, LIVE)
+    if share == 100 or not current:
+        _replace(session, deployment, current, user.id)
+    else:
+        if deployment.status == "shadow":
+            _no_other_canary(current)
+            deployment.status = "active"
+        deployment.traffic_share = share
+    deployment.activated_at = deployment.activated_at or utcnow()
+    audit.record(session, actor=user, action="deployment_promoted", object_type="deployment", object_id=deployment.id,
+                 process_id=deployment.process_id,
+                 detail={"from": before, "to": f"{deployment.traffic_share or 100}%", "comparison": comparison})
+    session.flush()
+    return deployment
+
+
+def rollback(session: Session, deployment: AgentDeploymentModel, user: UserModel, *, reason: str) -> None:
+    """US39.13: new cases go back to the previous version at once; cases
+    already running on this one finish on it."""
+    reason = (reason or "").strip()
+    if not reason:
+        raise DeploymentError("say why you're rolling back")
+    if deployment.status != "shadow" and not (deployment.status in LIVE and deployment.traffic_share):
+        raise DeploymentError("only a canary or a version in shadow can be rolled back; stop or retire this one instead")
+    _stop(session, deployment, status="retired", reason=f"Rolled back: {reason}", actor=user.id)
+    audit.record(session, actor=user, action="deployment_rolled_back", object_type="deployment",
+                 object_id=deployment.id, process_id=deployment.process_id,
+                 detail={"reason": reason, "back_to": deployment.previous_deployment_id})
+    session.flush()
 
 
 # ---- stopping -------------------------------------------------------------------------
 
 
 def _stop(session: Session, deployment: AgentDeploymentModel, *, status: str, reason: str, actor: str) -> int:
-    """Stops one deployment. Executions not started yet end KILLED at once;
-    running ones see the new status before their next step (app/runtime/
-    jobs.py) and stop there. Returns how many were waiting."""
+    """Stops one deployment. Killed: executions not started yet end KILLED
+    at once; running ones see the new status before their next step
+    (app/runtime/jobs.py) and stop there. Retired: it takes no new cases,
+    and the ones it accepted finish. Returns how many were stopped waiting."""
     deployment.status = status
     deployment.stopped_at = utcnow()
     deployment.stopped_by = actor
     deployment.stop_reason = reason
+    deployment.traffic_share = None
+    if status == "retired":
+        session.flush()
+        return 0
     waiting = list(session.scalars(select(AgentExecutionModel).where(
         AgentExecutionModel.deployment_id == deployment.id, AgentExecutionModel.status == "QUEUED")))
     for execution in waiting:
@@ -344,7 +477,7 @@ def kill(session: Session, deployments: list[AgentDeploymentModel], *, reason: s
     reason = (reason or "").strip()
     if not reason:
         raise DeploymentError("give a reason for stopping the agent")
-    live = [d for d in deployments if d.status in (*LIVE, "pending")]
+    live = [d for d in deployments if d.status in (*LIVE, "pending", "shadow")]
     waiting = sum(_stop(session, d, status="killed", reason=reason, actor=actor) for d in live)
     running = session.scalar(select(AgentExecutionModel.id).where(
         AgentExecutionModel.deployment_id.in_([d.id for d in live]),
@@ -401,7 +534,7 @@ def resume(session: Session, deployment: AgentDeploymentModel, user: UserModel, 
 
 
 def retire(session: Session, deployment: AgentDeploymentModel, *, actor: str) -> None:
-    if deployment.status not in (*LIVE, "pending"):
+    if deployment.status not in (*LIVE, "pending", "shadow"):
         raise DeploymentError(f"this deployment is already {deployment.status}")
     _stop(session, deployment, status="retired", reason="Retired", actor=actor)
 
@@ -414,6 +547,6 @@ def revoke_identity(session: Session, deployment: AgentDeploymentModel, user: Us
         identity.revoked_at = utcnow()
         identity.revoked_by = user.id
     credentials.forget({b.id for b in bindings_of(session, deployment.id).values()})
-    if deployment.status in (*LIVE, "pending"):
+    if deployment.status in (*LIVE, "pending", "shadow", "retired"):
         _stop(session, deployment, status="killed", reason="The agent's identity was revoked", actor=user.id)
     session.flush()

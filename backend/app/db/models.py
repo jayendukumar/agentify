@@ -1921,8 +1921,12 @@ class AgentDeploymentModel(TenantScoped, Base):
     """Epic 39, US39.2: one approved agent version set up to run for real.
     `snapshot` pins everything it runs with -- the definition and the tool
     schemas the twin tested -- so editing or regenerating the artifact
-    never changes a running deployment. Status runs pending -> active,
-    then paused, killed or retired; a killed one never comes back (US39.11)."""
+    never changes a running deployment. Status runs pending -> active (or
+    shadow first, US39.13), then paused, killed or retired; a killed one
+    never comes back (US39.11). A canary is an active deployment with a
+    `traffic_share`; `previous_deployment_id` is the version it replaces.
+    `snapshot["baseline"]` freezes the twin results it was approved on
+    (US39.15)."""
 
     __tablename__ = "agent_deployments"
 
@@ -1933,7 +1937,7 @@ class AgentDeploymentModel(TenantScoped, Base):
     artifact_version: Mapped[int] = mapped_column(nullable=False)
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
     environment: Mapped[str] = mapped_column(String, nullable=False, default="production")
-    # pending | active | paused | killed | retired
+    # pending | shadow | active | paused | killed | retired
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
     identity_id: Mapped[str] = mapped_column(ForeignKey("agent_identities.id"), nullable=False)
     shadow_waiver: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1953,6 +1957,17 @@ class AgentDeploymentModel(TenantScoped, Base):
     when_paused: Mapped[str] = mapped_column(String, nullable=False, default="refuse")  # refuse | queue
     paused_at: Mapped[datetime | None] = mapped_column(nullable=True)
     pause_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Epic 39 step 4. US39.13: the canary's share of its agent's new cases
+    # (None: all of them, or none while in shadow), when shadow began, and
+    # the version this one replaces. US39.14: where traces and metrics go
+    # ({"otlp_endpoint", "headers": {name: secret ref}}) and alert rules.
+    # `monitor_state`: when each alert last fired, the last drift check.
+    traffic_share: Mapped[int | None] = mapped_column(nullable=True)
+    shadow_started_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    previous_deployment_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    telemetry: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    alert_rules: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    monitor_state: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class AdapterBindingModel(TenantScoped, Base):
@@ -2039,6 +2054,12 @@ class AgentExecutionModel(TenantScoped, Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # US39.13: a shadow case copies this live execution's input; nothing it
+    # would change is sent. US39.15: what really happened to the case, as
+    # the caller reported it.
+    shadow_of: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    reported_outcome: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    reported_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class ExecutionStepModel(TenantScoped, Base):

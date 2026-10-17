@@ -19,6 +19,7 @@ import OrganizationPage from './pages/OrganizationPage'
 import ProcessListPage from './pages/ProcessListPage'
 import ProcessTwinPage from './pages/ProcessTwinPage'
 import RegistriesPage from './pages/RegistriesPage'
+import RuntimePage from './pages/RuntimePage'
 import SessionsPage from './pages/SessionsPage'
 import UsersPage from './pages/UsersPage'
 import VersionsPage from './pages/VersionsPage'
@@ -63,6 +64,9 @@ function AppHeader() {
             </NavLink>
             <NavLink to="/registries" className="app-header-nav-link">
               Registries
+            </NavLink>
+            <NavLink to="/runtime" className="app-header-nav-link">
+              Runtime
             </NavLink>
             {can('runtime.review') && (
               <NavLink to="/inbox" className="app-header-nav-link">
@@ -154,6 +158,7 @@ function AppRoutes() {
       <Route path="/" element={<ProcessListPage />} />
       <Route path="/registries" element={<RegistriesPage />} />
       <Route path="/inbox" element={<InboxPage />} />
+      <Route path="/runtime" element={<RuntimePage />} />
       <Route path="/organization" element={<OrganizationPage />} />
       <Route path="/audit" element={<AuditLogPage />} />
       <Route path="/users" element={<UsersPage />} />

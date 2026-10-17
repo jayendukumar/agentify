@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-17 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**83 tables, 929 columns (112 JSON), 198 foreign keys, 45 Alembic migrations.**
+**83 tables, 940 columns (116 JSON), 198 foreign keys, 47 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -535,6 +535,9 @@ erDiagram
         string approved_by FK
         json limits
         json pause_rules
+        json telemetry
+        json alert_rules
+        json monitor_state
     }
     adapter_bindings {
         string id PK
@@ -559,6 +562,7 @@ erDiagram
         json deviations
         json resume_state
         json resolution
+        json reported_outcome
     }
     execution_steps {
         string id PK
@@ -1600,7 +1604,7 @@ Epic 39, US39.5: the identity a deployed agent acts as. Not a user: it has no pa
 
 #### `agent_deployments` (AgentDeploymentModel)
 
-Epic 39, US39.2: one approved agent version set up to run for real. `snapshot` pins everything it runs with -- the definition and the tool schemas the twin tested -- so editing or regenerating the artifact never changes a running deployment. Status runs pending -> active, then paused, killed or retired; a killed one never comes back (US39.11).
+Epic 39, US39.2: one approved agent version set up to run for real. `snapshot` pins everything it runs with -- the definition and the tool schemas the twin tested -- so editing or regenerating the artifact never changes a running deployment. Status runs pending -> active (or shadow first, US39.13), then paused, killed or retired; a killed one never comes back (US39.11). A canary is an active deployment with a `traffic_share`; `previous_deployment_id` is the version it replaces. `snapshot["baseline"]` freezes the twin results it was approved on (US39.15).
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
@@ -1627,6 +1631,12 @@ Epic 39, US39.2: one approved agent version set up to run for real. `snapshot` p
 | `when_paused` | string | no |  |
 | `paused_at` | datetime | yes |  |
 | `pause_reason` | text | yes |  |
+| `traffic_share` | int | yes |  |
+| `shadow_started_at` | datetime | yes |  |
+| `previous_deployment_id` | string | yes |  |
+| `telemetry` | json | no |  |
+| `alert_rules` | json | no |  |
+| `monitor_state` | json | no |  |
 
 #### `adapter_bindings` (AdapterBindingModel)
 
@@ -1647,13 +1657,15 @@ Epic 39, US39.6/US39.7: one tool contract of a deployment bound to a real system
 
 #### `runtime_clients` (RuntimeClientModel)
 
-Epic 39, US39.4: a system of the tenant that may start executions: a bearer token, shown once and stored as a SHA-256 hash (the SCIM token pattern, US37.10). `deployment_ids` limits it to some deployments (None: all of the tenant's); `signing_secret` signs its callbacks (app/runtime/callbacks.py), so it's kept, not hashed.
+Epic 39, US39.4: a system of the tenant that may start executions. It proves who it is one of two ways: an OAuth client of the tenant's IdP (`oauth_client_id`), whose client-credentials access tokens must carry `oauth_audience`; or, for a tenant without an IdP, a bearer token shown once and stored as a SHA-256 hash (the SCIM token pattern, US37.10). `deployment_ids` limits it to some deployments (None: all of the tenant's); `signing_secret` signs its callbacks (app/runtime/callbacks.py), so it's kept, not hashed.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | string | no | primary key |
 | `label` | string | no |  |
-| `token_hash` | string | no |  |
+| `token_hash` | string | yes |  |
+| `oauth_client_id` | string | yes |  |
+| `oauth_audience` | string | yes |  |
 | `deployment_ids` | json | yes |  |
 | `signing_secret` | string | yes |  |
 | `created_at` | datetime | no |  |
@@ -1691,6 +1703,9 @@ Epic 39, US39.3: one real case run by a deployment. Summary columns are kept up 
 | `created_at` | datetime | no | indexed |
 | `started_at` | datetime | yes |  |
 | `completed_at` | datetime | yes |  |
+| `shadow_of` | string | yes | indexed |
+| `reported_outcome` | json | yes |  |
+| `reported_at` | datetime | yes |  |
 
 #### `execution_steps` (ExecutionStepModel)
 

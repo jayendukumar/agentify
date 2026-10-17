@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**284 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**293 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -362,12 +362,19 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/activate` | `agent.approve` |  |
 | PUT | `/api/processes/{process_id}/deployments/{deployment_id}/bindings/{system_name}` | `agent.deploy` |  |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/bindings/{system_name}/test-credential` | `agent.deploy` | US39.7: fetches a token (or reads the key) without calling the system. |
+| GET | `/api/processes/{process_id}/deployments/{deployment_id}/comparison` | signed in | The new version against the one it would replace, shown before each step up. |
+| GET | `/api/processes/{process_id}/deployments/{deployment_id}/drift` | signed in | Checked now (and remembered, so a flag still notifies or pauses). |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/drift/to-dataset` | `agent.test` | US39.15/Epic 32: the window's cases become dataset rows. |
 | GET | `/api/processes/{process_id}/deployments/{deployment_id}/executions` | signed in |  |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/identity/revoke` | `runtime.stop` |  |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/kill` | `runtime.stop` |  |
+| GET | `/api/processes/{process_id}/deployments/{deployment_id}/metrics` | signed in |  |
+| PUT | `/api/processes/{process_id}/deployments/{deployment_id}/monitoring` | `org.admin` | Alert rules, where traces go, and the drift rule (notify or pause). |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/pause` | `runtime.stop` |  |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/promote` | `agent.approve` |  |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/resume` | `runtime.stop` |  |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/retire` | `agent.deploy` |  |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/rollback` | `runtime.stop` |  |
 | PUT | `/api/processes/{process_id}/deployments/{deployment_id}/settings` | `org.admin` | US39.9/US39.12: an admin adjusts caps, pause rules, the review SLA and what new work does while paused. Given keys replace the defaults. |
 | GET | `/api/processes/{process_id}/executions/{execution_id}` | signed in |  |
 | GET | `/api/processes/{process_id}/review-tasks/{task_id}` | signed in |  |
@@ -375,13 +382,15 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | POST | `/api/processes/{process_id}/review-tasks/{task_id}/resolve` | `runtime.review` | Close an escalated case by hand, with the outcome reached. |
 | POST | `/api/processes/{process_id}/review-tasks/{task_id}/to-dataset` | `agent.test` | US39.10: a person's answer on a live case becomes a golden row. |
 | GET | `/api/runtime/clients` | `org.admin` |  |
-| POST | `/api/runtime/clients` | `org.admin` | The token and the callback signing secret are shown once; only the token's hash is kept. |
+| POST | `/api/runtime/clients` | `org.admin` | With `oauth_client_id`, the system signs in through the tenant's IdP and no token is issued here. Without, it gets a bearer token. The token |
 | POST | `/api/runtime/clients/{client_id}/revoke` | `org.admin` |  |
+| GET | `/api/runtime/deployments` | signed in | US39.14: the Runtime page -- each deployment with its numbers over the window. Killed and retired ones only if they ran in it. |
 | GET | `/api/runtime/inbox` | signed in | US39.10: the tasks this person may act on, soonest due first. |
 | POST | `/api/runtime/kill` | `runtime.stop` | US39.11: every agent in the organization. Needs the stop permission organization-wide. |
 | GET | `/api/runtime/notifications` | signed in |  |
 | POST | `/runtime/v1/deployments/{deployment_id}/executions` | public |  |
 | GET | `/runtime/v1/executions/{execution_id}` | public |  |
+| POST | `/runtime/v1/executions/{execution_id}/outcome` | public | US39.13/US39.15: what really happened to the case. It is what a shadow version is checked against, and live accuracy for drift. |
 
 ### scim
 

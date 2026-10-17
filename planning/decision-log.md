@@ -4049,3 +4049,100 @@ Live (`testing/runtime/smoke_runtime_oauth.py`, 18/18): Keycloak's
 service-account client `loan-system` with an audience mapper. Its real
 token had the claims the unit tests assume (`azp`, `aud` a list with
 `axyntro-runtime` and `account`, `typ` Bearer).
+
+## 2026-10-17 -- Epic 39 build step 4 (shadow, canary, rollback, metrics, drift)
+
+### A case sent to any version of an agent is routed within the agent
+
+Callers keep using whichever deployment id they were given. `jobs.route`
+picks the version that takes the case: with a canary, a hash of the
+agent and the idempotency key below `traffic_share` goes to the canary,
+the rest to the stable version, so the same case always lands on the
+same version. With nothing live, the deployment called answers, which is
+how a first version in shadow takes cases. The idempotency lookup now
+spans every version of the agent, so a retry finds its case wherever it
+went. The alternative was a new "agent" endpoint for callers. That would
+have made every rollout step a change to the loan system's
+configuration, and a caller pinned to an old id would break at
+promotion. The runtime client's deployment limit is still checked
+against the id the caller used.
+
+### Retired now means "takes no new cases", not "stop at the next step"
+
+Rollback must let running cases finish on the version they started on
+(US39.13). Before this, retiring a deployment went through the same
+`_stop` as a kill: queued cases ended KILLED, and running ones stopped
+at their next step. Now only a kill (or a revoked identity) does that. A
+retired version finishes what it accepted, and its open review tasks
+stay open. This also applies when a new version replaces an old one,
+which is the better behaviour there too: no case was ever meant to die
+because a newer version went live. No existing test depended on the old
+behaviour.
+
+### Found live: shadow mode withheld reads too
+
+The first live run (28/29) showed the shadow copy's customer lookup
+recorded as "not sent". The adapter decided "would change data" by the
+tool contract, and Core Banking's contract may `update`, so every call
+through it counted, reads included. The unit test missed it because its
+shadow case only made the POST. The adapter now decides per call: GET,
+HEAD and OPTIONS are reads and go to the real system, which the story
+requires ("read calls go to the real system"). The test now looks a
+customer up before opening the account. (The gateway's policy checks
+still go by the contract; only shadow's "send or not" changed.)
+
+### A shadow case involves no one
+
+A shadow copy runs with a human port that approves its checkpoint on the
+spot, opens no review task and calls no callback. Asking a reviewer
+about an action that won't be sent would only fill the inbox with work
+that changes nothing. A copy that ends escalated is recorded, not
+escalated. The comparison counts what it would have done.
+
+### Comparing versions: paired where cases overlap, rates where they don't
+
+A shadow copy and the live case it copies saw the same input, so they
+are compared pairwise: how often they decided the same, and, where the
+real outcome is known (the caller's new `POST /runtime/v1/executions/{id}/outcome`,
+or a reviewer's answer), Epic 35's McNemar test on the cases one fixed and
+the other broke. A canary's cases are disjoint from the stable version's
+by design, so it is compared on Wilson intervals of its rates only, and
+the reading says so instead of implying a paired test.
+
+### OpenTelemetry by hand, not the SDK
+
+Traces and metrics go out as OTLP/HTTP JSON from a `runtime_telemetry`
+job per finished case: a root span per execution and a child span per
+step, with tenant, deployment, version and identity as attributes and no
+payloads. The SDK batches in a background thread per process with its
+own retry logic. That fits a long-running service poorly when the source
+of truth is already the step table and the job queue retries (5
+attempts). The trace id is derived from the execution id, so a retried
+export sends the same trace rather than a duplicate. Header values (a
+hosted collector's API key) must be secret references.
+
+### Alerts: in-app and webhook; email not built
+
+An alert rule names a metric, a window, a comparison and a threshold.
+When it's broken, the owners get an in-app notification, an optional
+webhook gets a POST with a link to the Runtime page, and a rule marked
+`pause` pauses the deployment (US39.12). Rules are evaluated after each
+case, at most every 30 seconds per deployment, and each rule fires at
+most once an hour. Without those limits, a busy agent would recompute a
+week of numbers per case and page someone per case. Email is refused
+when a rule is saved: the platform has no mail service yet, and a rule
+that silently never emails is worse than a clear "use a webhook".
+
+### Drift: frozen baseline, PSI and interval overlap, checked hourly
+
+At deployment, the latest finished correctness batch of the approved
+version is frozen into `snapshot["baseline"]`: pass rate, decision mix,
+escalation rate, tool-call mix, cost and latency percentiles, and a
+profile of the dataset's inputs (decile bins for numbers, the top values
+for anything else). Live, over 7 days with at least 100 cases: PSI over
+0.2 flags a mix or an input field. Non-overlapping 95% intervals flag the
+escalation rate and accuracy. A median outside the twin's 5th to 95th
+percentile flags cost or latency. Input drift is reported apart from
+behaviour drift. Only a behaviour flag pauses (when the rule says pause),
+because the cases changing is not the agent's fault. The check runs at
+most once an hour after a case, and on demand from the page.
