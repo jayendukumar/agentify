@@ -216,7 +216,22 @@ cross-tenant probe); steps 2-5 open.
 |---|---|---|
 | 38 | [Multi-Tenancy: Many Organizations on One Deployment](epics/38-multi-tenancy.md) | Tenants addressed by host name; tenant_id on every row with Postgres row-level security (fails closed); tenant context for requests, jobs and background work; backfill into a first tenant; a cross-tenant probe over every route; per-tenant IdP, SCIM and mappings; operators without standing data access; fair-share jobs and quotas; per-tenant secrets, files, model policy and registries; create, suspend, export and delete; dedicated database and data residency on demand |
 
-Status: groomed 2026-10-15. Not started.
+Status: groomed 2026-10-15. All stories implemented 2026-10-15 to
+2026-10-17.
+
+## Phase 10 epic (groomed 2026-10-17 from the enterprise-readiness ask)
+
+The twin is the only place an agent runs: "DEPLOYED" means a registry
+entry, and there's no executor, no identity for an agent to act as, no
+way to stop one and no live monitoring. This epic runs approved agents
+against real systems with the twin's own execution loop.
+
+| # | Epic | Summary |
+|---|---|---|
+| 39 | [Agent Runtime: Running Approved Agents in Production](epics/39-agent-runtime.md) | One executor shared with the twin (tool, human and step ports); deployments pinned to an approved version; durable executions on their own workers; workload identity per agent with scoped, short-lived credentials; production adapters; guardrails failing closed plus limits across executions and circuit breakers; review inbox with SLAs; kill switch at deployment, agent and tenant level; automatic pause; shadow, canary, rollback; live metrics, OpenTelemetry, drift against the twin baseline |
+
+Status: groomed 2026-10-17. Not started. Decisions confirmed
+2026-10-17 (see the epic's Notes).
 
 ## Backlog (superseded by the Phase 2 epics above)
 

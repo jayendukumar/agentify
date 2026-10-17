@@ -510,4 +510,5 @@ On an operator host, `main.tsx` loads the operator console
 | [Epic 36 -- Process Digital Twin at Volume: Efficiency & Readiness](../../planning/epics/36-process-twin-efficiency.md) | 9 | implemented (2026-10-13), except US36.9 (still open) |
 | [Epic 37 -- Enterprise Identity, Roles & Segregation of Duties](../../planning/epics/37-enterprise-identity-and-access.md) | 15 | build steps 1-4 implemented. Step 1 (2026-10-14): US37.1-37.6, US37.14, US37.15. Step... |
 | [Epic 38 -- Multi-Tenancy: Many Organizations on One Deployment](../../planning/epics/38-multi-tenancy.md) | 15 | build step 1 implemented (2026-10-15): US38.1-38.5, the tenant boundary. Step 2 in... |
+| [Epic 39 -- Agent Runtime: Running Approved Agents in Production](../../planning/epics/39-agent-runtime.md) | 18 | groomed 2026-10-17. Not started. Decisions confirmed 2026-10-17 (see Notes) |
 <!-- END GENERATED: epic-index -->

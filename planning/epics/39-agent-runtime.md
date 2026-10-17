@@ -1,0 +1,516 @@
+# Epic 39 -- Agent Runtime: Running Approved Agents in Production
+
+**Status: groomed 2026-10-17. Not started. Decisions confirmed
+2026-10-17 (see Notes).** Weakness 3 in the wiki's Critical Review
+("Agents never run in production") and item 4 of its recommended order.
+Section 3 of the enterprise-readiness deck ("Production agent runtime").
+
+Goal: an agent that passed the twin and was approved can run for real,
+against the customer's real systems, as itself. It acts under its own
+identity with scoped, short-lived credentials, and it is held to the
+guardrails it was tested with. It can be stopped in seconds. Its live
+behaviour is watched and compared with what the twin measured. The code
+that runs it in production is the code the twin tested.
+
+Depends on: Epic 20 (Tool Gateway, guardrails, escalation policy, tool
+contracts), Epic 17 (one run/step model, manual pause and resume), Epic
+22 (run snapshots), Epic 23 and Epic 35 (APPROVED state, statistical
+release gate), Epic 29 (applications, OpenAPI operations, endpoint
+environments), Epic 37 (permissions, segregation of duties, audit), Epic
+38 (tenant context for every request and job, per-tenant secrets and
+limits). Strongly recommended first: the Critical Review's item 2 (a
+worker separate from the API, append-only run steps), because a
+production run must not die with an API redeploy (see US39.3). Feeds: a
+hosted pilot where agents do real work.
+
+## Why
+
+Measured on 2026-10-17 against the code:
+
+- **"DEPLOYED" is a label.** `POST /publications/{id}/mark-deployed`
+  (`app/api/publish.py`) records that someone says an artifact is
+  deployed. Nothing runs it. There's no table of what is running where,
+  at which version, or since when.
+- **The only execution loop is the twin's.** `run_scenario`
+  (`app/twin/engine.py`, about 350 lines) is the loop that runs model
+  turns, tool calls, guardrails, checkpoints and escalation. Twin-only
+  concerns are mixed into it: fault injection, Proxy/Static stubs,
+  sample-data records, the seeded reviewer, grading. A production
+  executor written separately would drift from it on day one, and what
+  ran in production would no longer be what was tested.
+- **Governance fails open.** `check_tool_permission` allows every tool
+  when an artifact declares no tool contracts (`app/twin/gateway.py`).
+  That was right for old artifacts in a sandbox. In production it means
+  an artifact with no contracts can call anything it's offered.
+- **There's no outbound identity.** Twin API mode (`_call_api` in
+  `app/twin/simulators.py`) sends unauthenticated requests, and
+  `app/catalog/endpoints.py` *refuses* any endpoint tagged or named like
+  production. OpenAPI import drops header parameters. There's no notion
+  of a credential, a scope, or who the call is made as.
+- **Guardrails are per run only.** `GuardrailTracker` caps steps, tool
+  calls, tokens, cost and wall time inside one run. Nothing caps an agent
+  across runs (calls per minute, spend per day), and nothing trips when
+  one tool keeps failing.
+- **Human checkpoints wait on a scenario setting.** Manual mode
+  (`WAITING_FOR_HUMAN` + `resume_state`) works, but the person deciding is
+  whoever presses Resume on a twin run. There's no inbox, assignee, due
+  time or escalation.
+- **Stopping means cancelling one run.** `cancel_requested` on a
+  `simulation_runs` row stops that run at its next step. There's no way to
+  stop an agent, all of a tenant's agents, or new work arriving.
+- **Nothing is measured after release.** The release gate (Epic 35)
+  knows the twin's pass rate, decision mix, escalation rate and cost
+  distribution with confidence ranges. Nothing records the same numbers
+  live, so drift can't be seen.
+
+## Design summary
+
+- **One executor, two sets of adapters.** The loop in `run_scenario`
+  moves to `app/runtime/executor.py` with three ports:
+  - `ToolPort`: resolves a tool call. Twin: faults, stubs, records, API
+    mode (today's code, moved). Production: real adapters (US39.6).
+  - `HumanPort`: resolves a checkpoint. Twin: sampled, rule or manual.
+    Production: the review inbox (US39.10).
+  - `StepSink`: records steps. Twin: `simulation_runs`. Production: the
+    execution store (US39.3).
+
+  The model loop, the Tool Gateway check, `GuardrailTracker`, the repair
+  turn, escalation and suspend/resume stay in the executor and are shared.
+  `run_scenario` becomes a thin twin wrapper that adds grading. The whole
+  existing twin test suite passing unchanged is the proof the extraction
+  changed nothing.
+- **A deployment is a record, not a label.** `agent_deployments` pins one
+  artifact version, its snapshot (Epic 22), its adapter bindings and its
+  identity. Only an APPROVED version can be deployed. Deploying is a
+  permission of its own, needs someone other than the builder (Epic 37),
+  and is audited. A new artifact version is a new deployment, never an
+  edit to a running one.
+- **Production fails closed.** No tool contracts, no adapter binding, no
+  credential, an unapproved version, a killed deployment: each refuses
+  the call or the run. The twin keeps its current fail-open default for
+  old artifacts.
+- **The agent acts as itself.** Each deployment has a workload identity:
+  not a user, can't sign in, has no UI roles. Calls to a system use a
+  short-lived token for that identity, scoped by the tool contract's
+  resource and action, obtained from a secret reference (Epic 38 secret
+  store). Every step and audit event names the agent identity and the
+  caller it acts for.
+- **Stop is checked where the twin checks cancel.** The executor already
+  checks for cancellation before each model call and tool call. The kill
+  switch adds one more check at those points, against a flag at
+  deployment, agent and tenant level, plus a refusal at the front door.
+- **Twin evidence is the baseline.** When a version is deployed, the
+  numbers its release was approved on (Epic 35's batch results) are
+  frozen as its baseline. Live metrics are computed the same way over
+  rolling windows, so drift is a like-for-like comparison.
+
+## User Stories
+
+### A. One executor
+
+US39.1 -- Extract the execution loop from the twin.
+As a Platform Engineer, I want the twin and production to run agents
+through the same code, so what was tested is what runs.
+Acceptance:
+- **The move:** `app/runtime/executor.py` holds the loop now in
+  `run_scenario`: model turns, the repair turn, `check_tool_permission`,
+  `GuardrailTracker`, escalation, suspend and resume, step emission. It
+  takes a `ToolPort`, a `HumanPort` and a `StepSink`, and knows nothing
+  about scenarios, faults, stubs or grading.
+- **The twin wrapper:** `run_scenario` keeps its signature, builds the
+  twin ports from today's code (faults, stubs, records, API mode, seeded
+  and manual reviewers) and grades the outcome as it does today.
+- **Proof:** every existing twin, orchestration, batch and process-twin
+  test passes without edits. A replay test runs a seeded batch before and
+  after the change and compares the step sequences, which must be
+  identical.
+- **A guard:** a test fails if `app/runtime` imports anything from
+  `app/twin` except the gateway, so twin concerns can't leak back in.
+
+US39.2 -- Deployments.
+As an Automation Architect, I want to deploy one approved version of an
+agent as a record of what runs, so "deployed" means something can run.
+Acceptance:
+- **Table:** `agent_deployments` (id, artifact id, artifact version,
+  snapshot, environment `production|staging`, status
+  `pending|shadow|active|paused|killed|retired`, rollout share, trigger
+  settings, identity id, created by, approved by, created, retired).
+- **Preconditions:** the artifact version is APPROVED (Epic 23), declares
+  at least one tool contract, and every contract has an adapter binding
+  (US39.6). Otherwise the deployment is refused with the missing items
+  listed, the same way the checklist lists them.
+- **Duties:** a new `agent.deploy` permission. Whoever approves the
+  deployment may not be whoever built the artifact or requested the
+  deployment (Epic 37's segregation rules). Every change of status is an
+  audit event.
+- **Versions:** regenerating an artifact never changes a running
+  deployment. A new version is deployed alongside the old one (US39.13)
+  and the old one is retired.
+- **Compatibility:** `mark-deployed` is kept for publications to
+  external registries, and its UI label becomes "Marked deployed
+  elsewhere", so it isn't confused with a running deployment.
+
+US39.3 -- A durable execution store and its own workers.
+As a Platform Engineer, I want production executions recorded step by
+step and run apart from the API and the twin, so a redeploy or a large
+batch can't lose or starve real work.
+Acceptance:
+- **Tables:** `agent_executions` (deployment, version, status, caller,
+  identity, idempotency key, input, final output, cost, tokens, timings)
+  and `execution_steps`, appended one row per step and never updated.
+  Summary columns on the execution are maintained on write.
+- **Workers:** executions run as a `runtime_execution` job kind, on a
+  worker pool that claims only production kinds. Twin batches can't take
+  its capacity. Fair share across tenants (US38.9) applies.
+- **Restarts:** a step with a side effect records "requested" before the
+  call and "done" after it. An execution recovered after a crash resumes
+  from its last recorded step. It never repeats a mutating call whose
+  outcome is unknown: it escalates the execution instead.
+- **Retention:** inputs, outputs and tool payloads are kept for a
+  tenant-set period (default 90 days), then removed, leaving the step
+  metadata. Fields with a data classification marked sensitive (Epic 29)
+  are redacted before they're stored.
+
+US39.4 -- Ways to start an agent.
+As a Process Owner, I want work to reach a deployed agent from our own
+systems, so it runs on real cases without someone pressing Run.
+Acceptance:
+- **API:** `POST /runtime/deployments/{id}/executions` with the agent's
+  input schema, called by a tenant API client (client credentials, not a
+  user session). It needs an `Idempotency-Key`, and the same key returns
+  the same execution. It answers 202 with an execution id; a status
+  endpoint and an optional callback URL report completion.
+- **Validation:** input that doesn't match the input schema is refused
+  with 422, before any model call.
+- **Queue:** the same call can be made through the job queue for
+  internal triggers, such as a scheduled sweep.
+- **Not in this story:** event subscriptions (webhooks from the
+  customer's systems) and whole-process execution, which are US39.16 and
+  US39.17.
+
+### B. Identity and credentials
+
+US39.5 -- A workload identity per deployment.
+As a Security Officer, I want every agent to act as a named identity of
+its own, so each action can be traced to the agent and the caller it
+acted for, and its access can be revoked on its own.
+Acceptance:
+- **Table:** `agent_identities` (id, tenant, deployment, display name,
+  status, created, revoked). It isn't a row in `users`, has no password
+  or session, and can't hold UI roles.
+- **Attribution:** every execution step and audit event records the
+  identity, and the caller (API client or user) it acts on behalf of.
+- **Revocation:** revoking an identity stops its deployment (same effect
+  as a kill, US39.11) and invalidates its cached tokens.
+- **Directory:** optionally, an identity maps to a service principal in
+  the customer's IdP (a client id), so their own logs name the same
+  agent. A secret reference is held, never the value.
+
+US39.6 -- Production adapters for tool contracts.
+As an Automation Architect, I want each tool contract bound to a real
+system's operation, so the agent calls the system the twin simulated, in
+the shape it was tested against.
+Acceptance:
+- **Binding:** `adapter_bindings` link a deployment's tool contract to an
+  application endpoint tagged `production` (Epic 29), an allow-list of
+  its operations, and a credential (US39.7). The binding's operations
+  must match the tool schema the twin used. A difference is shown, and
+  blocks the deployment until it's accepted.
+- **The endpoint check, reversed:** production adapters may call only
+  endpoints tagged `production` and registered by a catalog editor. The
+  twin's API mode keeps refusing them, so a twin run can never reach a
+  production system.
+- **Calls:** each call obeys the contract's `timeout_seconds` and
+  `retry_max_attempts`. Mutating calls carry the execution's idempotency
+  key plus the step number, so a retry can't apply twice. Redirects
+  aren't followed.
+- **Responses:** large or non-JSON responses are cut down the same way
+  the twin does it, so the model sees the same shape it was tested with.
+
+US39.7 -- Scoped, short-lived credentials.
+As a Security Officer, I want agents to hold no long-lived secrets and
+only the access their tool contracts need, so a leaked token is worth
+little and an agent can't exceed its permissions in the target system.
+Acceptance:
+- **Kinds:** OAuth 2.0 client credentials (the identity's client id and a
+  secret reference; token fetched per call when expired, cached in memory
+  only, never stored or logged) and, where a system has nothing better,
+  a static API key held as a secret reference.
+- **Scopes:** the token request asks only for the scopes mapped to the
+  contract's (resource, action) in the binding. A token for a read
+  contract can't be used for a mutating one.
+- **Checks:** a deployment can't go active while any binding's credential
+  is unresolved. A "test credential" action fetches a token without
+  calling the system.
+- **Never in prompts:** credentials are attached by the adapter after
+  the Tool Gateway has allowed the call. They never enter the model's
+  messages, the step record or the logs, and a test asserts that.
+
+### C. Guardrails in production
+
+US39.8 -- The same guardrails, failing closed.
+As a Compliance Lead, I want production to enforce the limits and
+permissions the agent was tested with, with no fallback to "allow", so
+the release evidence still holds.
+Acceptance:
+- **Same checks:** `check_tool_permission` and `GuardrailTracker` run
+  unchanged, from the snapshot pinned on the deployment, not from the
+  artifact's current (possibly edited) definition.
+- **No fail-open:** production refuses an artifact with no tool contracts
+  (US39.2) and refuses any tool call without a binding.
+- **Outcomes:** a denied call, an exceeded limit or a timeout ends the
+  execution as the twin would (FAILED, ESCALATED, TIMED_OUT), and an
+  escalation creates an inbox task (US39.10).
+- **Proof:** a parity test runs the same artifact with the same scripted
+  model responses through the twin ports and the production ports, and
+  asserts the same policy decisions and terminal status.
+
+US39.9 -- Limits across executions.
+As a Process Owner, I want caps on what an agent does in total, not only
+per run, so a runaway trigger or a broken system can't run up cost or
+damage.
+Acceptance:
+- **Per deployment:** executions per minute, concurrent executions,
+  spend per day, and mutating calls per hour. Defaults come from the
+  twin's measured volume and cost (Epic 35) with headroom, and are
+  editable by an admin.
+- **When a cap is hit:** new executions are refused with 429 and a
+  reason. Running ones finish. The tenant's own limits (US38.9) still
+  apply on top.
+- **Circuit breaker per tool:** after N consecutive failures (default 5)
+  or an error rate over a threshold in a window, the tool is opened. An
+  execution that needs it escalates instead of calling it, and a probe
+  call after a cool-down closes it again.
+- **Argument rules (optional per contract):** simple bounds on call
+  arguments, such as "amount ≤ 10,000" or "currency in [EUR, USD]",
+  checked by the gateway. A breach is denied like a missing permission.
+
+### D. Humans in the loop
+
+US39.10 -- A review inbox.
+As an Approver named in an agent's escalation policy, I want the
+checkpoints and escalations for live cases in one inbox, so real cases
+don't wait on someone noticing.
+Acceptance:
+- **Tasks:** a `review_tasks` table. Each task has the execution, the
+  proposed action, the agent's reasoning summary, the case input, an
+  assignee (a role or business unit from the approval matrix, Epic 30, or
+  the policy's `escalation_target.role`), a due time and a status.
+- **Deciding:** approve or reject, with a required comment on reject.
+  This resumes the execution through `HumanPort` exactly as a manual twin
+  checkpoint resumes. The decision and the person are recorded on the
+  step and in the audit log.
+- **Escalated executions:** a reviewer can resolve the case by hand and
+  record the outcome, and the execution closes as ESCALATED with that
+  outcome attached.
+- **SLAs:** a task past its due time is escalated to the next level in
+  the matrix and the deployment's owners are notified.
+- **Duties:** nobody can approve a task for an execution they triggered.
+- **Feedback:** each decision is kept as a labelled outcome for
+  monitoring (US39.15) and can be sent to a dataset (Epic 32).
+
+### E. Stopping and rolling out
+
+US39.11 -- The kill switch.
+As a Process Owner or Security Officer, I want to stop an agent, or all
+our agents, at once, so a misbehaving agent does no further harm while we
+find out why.
+Acceptance:
+- **Levels:** one deployment, every deployment of one agent, or every
+  deployment in the tenant. Each is one action with a required reason.
+- **Who:** the deployment's owners, any approver or admin in the tenant,
+  and the platform operator for a whole tenant during an incident. An
+  operator kill is recorded in both the tenant's and the platform audit
+  log, and gives the operator no data access.
+- **Effect on new work:** refused at the front door with 503 and the
+  reason, within 5 seconds of the action, on every API and worker
+  instance.
+- **Effect on running work:** each execution stops at its next step
+  boundary (before the next model call or tool call), with status
+  KILLED. A tool call already in flight is allowed to finish and is
+  recorded. It isn't retried or followed by another. Open review tasks
+  are cancelled.
+- **No dependencies:** the check reads the database (or a cache that is
+  never more than 5 seconds old) and needs neither the model provider nor
+  the target systems to be reachable.
+- **Restart:** a killed deployment comes back only through a new
+  activation, approved like a deployment, never by undoing the kill.
+- **Proof:** a test kills a deployment with 20 executions in flight and
+  asserts none takes another step and new calls get 503.
+
+US39.12 -- Automatic pause.
+As a Process Owner, I want an agent paused automatically when it clearly
+goes wrong, so nobody has to be watching at 3 a.m.
+Acceptance:
+- **Triggers (each configurable, with defaults):** policy denials over a
+  rate, error rate over a rate, spend in an hour over a multiple of the
+  baseline, reject rate in the inbox over a threshold, or a drift alert
+  marked "pause" (US39.15).
+- **Effect:** status `paused`: new work is refused or queued (the
+  deployment chooses which), running executions finish. Owners are
+  notified with the trigger and the numbers behind it.
+- **Resume:** an owner resumes it with a comment. A paused deployment
+  isn't killed and needs no new approval.
+
+US39.13 -- Shadow, canary and rollback.
+As an Automation Architect, I want a new version to prove itself on live
+cases before it carries them, so the step from twin to production is
+gradual and reversible.
+Acceptance:
+- **Shadow:** a deployment in `shadow` receives a copy of live work. Read
+  calls go to the real system. Mutating calls are recorded with their
+  arguments and are not sent. The output is stored next to what actually
+  happened (the active version's output, or the human outcome supplied
+  by the caller). Required before `active` for any agent with a mutating
+  tool, unless the approver waives it with a reason.
+- **Canary:** an `active` new version takes a set share of executions
+  (for example 5%, then 25%, then 100%). The split is by a hash of the
+  idempotency key, so a case always goes to the same version.
+- **Promotion:** comparison with the current version (decision mix,
+  escalation rate, error rate, cost) uses Epic 35's paired comparison
+  where cases overlap, and is shown before each step up.
+- **Rollback:** one action sends all new work back to the previous
+  version and retires the canary. Running executions finish on the
+  version they started on.
+
+### F. Monitoring and drift
+
+US39.14 -- Live metrics and traces.
+As a Process Owner, I want to see how each agent is doing right now, so
+problems show before customers report them.
+Acceptance:
+- **Metrics per deployment:** executions by status, latency (p50, p95),
+  cost and tokens, tool calls and errors by tool, policy denials,
+  escalations, inbox approve and reject rates, time waiting for humans,
+  and kill or pause events.
+- **Page:** a Runtime page lists deployments with their status and these
+  numbers over the last hour, day and week. Each execution opens in the
+  existing step inspector (Epic 18), which reads `execution_steps` the
+  same way it reads twin steps.
+- **Export:** OpenTelemetry traces (one span per step, with the tenant,
+  deployment, version and identity as attributes, payloads excluded) and
+  metrics, to an endpoint the deployment's operator configures.
+- **Alerts:** threshold rules on any metric send to a webhook or email.
+  An alert names the deployment and links to it.
+
+US39.15 -- Drift against the twin baseline.
+As a Compliance Lead, I want to know when an agent behaves differently
+live from how it behaved in the twin, so the release evidence isn't
+silently out of date.
+Acceptance:
+- **Baseline:** at deployment, the twin results the version was approved
+  on (decision mix, escalation rate, tool-call mix, cost and latency
+  distribution, pass rate with its confidence range) are frozen on the
+  deployment. A version approved without batch evidence has no baseline,
+  and the page says so.
+- **Live comparison:** over rolling windows (default 7 days, at least 100
+  executions), the same numbers are computed live. A change is flagged
+  when it's outside the baseline's range with stated confidence (Epic 35
+  methods; population stability index for the decision mix).
+- **Accuracy:** where live outcomes are known (inbox decisions, shadow
+  comparisons, outcomes the caller reports back), live accuracy is shown
+  with a confidence range next to the twin's.
+- **Input drift:** the distribution of input fields compared with the
+  dataset the twin used, so "the cases changed" can be told apart from
+  "the agent changed".
+- **Action:** each drift alert is marked notify or pause (US39.12). A
+  flagged window offers "add these cases to a dataset", so the twin
+  learns from what production saw (Epic 32).
+
+### G. Later
+
+US39.16 -- Event triggers.
+As a Process Owner, I want an agent started by an event in our systems,
+so we don't have to build a caller.
+Acceptance: signed webhooks per deployment (HMAC over the body with a
+secret reference, replay window, idempotency from the event id), mapped
+onto the input schema with Epic 31's field mapping.
+
+US39.17 -- Whole-process execution.
+As a Process Owner, I want a case to move through all of a process's
+deployed agents along the real flow, so the to-be process runs end to
+end, not one agent at a time.
+Acceptance: the orchestrator's walk (`run_orchestration`) runs on the
+production ports, with the case file hand-off and gateways from Epic 36.
+A node without an active deployment becomes a human task in the inbox.
+Each case is one process execution with its node executions under it.
+Kill and pause at process level stop every node.
+
+US39.18 -- Certified hand-off to the customer's agent platform.
+As an Automation Architect at a customer with its own agent platform, I
+want to export an approved agent with its evidence, so we can run it
+there and still trust the twin results.
+Acceptance: an export in MCP tool and A2A agent-card form with the
+definition, tool contracts, guardrails, the snapshot and a signed
+evidence summary. The receiving platform may report execution metrics
+back to the drift view (US39.15) through the same metrics API.
+
+## Build order
+
+1. **US39.1:** extract the executor. No behaviour change. Done when the
+   twin suite and the replay test pass. Worth doing on its own, because
+   it also shrinks `engine.py`.
+2. **US39.2-39.8, US39.11:** deployments, the execution store and
+   workers, the API trigger, identity, adapters, credentials, guardrails
+   failing closed, and the kill switch. The kill switch ships in the same
+   step as the first real execution, never after it. Done when a twin
+   tested agent runs against a local "production" stand-in with OAuth,
+   and the kill test passes.
+3. **US39.10, US39.9, US39.12:** the inbox, limits across executions,
+   automatic pause. Needed before an agent with a mutating tool or a
+   human checkpoint goes live.
+4. **US39.13-39.15:** shadow, canary and rollback, live metrics, drift.
+   Needed before the first pilot runs unattended.
+5. **US39.16-39.18:** when a customer asks.
+
+## Testing
+
+- **Parity (US39.1, US39.8):** seeded replays give identical steps before
+  and after the extraction. The same scripted model responses through twin
+  and production ports give the same policy decisions and outcomes.
+- **Fail closed:** no contracts, no binding, an unresolved credential, a
+  non-APPROVED version, a revoked identity, a killed deployment: each is
+  refused, and a test covers each one.
+- **Kill (US39.11):** 20 in-flight executions stop at their next step,
+  new calls get 503 within 5 seconds, with the model provider stubbed to
+  hang.
+- **Crash (US39.3):** kill the worker between "requested" and "done" on a
+  mutating call. The recovered execution escalates rather than calling
+  again.
+- **Secrets:** no token or secret value appears in steps, logs, audit
+  events or model messages (a scan over everything a test run wrote).
+- **Tenancy:** the cross-tenant probe (US38.5) covers the new routes, and
+  an API client of one tenant can't start another tenant's deployment.
+- **Live, per the project's "run it against something real" rule:** a
+  small "production" stand-in service that accepts client-credentials
+  tokens from Keycloak (in the local SSO stack since Epic 37). The Invoice to Pay demo's
+  agents are deployed against it: shadow first, then a canary, then
+  killed mid-batch. Defects found there go to the decision log.
+
+## Notes / Open Questions
+
+- **Decided (confirmed 2026-10-17): run agents ourselves first, hand off to customer
+  platforms later (US39.18).** Running them here keeps the executor shared
+  with the twin, which is the point of the product: tested is what runs,
+  and drift can be measured. A hand-off first would be quicker to ship but
+  leaves both guarantees to someone else's platform.
+- **Decided (confirmed 2026-10-17): shadow mode is required before `active` for agents with a
+  mutating tool,** waivable by the approver with a reason.
+- **Decided (confirmed 2026-10-17): a kill lets an in-flight tool call finish.** Aborting a
+  call mid-flight leaves its outcome unknown, which is worse than one
+  more completed call. Nothing runs after it.
+- **Decided (confirmed 2026-10-17): the platform operator may kill a whole tenant's agents**
+  during an incident, without data access, logged in both audit logs.
+- **Decided (confirmed 2026-10-17): credentials are OAuth client credentials or static keys
+  by secret reference.** Workload identity federation (a cloud-issued
+  identity exchanged for a token, no secret at all) is better and needs
+  a cloud deployment first. The `agent_identities` table leaves room for
+  it.
+- **Prerequisites from the Critical Review:** a worker deployment separate
+  from the API (item 2) and a secrets manager (item 3). The local
+  `EnvSecretStore`/`FileSecretStore` is enough to build and test this
+  epic. It isn't enough to run a customer's production credentials.
+- **Out of scope:** billing for executions (usage records exist), an
+  agent marketplace, agents that write or change their own tools, and
+  computer-use or browser tools. Agents call systems only through
+  declared tool contracts.
