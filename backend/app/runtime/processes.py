@@ -1,8 +1,8 @@
 """Epic 39, US39.17: a case through the whole process, not one agent.
 
 A process execution walks the process's real flow -- the version its
-deployed agents were generated from -- with Epic 16's orchestrator
-(`run_orchestration`) on production ports:
+deployed agents were generated from -- with the process walk the twin
+rehearses with (app/runtime/walk.py, `run_walk`), on production ports:
 
 - **an agent node** runs as an ordinary execution of the node's live
   deployment (`parent_execution_id` points here), inline in the walk's
@@ -51,10 +51,10 @@ from app.schemas.agents import AgentDefinition
 from app.schemas.orchestration import ManualNodeConfig, NodeRun, OrchestrationScenario
 from app.schemas.run import TERMINAL_RUN_STATUSES, TwinDeviation
 from app.schemas.twin import TwinHumanCheckpointConfig
-from app.twin.orchestrator import NodeArtifact, run_orchestration
 
 from . import reviews
 from .deployments import LIVE, kill
+from .walk import NodeArtifact, NodeContext, run_walk
 
 JOB_KIND = "runtime_process"
 HELD_RETRY_SECONDS = 30
@@ -177,7 +177,9 @@ class ProductionNodes:
         self.session, self.case, self.nodes = session, case, nodes
 
     async def __call__(self, node: FlowNodeInfo, artifact: NodeArtifact, inputs: dict[str, Any], *,
-                       resume_state: dict[str, Any] | None, routing: tuple[str, list[str]] | None) -> NodeOutcome:
+                       resume_state: dict[str, Any] | None, routing: tuple[str, list[str]] | None,
+                       context: NodeContext) -> NodeOutcome:
+        del context  # a real execution keeps its own steps and asks its own reviewers
         from . import jobs
 
         if resume_state and resume_state.get("execution_id"):
@@ -296,7 +298,7 @@ async def runtime_process(payload: dict[str, Any], session: Session) -> dict[str
     case.status, case.started_at = "RUNNING", case.started_at or utcnow()
     session.commit()
     try:
-        outcome = await run_orchestration(
+        outcome = await run_walk(
             get_job_llm(), flow_nodes=flow_nodes, node_artifacts=_artifacts(nodes, flow_nodes), scenario=scenario,
             max_turns_per_node=get_settings().runtime_max_turns,
             max_total_steps=get_settings().orchestration_max_total_steps, resume_state=resume_state,

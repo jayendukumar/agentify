@@ -505,8 +505,8 @@ Deviations from the stories, decided while building:
 - **Code.** `app/runtime/processes.py`. A process case
   (`POST /runtime/v1/processes/{id}/executions`, a client not limited to
   some deployments; `process_executions`, migration `b9c0d1e2f3a4`) walks
-  the version the live agents were generated from, using Epic 16's
-  `run_orchestration`. Its new `agent_runner` port is how production runs
+  the version the live agents were generated from, using Epic 16's walk
+  (now `app/runtime/walk.py`, `run_walk`). Its `agent_runner` port is how production runs
   an agent node: an ordinary execution of the node's live deployment
   (`parent_execution_id`, trigger `process`; a canary takes its share),
   run inline in the `runtime_process` job through
@@ -538,11 +538,13 @@ Deviations from the stories, decided while building:
   resolving it finished the case with the account and contract numbers.
   Stopping the process killed a waiting case and the deployment.
 - **Deviations:**
-  - The runtime now imports the orchestrator from `app.twin` (the import
-    boundary test allows it, with the reason). Production passes its own
-    agent runner and makes every person's step "manual", so the twin's
-    engine and simulators are never reached. Moving the walk into
-    `app/runtime` would be the clean form.
+  - ~~The runtime imports the orchestrator from `app.twin`.~~ Closed
+    2026-10-17: the walk moved to `app/runtime/walk.py` (`run_walk`); the
+    twin's `run_orchestration` wraps it with `run_scenario` as the agent
+    runner and `resolve_human_decision` as the person simulator, and the
+    runtime imports nothing from the twin but the gateway again. Without
+    a simulator, a person's step that isn't manual fails the case rather
+    than guessing.
   - A node that escalates ends the process case ESCALATED. Resolving that
     escalation in the inbox doesn't carry the case on.
   - A case whose node is waiting when that one deployment (not the

@@ -4238,3 +4238,21 @@ for review before looking the customer up and again before opening the
 account, and the smoke test only approved the first. The walk was right
 (it waited on the node's second checkpoint). The smoke test now approves
 each of the node's checkpoints until the case moves on.
+
+### The walk moved into `app/runtime` (follow-up, same day)
+
+The exception to the runtime's import boundary is gone. The walk is now
+`app/runtime/walk.py` (`run_walk`), and `app/twin/orchestrator.py` is the
+twin's thin wrapper: `run_orchestration` keeps its signature and passes
+`run_scenario` as the agent runner and `resolve_human_decision` as the
+person simulator. It also re-exports the walk's helpers for its callers.
+The walk's two twin dependencies became ports. The agent runner now gets
+a `NodeContext` (where to relay steps, the seeded checkpoint
+configuration, the decision on resume), so the twin's runner needs
+nothing from inside the walk. Person simulation is an optional
+`decide_person`. Production passes none, and a person's step it would
+have to simulate fails the case rather than inventing a decision. The
+walk raises and catches the runtime's `ExecutionError`, which
+`TwinServiceError` already subclasses, so twin errors from a runner are
+still caught. Twin tests that patch `run_scenario` on the twin module
+still work, because the wrapper looks it up there at call time.

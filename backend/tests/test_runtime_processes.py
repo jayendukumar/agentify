@@ -132,3 +132,29 @@ def test_who_may_start_a_process_case(client, fake_llm):
     assert _case(limited, process_id, {}).status_code == 404
     nothing = client.post("/api/processes", json={"name": "Nothing deployed"}).json()["id"]
     assert _case(_client_token(client), nothing, {}).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_without_a_simulator_the_walk_never_guesses_a_persons_decision(fake_llm):
+    """Production passes no `decide_person`: a person's step that isn't
+    manual fails the case rather than inventing a decision."""
+    from app.bpmn.nodes import FlowNodeInfo, FlowRef
+    from app.runtime.walk import run_walk
+    from app.schemas.orchestration import OrchestrationScenario
+
+    nodes = [
+        FlowNodeInfo(id="start", label="Start", bpmn_type="startEvent", lane_name=None, predecessors=[],
+                     successors=[FlowRef(node_id="b", label="Sign", condition=None)]),
+        FlowNodeInfo(id="b", label="Sign", bpmn_type="userTask", lane_name=None,
+                     predecessors=[FlowRef(node_id="start", label="Start", condition=None)], successors=[]),
+    ]
+    scenario = OrchestrationScenario(id="s", process_id="p", baseline_version_id="v", name="s",
+                                     created_at="2026-10-17T00:00:00")
+
+    async def no_agents(*args, **kwargs):
+        raise AssertionError("no agent node here")
+
+    outcome = await run_walk(fake_llm, flow_nodes=nodes, node_artifacts={}, scenario=scenario, max_turns_per_node=2,
+                             agent_runner=no_agents)
+    assert outcome.status == "FAILED"
+    assert "needs a person's decision and no one decides it here" in outcome.deviations[0].reason

@@ -111,12 +111,12 @@ live in `db/repository.py`. That is why it is the codebase's top hotspot (see
 | `app/oracles` | 5 | 818 | Epic 33: scalable oracles -- rules, label-first generation, metamorphic relations, calibrated judges. |
 | `app/process_twin` | 4 | 604 | Epic 36: the process digital twin -- the whole process run over many cases, measured against today. |
 | `app/registry` | 4 | 222 | Epic 13, US13.1: the registry connector interface every registry backend implements identically -- the local reference connector (app/registry/local.py) today,  |
-| `app/runtime` | 19 | 3,869 | Epic 39: the agent runtime -- the one execution loop the twin and production both run agents through (`executor.py`). |
+| `app/runtime` | 20 | 4,555 | Epic 39: the agent runtime -- the one execution loop the twin and production both run agents through (`executor.py`). |
 | `app/schemas` | 29 | 2,745 |  |
 | `app/scim` | 3 | 491 | Epic 37, US37.10: the inbound SCIM 2.0 server (RFC 7643/7644) the customer's IdP provisions users and groups through. Not Epic 31's outbound ScimConnector, whic |
 | `app/secret_store` | 1 | 139 | Epic 38, US38.10: each tenant's secrets, kept apart. |
 | `app/tenancy` | 14 | 1,467 | Epic 38: many organizations ("tenants") on one deployment, kept apart by Postgres row-level security. See planning/epics/38-multi-tenancy.md. |
-| `app/twin` | 14 | 2,478 | Epic 19, US19.4: a plain-English behavioral diff between two runs -- typically two versions of the same agent (US19.5's `AgentArtifact.version`), but works for  |
+| `app/twin` | 14 | 1,865 | Epic 19, US19.4: a plain-English behavioral diff between two runs -- typically two versions of the same agent (US19.5's `AgentArtifact.version`), but works for  |
 <!-- END GENERATED: module-inventory -->
 
 ### Package dependencies

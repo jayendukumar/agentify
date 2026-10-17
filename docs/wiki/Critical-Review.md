@@ -250,8 +250,8 @@ The order is in the enterprise-readiness deck. In short:
    adapters, credentials, kill switch, inbox, caps, pause, shadow, canary
    and rollback, metrics, traces, alerts, drift, event triggers,
    whole-process cases, certified hand-off). Left: metric rollups for
-   volume, retention and redaction of stored payloads, email alerts, and
-   moving the orchestrator's walk out of the twin package. *(3)*
+   volume, retention and redaction of stored payloads, and email alerts.
+   *(3)*
 5. **Refactor the hot core** behind the ratchet: split `repository.py`
    into per-domain stores plus services, extract the orchestrator's walk
    into a small state machine, remove lazy-import cycles. *(9, 10, 11)*

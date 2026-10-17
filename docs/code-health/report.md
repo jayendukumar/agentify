@@ -6,14 +6,14 @@ _Generated 2026-10-17 by `python -m tools.code_health report`. Do not edit by ha
 
 | Measure | Backend (Python) | Frontend (TS/React) | Target | Status |
 |---|---|---|---|---|
-| Production code (non-blank lines) | 33,733 | 18,087 | - |  |
-| Test code (non-blank lines) | 13,873 | 3,811 | - |  |
-| Functions measured | 1746 | 710 | - |  |
-| Mean cognitive complexity / function | 4.11 | 4.61 | <= 6 | OK |
+| Production code (non-blank lines) | 33,806 | 18,087 | - |  |
+| Test code (non-blank lines) | 13,889 | 3,811 | - |  |
+| Functions measured | 1749 | 710 | - |  |
+| Mean cognitive complexity / function | 4.1 | 4.61 | <= 6 | OK |
 | Functions over cognitive 15 | 90 | 51 | ratchet: must not rise |  |
 | Functions over cyclomatic 10 | 133 | 71 | ratchet: must not rise |  |
-| Duplicated lines | 0.21% | 0.08% | <= 5.0% | OK |
-| Structural duplication (renamed copies) | 3.73% | 0.57% | ratchet |  |
+| Duplicated lines | 0.31% | 0.08% | <= 5.0% | OK |
+| Structural duplication (renamed copies) | 3.83% | 0.57% | ratchet |  |
 | Import cycles (module level, import-time) | 0 | 0 | 0 | OK |
 | Package cycles (incl. lazy imports) | 1 | 1 | ratchet |  |
 | Unused definitions / exports | 15 | 11 | ratchet |  |
@@ -28,12 +28,12 @@ Cognitive complexity measures how hard a function is to *read* (nesting is penal
 
 | Function | File | Cognitive | Cyclomatic | Lines |
 |---|---|---|---|---|
-| `run_orchestration` | `backend/app/twin/orchestrator.py:251` | 99 | 56 | 515 |
+| `run_walk` | `backend/app/runtime/walk.py:255` | 98 | 55 | 506 |
 | `DigitalTwinAdvancedPanel` | `frontend/src/components/DigitalTwinAdvancedPanel.tsx:48` | 93 | 51 | 466 |
 | `BlueprintPage` | `frontend/src/pages/BlueprintPage.tsx:34` | 91 | 71 | 421 |
 | `batch_results` | `backend/app/batches/results.py:201` | 78 | 67 | 111 |
+| `run_walk.run_task_node` | `backend/app/runtime/walk.py:398` | 66 | 38 | 121 |
 | `OrchestrationPanel` | `frontend/src/components/OrchestrationPanel.tsx:53` | 65 | 37 | 433 |
-| `run_orchestration.run_task_node` | `backend/app/twin/orchestrator.py:407` | 63 | 37 | 117 |
 | `merge_process_schemas` | `backend/app/ingestion/merge.py:37` | 62 | 24 | 80 |
 | `patch_group` | `backend/app/scim/service.py:354` | 60 | 35 | 48 |
 | `_sanitize_situation` | `backend/app/twin/test_builder.py:264` | 57 | 52 | 72 |
@@ -49,7 +49,7 @@ Cognitive complexity measures how hard a function is to *read* (nesting is penal
 | Function | File | Lines | Cognitive |
 |---|---|---|---|
 | `TwinTestBuilder` | `frontend/src/components/TwinTestBuilder.tsx:85` | 549 | 51 |
-| `run_orchestration` | `backend/app/twin/orchestrator.py:251` | 515 | 99 |
+| `run_walk` | `backend/app/runtime/walk.py:255` | 506 | 98 |
 | `DigitalTwinAdvancedPanel` | `frontend/src/components/DigitalTwinAdvancedPanel.tsx:48` | 466 | 93 |
 | `OrchestrationPanel` | `frontend/src/components/OrchestrationPanel.tsx:53` | 433 | 65 |
 | `BlueprintPage` | `frontend/src/pages/BlueprintPage.tsx:34` | 421 | 91 |
@@ -63,10 +63,11 @@ Cognitive complexity measures how hard a function is to *read* (nesting is penal
 
 Copy-paste clones of at least 70 tokens and 6 lines, ignoring whitespace and comments, in production code.
 
-**Backend:** 72 of 33,733 lines (0.21%) sit in 3 exact clone pairs; 3.73% sit in 54 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
+**Backend:** 104 of 33,806 lines (0.31%) sit in 4 exact clone pairs; 3.83% sit in 55 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
 
 | Tokens | Lines | First copy | Second copy |
 |---|---|---|---|
+| 144 | 16 | `backend/app/runtime/walk.py:255-270` | `backend/app/twin/orchestrator.py:60-75` |
 | 89 | 12 | `backend/app/api/oidc.py:126-137` | `backend/app/api/operator.py:203-212` |
 | 85 | 11 | `backend/app/auth/support.py:140-150` | `backend/app/tenancy/onboarding.py:171-181` |
 | 85 | 14 | `backend/app/db/repository.py:1378-1391` | `backend/app/db/repository.py:1965-1978` |
@@ -82,7 +83,7 @@ Largest structural clones (backend):
 | 168 | 22 | `backend/app/db/models.py:1759-1777` | `backend/app/db/models.py:2119-2140` |
 | 149 | 27 | `backend/app/db/repository.py:942-968` | `backend/app/db/repository.py:1693-1718` |
 | 149 | 27 | `backend/app/db/repository.py:942-968` | `backend/app/db/repository.py:2088-2113` |
-| 143 | 17 | `backend/app/db/models.py:1063-1076` | `backend/app/db/models.py:1175-1191` |
+| 148 | 19 | `backend/app/runtime/walk.py:252-270` | `backend/app/twin/orchestrator.py:57-75` |
 
 **Frontend:** 14 of 18,087 lines (0.08%) sit in 1 exact clone pairs; 0.57% sit in 2 structural clones (same shape with identifiers and literals renamed, at least 100 tokens and 10 lines).
 
@@ -106,18 +107,18 @@ Files that are both complicated and frequently changed. Score = commits touching
 | `backend/app/db/repository.py` | 23 | 2,864 | 337 | 2168 | 7,751 |
 | `frontend/src/api/client.ts` | 31 | 1,711 | 71 | 1252 | 2,201 |
 | `frontend/src/pages/BlueprintPage.tsx` | 12 | 542 | 106 | 420 | 1,272 |
-| `backend/app/twin/orchestrator.py` | 5 | 1,304 | 251 | 692 | 1,255 |
-| `backend/app/api/runtime.py` | 7 | 981 | 157 | 782 | 1,099 |
+| `backend/app/api/runtime.py` | 8 | 1,085 | 157 | 782 | 1,256 |
 | `backend/app/oracles/service.py` | 4 | 755 | 241 | 582 | 964 |
 | `backend/app/twin/engine.py` | 10 | 1,649 | 84 | 354 | 840 |
 | `frontend/src/pages/ProcessDetailPage.tsx` | 10 | 370 | 74 | 287 | 740 |
+| `backend/app/runtime/jobs.py` | 6 | 936 | 113 | 469 | 678 |
 | `backend/app/runtime/deployments.py` | 5 | 627 | 129 | 463 | 645 |
 | `backend/app/llm/client.py` | 7 | 385 | 85 | 313 | 595 |
-| `backend/app/runtime/jobs.py` | 5 | 897 | 113 | 469 | 565 |
 | `frontend/src/pages/DiagramPage.tsx` | 8 | 326 | 68 | 261 | 544 |
 | `backend/app/jobs/worker.py` | 11 | 366 | 49 | 236 | 539 |
 | `backend/app/context/ingestion.py` | 3 | 665 | 175 | 553 | 525 |
 | `frontend/src/components/OrchestrationPanel.tsx` | 5 | 525 | 103 | 461 | 515 |
+| `backend/app/config.py` | 18 | 367 | 28 | 307 | 504 |
 
 ## 4. Coupling and dependency cycles
 
@@ -165,7 +166,7 @@ Ca = how many internal packages depend on this one; Ce = how many it depends on;
 |---|---|---|---|
 | `app.db.models` | 80 | 0 | 0.0 |
 | `app.db.repository` | 30 | 44 | 0.59 |
-| `app.ids` | 55 | 0 | 0.0 |
+| `app.ids` | 56 | 0 | 0.0 |
 | `app.config` | 51 | 0 | 0.0 |
 | `app.main` | 1 | 41 | 0.98 |
 | `app.api.deps` | 31 | 10 | 0.24 |
@@ -255,12 +256,12 @@ Production lines per API endpoint and per implemented user story, at every commi
 
 |  | First commit | Latest commit | Change |
 |---|---|---|---|
-| Production lines | 2,985 | 51,286 | x17.2 |
-| Test lines | 1,577 | 17,551 | x11.1 |
-| API endpoints | 22 | 277 | x12.6 |
+| Production lines | 2,985 | 51,820 | x17.4 |
+| Test lines | 1,577 | 17,684 | x11.2 |
+| API endpoints | 22 | 281 | x12.8 |
 | User stories implemented | 21 | 259 | x12.3 |
-| Lines per endpoint | 136 | 185 |  |
-| Lines per implemented story | 142 | 198 |  |
+| Lines per endpoint | 136 | 184 |  |
+| Lines per implemented story | 142 | 200 |  |
 | Test lines per production line | 0.53 | 0.34 |  |
 
 ```mermaid
@@ -268,14 +269,14 @@ xychart-beta
     title "Production lines per implemented story (lower is better)"
     x-axis ["09-18", "09-18", "09-19", "09-19", "09-19", "09-20", "09-20", "09-22", "09-24", "09-29", "09-29", "10-09", "10-11", "10-13", "10-14", "10-15", "10-15", "10-15", "10-16", "10-16", "10-17", "10-17", "10-17", "10-17", "10-17"]
     y-axis "Lines per story"
-    line [142, 218, 272, 265, 267, 172, 161, 165, 171, 166, 162, 157, 154, 164, 164, 164, 166, 176, 170, 180, 184, 177, 188, 197, 198]
+    line [142, 218, 272, 265, 267, 172, 161, 165, 171, 166, 162, 157, 154, 164, 164, 164, 166, 176, 170, 180, 184, 177, 188, 197, 200]
 ```
 
 ```mermaid
 xychart-beta
     title "Production lines (bars) vs implemented stories x100 (line)"
     x-axis ["09-18", "09-18", "09-19", "09-19", "09-19", "09-20", "09-20", "09-22", "09-24", "09-29", "09-29", "10-09", "10-11", "10-13", "10-14", "10-15", "10-15", "10-15", "10-16", "10-16", "10-17", "10-17", "10-17", "10-17", "10-17"]
-    bar [2985, 4578, 5707, 6892, 6941, 7041, 8526, 10714, 11101, 13139, 16076, 16688, 19104, 32993, 37042, 37042, 37618, 39839, 40983, 43439, 44305, 45789, 48576, 50994, 51286]
+    bar [2985, 4578, 5707, 6892, 6941, 7041, 8526, 10714, 11101, 13139, 16076, 16688, 19104, 32993, 37042, 37042, 37618, 39839, 40983, 43439, 44305, 45789, 48576, 50994, 51820]
     line [2100, 2100, 2100, 2600, 2600, 4100, 5300, 6500, 6500, 7900, 9900, 10600, 12400, 20100, 22600, 22600, 22600, 22600, 24100, 24100, 24100, 25900, 25900, 25900, 25900]
 ```
 

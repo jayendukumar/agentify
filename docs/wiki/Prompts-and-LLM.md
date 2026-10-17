@@ -95,7 +95,7 @@ plus any prompt helpers or constants it uses.
 | `gap_analysis` | Find gaps and ambiguities in an extracted process before diagramming | `backend/app/gap_analysis/service.py` `analyze_gaps()` | JSON | no | 16000 |
 | `oracle_judge` | Grade a free-text output against a calibrated rubric (LLM judge) | `backend/app/oracles/service.py` `judge()` | JSON | no | 4000 |
 | `oracle_rule_structuring` | Turn a gateway's condition text into an executable rule expression | `backend/app/oracles/service.py` `propose_rules()` | JSON | no | 8000 |
-| `orchestration_data_adapter` | Reshape the case file into the next agent's input fields | `backend/app/twin/orchestrator.py` `_adapt_data()` | JSON | no | 8000 |
+| `orchestration_data_adapter` | Reshape the case file into the next agent's input fields | `backend/app/runtime/walk.py` `_adapt_data()` | JSON | no | 8000 |
 | `policy_extraction` | Extract obligations, controls and approval rules from an uploaded policy document | `backend/app/context/ingestion.py` `extract_proposals()` | JSON | no | 16000 |
 | `runtime_execution` | The agent itself, running a real case in production through its bound systems | `backend/app/runtime/jobs.py` `run_execution()` | text / tool calls | yes | default |
 | `twin_builder_describe` | Turn a plain-language description into a test situation | `backend/app/twin/test_builder.py` `describe_situation()` | JSON | no | default |
@@ -600,7 +600,7 @@ Respond with JSON: {{"rules": [ ... ]}}"""
 Reshape the case file into the next agent's input fields
 
 <details>
-<summary><code>backend/app/twin/orchestrator.py -- _adapt_data()</code></summary>
+<summary><code>backend/app/runtime/walk.py -- _adapt_data()</code></summary>
 
 ```python
 async def _adapt_data(
@@ -634,7 +634,7 @@ async def _adapt_data(
     if mode == "exact_field_contract":
         missing = [f.name for f in target_fields if f.name not in current_data]
         if missing:
-            raise TwinServiceError(
+            raise ExecutionError(
                 f"Exact field-name contract into node '{to_node_id}' is missing field(s) {missing} from the "
                 f"upstream output (got: {sorted(current_data)})"
             )
@@ -661,13 +661,13 @@ async def _adapt_data(
         max_tokens=8000,
     )
     if not result.text:
-        raise TwinServiceError(f"LLM returned no content while adapting data for node '{to_node_id}'")
+        raise ExecutionError(f"LLM returned no content while adapting data for node '{to_node_id}'")
     try:
         mapped = json.loads(result.text)
     except json.JSONDecodeError as exc:
-        raise TwinServiceError(f"LLM returned invalid JSON while adapting data for node '{to_node_id}': {exc}") from exc
+        raise ExecutionError(f"LLM returned invalid JSON while adapting data for node '{to_node_id}': {exc}") from exc
     if not isinstance(mapped, dict):
-        raise TwinServiceError(f"LLM's data adaptation for node '{to_node_id}' was not a JSON object")
+        raise ExecutionError(f"LLM's data adaptation for node '{to_node_id}' was not a JSON object")
     return mapped, (result.usage, result.model)
 ```
 

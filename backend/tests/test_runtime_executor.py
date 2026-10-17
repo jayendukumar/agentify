@@ -85,14 +85,7 @@ def _run(llm, tools, human, artifact=None, **kwargs):
     )
 
 
-# The gateway (US39.8) and, since US39.17, the orchestrator's walk: the
-# story runs `run_orchestration` itself in production. Production always
-# passes its own agent runner and configures every person's step as
-# "manual", so the walk never reaches the twin's engine or simulators.
-ALLOWED_TWIN_MODULES = {"app.twin.gateway", "app.twin.orchestrator"}
-
-
-def test_runtime_imports_nothing_from_the_twin_but_the_gateway_and_the_walk():
+def test_runtime_imports_nothing_from_the_twin_but_the_gateway():
     for path in RUNTIME.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -103,7 +96,7 @@ def test_runtime_imports_nothing_from_the_twin_but_the_gateway_and_the_walk():
                 modules = [alias.name for alias in node.names]
             for module in modules:
                 if module.startswith("app.twin"):
-                    assert module in ALLOWED_TWIN_MODULES, f"{path.name} imports {module}"
+                    assert module == "app.twin.gateway", f"{path.name} imports {module}"
 
 
 @pytest.mark.asyncio
