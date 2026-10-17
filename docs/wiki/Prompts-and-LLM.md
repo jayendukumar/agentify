@@ -749,61 +749,20 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
     from app.connectors.jobs import get_job_llm
 
     execution = session.get(AgentExecutionModel, payload["execution_id"])
-    if execution is None or execution.status in TERMINAL_RUN_STATUSES:
-        return {"skipped": True}
-    deployment = session.get(AgentDeploymentModel, execution.deployment_id)
-    definition = AgentDefinition.model_validate(deployment.snapshot["definition"])
-    if _ended_before_starting(session, execution, deployment, definition):
-        session.commit()
-        return {"status": execution.status}
-
-    execution.attempt += 1
-    execution.status = "RUNNING"
-    execution.started_at = execution.started_at or utcnow()
-    session.commit()
-    attempt = execution.attempt
-    identity = session.get(AgentIdentityModel, execution.identity_id)
-
-    async def on_step(step: RunStep) -> None:
-        session.add(ExecutionStepModel(
-            id=new_id("xstep"), execution_id=execution.id, attempt=attempt, seq=step.seq, type=step.type,
-            target=step.target, step=step.model_dump(mode="json"), occurred_at=step.occurred_at,
-        ))
-        execution.step_count += 1
-        session.commit()
-
-    async def on_phase(status: RunStatus) -> None:
-        # US39.11: the kill switch, checked before every model and tool call.
-        current = session.execute(
-            select(AgentDeploymentModel.status, AgentDeploymentModel.stop_reason, AgentIdentityModel.status)
-            .join(AgentIdentityModel, AgentIdentityModel.id == AgentDeploymentModel.identity_id)
-            .where(AgentDeploymentModel.id == deployment.id)
-        ).one()
-        if current[0] not in ("active", "paused") or current[2] != "active":
-            raise RunCancelled("KILLED", f"Stopped by the kill switch: {current[1] or 'the identity was revoked'}")
-        execution.status = status
-        session.commit()
-
-    async def on_call(binding: Binding, call: ToolCall, status_code: int) -> None:
-        if is_mutating(binding.contract):
-            audit.record(
-                session, actor=None, actor_type="agent", actor_name=identity.display_name, action="agent_tool_call",
-                object_type="agent_execution", object_id=execution.id, process_id=execution.process_id,
-                detail={"identity_id": identity.id, "on_behalf_of": execution.client_id, "system": binding.system_name,
-                        "operation": call.arguments.get("operation"), "status_code": status_code},
-            )
-
-    schemas = deployment.snapshot["tool_schemas"]
-    tools = {
-        name: ToolDefinition(name=s["tool_name"], description=s["description"], parameters=s["parameters"])
-        for name, s in schemas.items()
-    }
+    admitted = _admit(session, execution, payload)
+    if isinstance(admitted, dict):
+        return admitted
+    deployment, definition, decision = admitted
+    resume_state = execution.resume_state if decision else None
+    _start_leg(session, execution, resuming=bool(decision))
+    recorder = _Recorder(session, execution, deployment, session.get(AgentIdentityModel, execution.identity_id))
     output_fields = [f.name for f in definition.output_schema]
     outcome = await execute(
         get_job_llm(),
         artifact=definition,
-        tools=tools,
-        tool_port=ProductionTools(_bindings(session, deployment, definition), execution_id=execution.id, on_call=on_call),
+        tools=_tools(deployment),
+        tool_port=ProductionTools(_bindings(session, deployment, definition), execution_id=execution.id,
+                                  on_call=recorder.on_call, circuit=_Circuit(session, deployment)),
         human_port=_AwaitReview(),
         inputs=execution.input or {},
         instructions=run_instructions(has_checkpoint=definition.human_checkpoint != "none",
@@ -811,10 +770,14 @@ async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[s
         output_fields=output_fields,
         max_turns=get_settings().runtime_max_turns,
         operation="runtime_execution",
-        on_step=on_step,
-        on_phase=on_phase,
+        resume_state=resume_state,
+        human_decision=decision,
+        human_note=payload.get("note") if decision else None,
+        on_step=recorder.on_step,
+        on_phase=recorder.on_phase,
     )
-    _record_outcome(execution, outcome)
+    _record_outcome(execution, outcome, resumed=bool(decision))
+    _after(session, execution, deployment)
     session.commit()
     if outcome.status in TERMINAL_RUN_STATUSES:
         await _callback(execution)

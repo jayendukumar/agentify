@@ -1,14 +1,23 @@
-"""Epic 39, US39.3/US39.4/US39.8/US39.11: running one execution.
+"""Epic 39, US39.3/US39.4/US39.8-39.12: running one execution.
 
 `submit` takes a case from a tenant's system and queues it as a
-`runtime_execution` job. The handler runs it through the shared executor
-with production ports:
+`runtime_execution` job, after checking the deployment's caps (US39.9:
+429 with the reason when one is reached). The handler runs it through the
+shared executor with production ports:
 
-- tools: app/runtime/adapters.py, bound per deployment;
-- humans: no one decides on the spot, so a checkpoint suspends the
-  execution as WAITING_FOR_HUMAN (the review inbox is US39.10);
+- tools: app/runtime/adapters.py, bound per deployment, behind the
+  deployment's circuit breakers;
+- humans: no one decides on the spot, so a checkpoint suspends the case
+  as WAITING_FOR_HUMAN and opens a task in the review inbox (US39.10).
+  A reviewer's decision queues the same job again with the decision,
+  which resumes the case where it stopped;
 - steps: appended to `execution_steps` and committed one by one, so a
   crash loses none that happened.
+
+A case that ends ESCALATED opens an escalation task. After every case,
+the pause rules are checked (US39.12). While a deployment is paused, new
+cases are refused, or held and retried every 30 seconds when it queues
+instead (`when_paused`); cases already running finish.
 
 Before every model call and tool call (`on_phase`), the handler reads the
 deployment and identity status from the database. If the deployment was
@@ -50,13 +59,15 @@ from app.llm import ToolCall, ToolDefinition
 from app.schemas.agents import AgentDefinition
 from app.schemas.run import TERMINAL_RUN_STATUSES, RunStatus, RunStep
 
+from . import limits, reviews
 from .adapters import Binding, ProductionTools, is_mutating
-from .deployments import bindings_of
+from .deployments import bindings_of, pause_if_needed
 from .executor import ExecutionOutcome, RunCancelled, execute
 from .instructions import run_instructions
 
 logger = logging.getLogger("app.runtime")
 JOB_KIND = "runtime_execution"
+PAUSED_RETRY_SECONDS = 30
 
 
 class SubmitError(Exception):
@@ -89,9 +100,12 @@ def _callback_allowed(url: str) -> bool:
 
 
 def refusal(deployment: AgentDeploymentModel) -> str | None:
-    """Why this deployment takes no new work, if it doesn't."""
+    """Why this deployment takes no new work, if it doesn't. A deployment
+    paused with `when_paused="queue"` takes it and holds it."""
     if deployment.status == "active":
         return None
+    if deployment.status == "paused":
+        return None if deployment.when_paused == "queue" else f"This agent is paused: {deployment.pause_reason}"
     if deployment.status == "killed":
         return f"This agent was stopped: {deployment.stop_reason}"
     if deployment.status == "pending":
@@ -99,43 +113,69 @@ def refusal(deployment: AgentDeploymentModel) -> str | None:
     return f"This deployment is {deployment.status}"
 
 
+def _enqueue(session: Session, execution_id: str, *, tag: str = "", delay_seconds: float = 0,
+             extra: dict[str, Any] | None = None) -> None:
+    queue.enqueue(session, JOB_KIND, {"execution_id": execution_id, **(extra or {})}, max_attempts=3,
+                  delay_seconds=delay_seconds, dedupe_key=f"runtime:{execution_id}{tag}")
+
+
 def submit(session: Session, deployment: AgentDeploymentModel, caller: Caller, *, data: Any,
-           idempotency_key: str, callback_url: str | None) -> tuple[AgentExecutionModel, bool]:
+           idempotency_key: str, callback_url: str | None,
+           requested_by: str | None = None) -> tuple[AgentExecutionModel, bool]:
     """Queues one case. The same idempotency key returns the same
     execution (created=False); reused with different input, it's refused."""
-    if not idempotency_key or len(idempotency_key) > 200:
-        raise SubmitError(400, "An Idempotency-Key header (up to 200 characters) is required")
-    existing = session.scalar(select(AgentExecutionModel).where(
-        AgentExecutionModel.deployment_id == deployment.id, AgentExecutionModel.idempotency_key == idempotency_key))
+    existing = _same_case(session, deployment, idempotency_key, data)
     if existing is not None:
-        if existing.input != data:
-            raise SubmitError(409, "This Idempotency-Key was already used with a different input")
         return existing, False
-    reason = refusal(deployment)
-    if reason:
-        raise SubmitError(503, reason)
-    definition = AgentDefinition.model_validate(deployment.snapshot["definition"])
-    problems = _input_problems(definition, data)
-    if problems:
-        raise SubmitError(422, "; ".join(problems))
-    if callback_url and not _callback_allowed(callback_url):
-        raise SubmitError(422, "That callback host isn't allowed (RUNTIME_CALLBACK_HOSTS)")
+    _check_admissible(session, deployment, data, callback_url)
     execution = AgentExecutionModel(
         id=new_id("exe"), deployment_id=deployment.id, process_id=deployment.process_id,
         artifact_version=deployment.artifact_version, identity_id=deployment.identity_id,
         client_id=caller.client_id, idempotency_key=idempotency_key, status="QUEUED", input=data,
-        callback_url=callback_url, deviations=[], attempt=0, step_count=0, total_tokens=0, turns_used=0,
+        callback_url=callback_url, requested_by=(requested_by or "").strip() or None, deviations=[], attempt=0,
+        step_count=0, total_tokens=0, turns_used=0,
     )
     session.add(execution)
     session.flush()
-    queue.enqueue(session, JOB_KIND, {"execution_id": execution.id}, max_attempts=3,
-                  dedupe_key=f"runtime:{execution.id}")
+    _enqueue(session, execution.id)
     audit.record(
         session, actor=None, actor_type="service", actor_name=caller.label, action="runtime_execution_submitted",
         object_type="agent_execution", object_id=execution.id, process_id=deployment.process_id,
-        detail={"deployment_id": deployment.id, "client_id": caller.client_id, "identity_id": deployment.identity_id},
+        detail={"deployment_id": deployment.id, "client_id": caller.client_id, "identity_id": deployment.identity_id,
+                "requested_by": execution.requested_by},
     )
     return execution, True
+
+
+def _same_case(session: Session, deployment: AgentDeploymentModel, key: str, data: Any) -> AgentExecutionModel | None:
+    if not key or len(key) > 200:
+        raise SubmitError(400, "An Idempotency-Key header (up to 200 characters) is required")
+    existing = session.scalar(select(AgentExecutionModel).where(
+        AgentExecutionModel.deployment_id == deployment.id, AgentExecutionModel.idempotency_key == key))
+    if existing is not None and existing.input != data:
+        raise SubmitError(409, "This Idempotency-Key was already used with a different input")
+    return existing
+
+
+def _check_admissible(session: Session, deployment: AgentDeploymentModel, data: Any, callback_url: str | None) -> None:
+    """Running, under its caps (US39.9), with valid input and callback."""
+    reason = refusal(deployment)
+    if reason:
+        raise SubmitError(503, reason)
+    try:
+        limits.check_caps(session, deployment)
+    except limits.LimitExceeded as exc:
+        raise SubmitError(429, f"This agent is at a limit: {exc}") from exc
+    problems = _input_problems(AgentDefinition.model_validate(deployment.snapshot["definition"]), data)
+    if problems:
+        raise SubmitError(422, "; ".join(problems))
+    if callback_url and not _callback_allowed(callback_url):
+        raise SubmitError(422, "That callback host isn't allowed (RUNTIME_CALLBACK_HOSTS)")
+
+
+def queue_resume(session: Session, execution: AgentExecutionModel, *, task_id: str, decision: str, note: str) -> None:
+    """US39.10: the inbox's decision goes to the worker, which resumes the case."""
+    _enqueue(session, execution.id, tag=f":resume:{task_id}", extra={"decision": decision, "note": note})
 
 
 # ---- the handler ----------------------------------------------------------------------
@@ -188,106 +228,59 @@ async def _callback(execution: AgentExecutionModel) -> None:
         logger.warning("runtime_callback_failed", extra={"execution_id": execution.id, "error": type(exc).__name__})
 
 
-@handler(JOB_KIND)
-async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[str, Any]:
-    from app.connectors.jobs import get_job_llm
+class _AwaitReview:
+    """Production's HumanPort: nobody decides on the spot, so a checkpoint
+    waits for a person (the review inbox)."""
 
-    execution = session.get(AgentExecutionModel, payload["execution_id"])
-    if execution is None or execution.status in TERMINAL_RUN_STATUSES:
-        return {"skipped": True}
-    deployment = session.get(AgentDeploymentModel, execution.deployment_id)
-    definition = AgentDefinition.model_validate(deployment.snapshot["definition"])
-    if _ended_before_starting(session, execution, deployment, definition):
-        session.commit()
-        return {"status": execution.status}
+    async def decide(self, proposed_action: dict[str, Any]) -> None:
+        return None
 
-    execution.attempt += 1
-    execution.status = "RUNNING"
-    execution.started_at = execution.started_at or utcnow()
-    session.commit()
-    attempt = execution.attempt
-    identity = session.get(AgentIdentityModel, execution.identity_id)
 
-    async def on_step(step: RunStep) -> None:
-        session.add(ExecutionStepModel(
-            id=new_id("xstep"), execution_id=execution.id, attempt=attempt, seq=step.seq, type=step.type,
-            target=step.target, step=step.model_dump(mode="json"), occurred_at=step.occurred_at,
-        ))
-        execution.step_count += 1
-        session.commit()
+@dataclass
+class _Circuit:
+    session: Session
+    deployment: AgentDeploymentModel
 
-    async def on_phase(status: RunStatus) -> None:
-        # US39.11: the kill switch, checked before every model and tool call.
-        current = session.execute(
-            select(AgentDeploymentModel.status, AgentDeploymentModel.stop_reason, AgentIdentityModel.status)
-            .join(AgentIdentityModel, AgentIdentityModel.id == AgentDeploymentModel.identity_id)
-            .where(AgentDeploymentModel.id == deployment.id)
-        ).one()
-        if current[0] not in ("active", "paused") or current[2] != "active":
-            raise RunCancelled("KILLED", f"Stopped by the kill switch: {current[1] or 'the identity was revoked'}")
-        execution.status = status
-        session.commit()
+    def blocks(self, system_name: str) -> str | None:
+        return limits.circuit_blocks(self.session, self.deployment, system_name)
 
-    async def on_call(binding: Binding, call: ToolCall, status_code: int) -> None:
-        if is_mutating(binding.contract):
-            audit.record(
-                session, actor=None, actor_type="agent", actor_name=identity.display_name, action="agent_tool_call",
-                object_type="agent_execution", object_id=execution.id, process_id=execution.process_id,
-                detail={"identity_id": identity.id, "on_behalf_of": execution.client_id, "system": binding.system_name,
-                        "operation": call.arguments.get("operation"), "status_code": status_code},
-            )
+    def record(self, system_name: str, *, failed: bool) -> None:
+        limits.record_call(self.session, self.deployment, system_name, failed=failed)
+        self.session.commit()
 
-    schemas = deployment.snapshot["tool_schemas"]
-    tools = {
-        name: ToolDefinition(name=s["tool_name"], description=s["description"], parameters=s["parameters"])
-        for name, s in schemas.items()
-    }
-    output_fields = [f.name for f in definition.output_schema]
-    outcome = await execute(
-        get_job_llm(),
-        artifact=definition,
-        tools=tools,
-        tool_port=ProductionTools(_bindings(session, deployment, definition), execution_id=execution.id, on_call=on_call),
-        human_port=_AwaitReview(),
-        inputs=execution.input or {},
-        instructions=run_instructions(has_checkpoint=definition.human_checkpoint != "none",
-                                      output_fields=output_fields, test_run=False),
-        output_fields=output_fields,
-        max_turns=get_settings().runtime_max_turns,
-        operation="runtime_execution",
-        on_step=on_step,
-        on_phase=on_phase,
-    )
-    _record_outcome(execution, outcome)
-    session.commit()
-    if outcome.status in TERMINAL_RUN_STATUSES:
-        await _callback(execution)
-    return {"status": execution.status}
+
+def _held_while_paused(session: Session, execution: AgentExecutionModel, deployment: AgentDeploymentModel) -> bool:
+    """A paused deployment that queues: the case waits and is retried."""
+    if deployment.status != "paused" or execution.attempt > 0:
+        return False
+    _enqueue(session, execution.id, tag=f":held:{utcnow().timestamp():.0f}", delay_seconds=PAUSED_RETRY_SECONDS)
+    return True
 
 
 def _ended_before_starting(session: Session, execution: AgentExecutionModel, deployment: AgentDeploymentModel,
-                           definition: AgentDefinition) -> bool:
+                           definition: AgentDefinition, *, resuming: bool) -> bool:
     """Ends the execution without running it when its deployment stopped,
     or when a dead attempt may already have changed data."""
-    reason = refusal(deployment)
+    reason = refusal(deployment) if deployment.status != "paused" else None
     if reason:
         _finish(execution, "KILLED", f"Stopped before it started: {reason}")
         return True
-    if execution.attempt > 0 and _sent_mutating_call(session, execution, definition):
+    if not resuming and execution.attempt > 0 and _sent_mutating_call(session, execution, definition):
         _finish(execution, "ESCALATED", "The worker stopped after a call that changes data was sent; its outcome "
                                          "is unknown, so the case needs a person rather than a retry")
+        reviews.open_escalation(session, execution, deployment)
         return True
     return False
 
 
-def _record_outcome(execution: AgentExecutionModel, outcome: ExecutionOutcome) -> None:
+def _record_outcome(execution: AgentExecutionModel, outcome: ExecutionOutcome, *, resumed: bool) -> None:
+    """A resumed leg's tokens and cost add to the first leg's."""
     execution.final_output = outcome.final_output
     deviations = [d.model_dump(mode="json") for d in outcome.policy_deviations]
     if outcome.terminal_deviation is not None:
         deviations.append(outcome.terminal_deviation.model_dump(mode="json"))
-    execution.deviations = deviations
-    execution.total_tokens = outcome.total_tokens
-    execution.total_cost_usd = outcome.total_cost_usd
+    execution.deviations = (list(execution.deviations or []) if resumed else []) + deviations
+    _add_usage(execution, outcome, resumed=resumed)
     execution.turns_used = outcome.turns_used
     execution.resume_state = outcome.resume_state
     execution.status = outcome.status
@@ -295,12 +288,143 @@ def _record_outcome(execution: AgentExecutionModel, outcome: ExecutionOutcome) -
         execution.completed_at = utcnow()
 
 
-class _AwaitReview:
-    """Production's HumanPort until the review inbox exists (US39.10): a
-    checkpoint always waits for a person."""
+def _add_usage(execution: AgentExecutionModel, outcome: ExecutionOutcome, *, resumed: bool) -> None:
+    """Unknown cost on either leg makes the total unknown, as in the twin."""
+    if not resumed:
+        execution.total_tokens, execution.total_cost_usd = outcome.total_tokens, outcome.total_cost_usd
+        return
+    execution.total_tokens += outcome.total_tokens
+    if execution.total_cost_usd is None or outcome.total_cost_usd is None:
+        execution.total_cost_usd = None
+    else:
+        execution.total_cost_usd += outcome.total_cost_usd
 
-    async def decide(self, proposed_action: dict[str, Any]) -> None:
-        return None
+
+def _after(session: Session, execution: AgentExecutionModel, deployment: AgentDeploymentModel) -> None:
+    """Opens the inbox task the outcome calls for, and checks the pause rules."""
+    if execution.status == "WAITING_FOR_HUMAN":
+        reviews.open_checkpoint(session, execution, deployment)
+    elif execution.status == "ESCALATED":
+        reviews.open_escalation(session, execution, deployment)
+    if execution.status in TERMINAL_RUN_STATUSES:
+        pause_if_needed(session, deployment)
+
+
+@dataclass
+class _Recorder:
+    """The executor's callbacks for one execution: steps appended and
+    committed one by one, the kill switch before every model and tool call
+    (US39.11), and the audit event for every data-changing call."""
+
+    session: Session
+    execution: AgentExecutionModel
+    deployment: AgentDeploymentModel
+    identity: AgentIdentityModel
+
+    async def on_step(self, step: RunStep) -> None:
+        self.session.add(ExecutionStepModel(
+            id=new_id("xstep"), execution_id=self.execution.id, attempt=self.execution.attempt, seq=step.seq,
+            type=step.type, target=step.target, step=step.model_dump(mode="json"), occurred_at=step.occurred_at,
+        ))
+        self.execution.step_count += 1
+        self.session.commit()
+
+    async def on_phase(self, status: RunStatus) -> None:
+        current = self.session.execute(
+            select(AgentDeploymentModel.status, AgentDeploymentModel.stop_reason, AgentIdentityModel.status)
+            .join(AgentIdentityModel, AgentIdentityModel.id == AgentDeploymentModel.identity_id)
+            .where(AgentDeploymentModel.id == self.deployment.id)
+        ).one()
+        if current[0] not in ("active", "paused") or current[2] != "active":
+            raise RunCancelled("KILLED", f"Stopped by the kill switch: {current[1] or 'the identity was revoked'}")
+        self.execution.status = status
+        self.session.commit()
+
+    async def on_call(self, binding: Binding, call: ToolCall, status_code: int) -> None:
+        if not is_mutating(binding.contract):
+            return
+        audit.record(
+            self.session, actor=None, actor_type="agent", actor_name=self.identity.display_name,
+            action="agent_tool_call", object_type="agent_execution", object_id=self.execution.id,
+            process_id=self.execution.process_id,
+            detail={"identity_id": self.identity.id, "on_behalf_of": self.execution.client_id,
+                    "system": binding.system_name, "operation": call.arguments.get("operation"),
+                    "status_code": status_code},
+        )
+
+
+def _tools(deployment: AgentDeploymentModel) -> dict[str, ToolDefinition]:
+    return {
+        name: ToolDefinition(name=s["tool_name"], description=s["description"], parameters=s["parameters"])
+        for name, s in deployment.snapshot["tool_schemas"].items()
+    }
+
+
+def _start_leg(session: Session, execution: AgentExecutionModel, *, resuming: bool) -> None:
+    """A new attempt, or the resumed leg of the current one."""
+    if not resuming:
+        execution.attempt += 1
+    execution.status = "RUNNING"
+    execution.started_at = execution.started_at or utcnow()
+    session.commit()
+
+
+def _admit(session: Session, execution: AgentExecutionModel | None, payload: dict[str, Any]):
+    """The deployment, definition and the decision being resumed with (None
+    for a fresh attempt) -- or the job's result when it runs nothing."""
+    if execution is None or execution.status in TERMINAL_RUN_STATUSES:
+        return {"skipped": True}
+    deployment = session.get(AgentDeploymentModel, execution.deployment_id)
+    definition = AgentDefinition.model_validate(deployment.snapshot["definition"])
+    waiting = execution.status == "WAITING_FOR_HUMAN"
+    decision = payload.get("decision") if waiting else None
+    if waiting and not decision:
+        return {"skipped": True}  # waiting for its review
+    if _ended_before_starting(session, execution, deployment, definition, resuming=bool(decision)) or (
+            not decision and _held_while_paused(session, execution, deployment)):
+        session.commit()
+        return {"status": execution.status}
+    return deployment, definition, decision
+
+
+@handler(JOB_KIND)
+async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[str, Any]:
+    from app.connectors.jobs import get_job_llm
+
+    execution = session.get(AgentExecutionModel, payload["execution_id"])
+    admitted = _admit(session, execution, payload)
+    if isinstance(admitted, dict):
+        return admitted
+    deployment, definition, decision = admitted
+    resume_state = execution.resume_state if decision else None
+    _start_leg(session, execution, resuming=bool(decision))
+    recorder = _Recorder(session, execution, deployment, session.get(AgentIdentityModel, execution.identity_id))
+    output_fields = [f.name for f in definition.output_schema]
+    outcome = await execute(
+        get_job_llm(),
+        artifact=definition,
+        tools=_tools(deployment),
+        tool_port=ProductionTools(_bindings(session, deployment, definition), execution_id=execution.id,
+                                  on_call=recorder.on_call, circuit=_Circuit(session, deployment)),
+        human_port=_AwaitReview(),
+        inputs=execution.input or {},
+        instructions=run_instructions(has_checkpoint=definition.human_checkpoint != "none",
+                                      output_fields=output_fields, test_run=False),
+        output_fields=output_fields,
+        max_turns=get_settings().runtime_max_turns,
+        operation="runtime_execution",
+        resume_state=resume_state,
+        human_decision=decision,
+        human_note=payload.get("note") if decision else None,
+        on_step=recorder.on_step,
+        on_phase=recorder.on_phase,
+    )
+    _record_outcome(execution, outcome, resumed=bool(decision))
+    _after(session, execution, deployment)
+    session.commit()
+    if outcome.status in TERMINAL_RUN_STATUSES:
+        await _callback(execution)
+    return {"status": execution.status}
 
 
 def steps_of(session: Session, execution_id: str) -> list[ExecutionStepModel]:

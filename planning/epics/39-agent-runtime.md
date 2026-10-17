@@ -1,12 +1,13 @@
 # Epic 39 -- Agent Runtime: Running Approved Agents in Production
 
-**Status: groomed 2026-10-17. Build step 1 implemented 2026-10-17:
-US39.1 (one executor). Step 2 implemented 2026-10-17: US39.2-39.8 and
-US39.11 (deployments, executions, the API trigger, identity, adapters,
-credentials, guardrails failing closed, the kill switch), with open
-items listed under "Step 2 as built". Decisions confirmed 2026-10-17
-(see Notes).** Weakness 3 in the wiki's Critical Review
-("Agents never run in production") and item 4 of its recommended order.
+**Status: groomed 2026-10-17. Steps 1-3 implemented 2026-10-17: one
+executor (US39.1); deployments, executions, the API trigger, identity,
+adapters, credentials, guardrails failing closed, the kill switch
+(US39.2-39.8, US39.11); the review inbox, limits and circuit breakers,
+automatic pause (US39.9, US39.10, US39.12). Open items are listed under
+each step's "as built". Decisions confirmed 2026-10-17 (see Notes).**
+Weakness 3 in the wiki's Critical Review ("Agents never run in
+production") and item 4 of its recommended order.
 Section 3 of the enterprise-readiness deck ("Production agent runtime").
 
 Goal: an agent that passed the twin and was approved can run for real,
@@ -228,6 +229,82 @@ Deviations from the stories, decided while building:
   outputs and payloads (US39.3), setting the identity's directory client
   id (the column exists), the pause action (US39.12), and any UI. Every
   action is in the API; the Runtime page is US39.14.
+
+## Step 3 as built (US39.9, US39.10, US39.12)
+
+- **Code.** `app/runtime/reviews.py` (inbox tasks, who reviews from the
+  approval matrix, deciding and resolving, SLA escalation, notifications,
+  dataset rows), `app/runtime/limits.py` (default caps from the twin's
+  evidence, the 429 check, circuit breakers, pause rules),
+  `app/twin/gateway.py` (`check_argument_rules`, `check_review_before_action`),
+  pause and resume in `app/runtime/deployments.py`, and in
+  `app/runtime/jobs.py` the resume after a decision, the held queue while
+  paused and the task each outcome opens. The worker escalates overdue
+  reviews on every tick. Migration `e4f5a6b7c8d9`: `review_tasks`,
+  `runtime_notifications`, `tool_circuits`, and the settings columns on
+  deployments. New permission `runtime.review` (approver, process owner).
+  Routes: `/api/runtime/inbox`, `/api/runtime/notifications`, and under
+  each process `review-tasks/{id}/decide|resolve|to-dataset` and
+  `deployments/{id}/settings|pause|resume`. The **Inbox** page
+  (`frontend/src/pages/InboxPage.tsx`) lists the tasks a person may act on,
+  with approve/reject for checkpoints and resolve for escalations.
+- **Tests.** `tests/test_runtime_reviews.py` (13): a checkpoint waits in the
+  inbox for the matrix role, the requester and a non-reviewer are refused,
+  a rejection needs a comment, an approval resumes the case with the
+  reviewer on the step; an amount over a limit goes to the level above;
+  an overdue task moves up and notifies; an escalated case is resolved by
+  hand and becomes a dataset row; a kill cancels open tasks; caps refuse
+  with 429 and only an admin changes them; a failing system opens its
+  circuit, the next case escalates without calling it, a probe closes it;
+  argument rules; failing cases and rejected reviews pause the agent;
+  queued work waits and runs after a resume; a manual pause; another
+  tenant's inbox is empty. `tests/test_runtime_executor.py` adds the
+  review-before-action enforcement. The probe covers `task_id`.
+  `frontend/src/pages/InboxPage.test.tsx` (3).
+- **Live.** `testing/runtime/smoke_runtime_reviews.py` (24/24 on
+  2026-10-17), same stand-in and Keycloak realm as step 2, with an agent
+  that reviews before acting: the case waited for "Branch Lead", the
+  person it was for was refused, an approver approved, the case completed
+  with one write to production; the stand-in then failed, the circuit
+  opened after two failures, the next case was escalated without calling
+  production and resolved by hand; a manual pause held a new case, which
+  ran after the resume. The step 2 smoke still passes (21/21).
+
+Found live, and fixed:
+
+- **"Review before action" wasn't enforced.** It was only a sentence in
+  the agent's prompt. In the first live run the model opened the account
+  without asking. The gateway now denies a call through a data-changing
+  contract until a person approved in the run, telling the model to ask
+  first (`check_review_before_action`, twin and production alike). The
+  twin replay is unchanged: its agents declare no contracts.
+
+Deviations from the stories, decided while building:
+
+- **The matrix gives a role name, not a person.** Approval authorities
+  (Epic 27) name organization roles, and nothing links those to users.
+  The task shows the role; anyone with `runtime.review` for the
+  process's business unit may act on it. Levels follow the authorities'
+  limits, lowest first, skipping those the proposed amount exceeds (the
+  amount is the first `amount`/`total`/`value`-like number in the
+  proposed action). The decision type isn't matched yet.
+- **"The person who triggered it" is `requested_by`.** Cases come from a
+  system, so the caller names the person they're for; a reviewer whose
+  name or email matches is refused.
+- **The model may ask more than once.** Seen live: it asked before the
+  lookup and again before the write. One approval lets the gateway allow
+  data-changing calls for the rest of the run; asking again is the
+  model's choice. Reviewers see two tasks for that case.
+- **Notifications are in the app only.** A table and
+  `/api/runtime/notifications`, shown on the Inbox page; no email or
+  webhook yet.
+- **Caps count from the database at submission.** The concurrency cap
+  counts running cases (not queued or waiting for review). A
+  data-changing call cap blocks new cases, not a running one.
+- **A circuit probe isn't exclusive.** After the cool-down, every worker
+  may let one call through at once; the first result decides the state.
+- **The drift pause trigger** waits for US39.15.
+- **Retention and redaction** of stored payloads (US39.3) are still open.
 
 ## User Stories
 

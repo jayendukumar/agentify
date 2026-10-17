@@ -312,6 +312,9 @@ def test_kill_stops_running_and_waiting_work_and_refuses_new(client, fake_llm, s
     process_id, deployment, token = _live(client, fake_llm)
     tool = _schema_tool(process_id, deployment["id"])
     kill_url = f"/api/processes/{process_id}/deployments/{deployment['id']}/kill"
+    # 21 cases at once is over the default cap of cases a minute (US39.9).
+    client.put(f"/api/processes/{process_id}/deployments/{deployment['id']}/settings",
+               json={"limits": {"executions_per_minute": 100}})
 
     def kill_during_the_call(request):
         # The kill lands while the tool call is in flight.

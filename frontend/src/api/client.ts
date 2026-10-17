@@ -127,6 +127,8 @@ import type {
   VersionDetail,
   VersionDiffResult,
   VersionSummary,
+  ReviewTask,
+  RuntimeNotification,
 } from './types'
 
 // The session cookie (backend/app/api/auth.py) is SameSite=Lax with no
@@ -1402,4 +1404,37 @@ export function controlProcessTwin(processId: string, batchId: string, action: '
 
 export function getProcessTwinReport(processId: string, batchId: string): Promise<EfficiencyReport> {
   return request(`/api/processes/${processId}/process-twin/batches/${batchId}/report`)
+}
+
+// Epic 39, US39.10: the review inbox.
+export function listInbox(includeClosed = false): Promise<ReviewTask[]> {
+  return request(`/api/runtime/inbox${includeClosed ? '?include_closed=true' : ''}`)
+}
+
+export function decideReviewTask(
+  processId: string,
+  taskId: string,
+  decision: 'approve' | 'reject',
+  comment: string,
+): Promise<ReviewTask> {
+  return request(`/api/processes/${processId}/review-tasks/${taskId}/decide`, {
+    method: 'POST',
+    body: JSON.stringify({ decision, comment: comment || null }),
+  })
+}
+
+export function resolveReviewTask(
+  processId: string,
+  taskId: string,
+  outcome: Record<string, unknown>,
+  comment: string,
+): Promise<ReviewTask> {
+  return request(`/api/processes/${processId}/review-tasks/${taskId}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ outcome, comment: comment || null }),
+  })
+}
+
+export function listRuntimeNotifications(): Promise<RuntimeNotification[]> {
+  return request('/api/runtime/notifications')
 }

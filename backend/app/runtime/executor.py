@@ -38,7 +38,12 @@ from app.ids import utcnow
 from app.llm import ChatMessage, LLMClient, ToolCall, ToolDefinition, Usage, estimate_cost_usd
 from app.schemas.agents import AgentDefinition
 from app.schemas.run import RunStatus, RunStep, StepType, TwinDeviation
-from app.twin.gateway import GuardrailExceeded, GuardrailTracker, check_tool_permission
+from app.twin.gateway import (
+    GuardrailExceeded,
+    GuardrailTracker,
+    check_review_before_action,
+    check_tool_permission,
+)
 
 HUMAN_DECISION_TOOL = ToolDefinition(
     name="request_human_decision",
@@ -66,6 +71,11 @@ class ExecutionError(Exception):
     """A run can't proceed (an unknown tool, a tool that failed outright, a
     checkpoint rule that can't be evaluated). The run ends FAILED with
     this message. app/twin/errors.py's TwinServiceError is one."""
+
+
+class EscalationRequired(ExecutionError):
+    """Epic 39, US39.9: a port can't go on safely (a system's circuit is
+    open), so the run ends ESCALATED and a person takes the case."""
 
 
 class RunCancelled(Exception):
@@ -136,6 +146,12 @@ class _Suspend:
     pending_calls: list[ToolCall]
 
 
+def _approved(steps: list[RunStep]) -> bool:
+    """Whether the latest human decision in this run is an approval."""
+    last = next((s for s in reversed(steps) if s.type in ("HUMAN_APPROVED", "HUMAN_REJECTED")), None)
+    return last is not None and last.type == "HUMAN_APPROVED"
+
+
 _JSON_FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL | re.IGNORECASE)
 
 
@@ -169,6 +185,7 @@ async def execute(
     operation: str,
     resume_state: dict[str, Any] | None = None,
     human_decision: HumanDecision | None = None,
+    human_note: str | None = None,
     node_id: str | None = None,
     on_step: Callable[[RunStep], Awaitable[None]] | None = None,
     on_phase: Callable[[RunStatus], Awaitable[None]] | None = None,
@@ -179,7 +196,8 @@ async def execute(
     `tools` maps each system name to the tool the model is offered for it,
     in the order offered. `instructions` is a system message added after
     the artifact's own prompt for this run only; the stored prompt is
-    never changed."""
+    never changed. `human_note` is recorded on the decision step when a
+    resume brings a person's decision (who decided, and why)."""
     tool_name_to_system = {tool.name: system_name for system_name, tool in tools.items()}
     tool_list = list(tools.values())
     has_checkpoint = artifact.human_checkpoint != "none"
@@ -270,9 +288,11 @@ async def execute(
                 resuming_this_call = index == 0 and decision_for_first is not None
                 if not resuming_this_call:
                     await emit("HUMAN_APPROVAL_REQUESTED", target="human_checkpoint", arguments=call.arguments)
+                note = None
                 if first_decision is not None:
                     decision = first_decision
                     first_decision = None
+                    note = human_note
                 else:
                     decision = await human_port.decide(proposed_action)
                     if decision is None:
@@ -282,6 +302,7 @@ async def execute(
                     target="human_checkpoint",
                     arguments=call.arguments,
                     decision=decision,
+                    reason=note,
                 )
                 tool_response: dict[str, Any] = {"decision": decision}
             else:
@@ -291,7 +312,9 @@ async def execute(
                     await emit("TOOL_FAILED", target=call.name, arguments=call.arguments, reason="unknown tool")
                     raise ExecutionError(f"Agent called an unknown tool '{call.name}' that wasn't offered to it")
                 tracker.before_tool_call(system_name, json.dumps(call.arguments, sort_keys=True, default=str))
-                decision_check = check_tool_permission(artifact, system_name)
+                decision_check = check_tool_permission(artifact, system_name, call.arguments)
+                if decision_check.allowed:
+                    decision_check = check_review_before_action(artifact, system_name, approved=_approved(steps))
                 await emit(
                     "POLICY_CHECK",
                     target=system_name,
@@ -397,6 +420,10 @@ async def execute(
             terminal_status = "ESCALATED" if artifact.escalation_policy.escalate_when else "FAILED"
             if terminal_status == "ESCALATED":
                 await emit("ESCALATION", reason=exc.reason)
+    except EscalationRequired as exc:
+        terminal_status = "ESCALATED"
+        terminal_deviation = TwinDeviation(reason=str(exc))
+        await emit("ESCALATION", reason=str(exc))
     except ExecutionError as exc:
         terminal_status = "FAILED"
         terminal_deviation = TwinDeviation(reason=str(exc))

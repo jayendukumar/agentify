@@ -45,6 +45,7 @@ class Permission(StrEnum):
     AGENT_PUBLISH = "agent.publish"
     AGENT_DEPLOY = "agent.deploy"  # Epic 39: set up a deployment and its bindings
     RUNTIME_STOP = "runtime.stop"  # Epic 39, US39.11: kill switch
+    RUNTIME_REVIEW = "runtime.review"  # Epic 39, US39.10: decide live cases in the inbox
     CONTEXT_EDIT = "context.edit"
     CONTEXT_CONFIRM = "context.confirm"
     CATALOG_EDIT = "catalog.edit"
@@ -80,9 +81,12 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             P.CONTEXT_EDIT,
             P.CONTEXT_CONFIRM,
             P.RUNTIME_STOP,
+            P.RUNTIME_REVIEW,
         }
     ),
-    Role.APPROVER: frozenset({P.AGENT_APPROVE, P.RELEASE_CRITERIA_SET, P.AUDIT_READ, P.RUNTIME_STOP}),
+    Role.APPROVER: frozenset(
+        {P.AGENT_APPROVE, P.RELEASE_CRITERIA_SET, P.AUDIT_READ, P.RUNTIME_STOP, P.RUNTIME_REVIEW}
+    ),
     Role.AUDITOR: frozenset({P.AUDIT_READ}),
     # Stopping an agent is a safety action, so admins may; starting one isn't.
     Role.ADMIN: frozenset({P.ORG_ADMIN, P.USERS_MANAGE, P.AUDIT_READ, P.RUNTIME_STOP}),
@@ -114,6 +118,7 @@ PERMISSION_LABELS: dict[Permission, str] = {
     P.AGENT_PUBLISH: "publishing agents",
     P.AGENT_DEPLOY: "deploying agents",
     P.RUNTIME_STOP: "stopping running agents",
+    P.RUNTIME_REVIEW: "reviewing live cases",
     P.CONTEXT_EDIT: "editing organization context",
     P.CONTEXT_CONFIRM: "confirming organization context",
     P.CATALOG_EDIT: "editing the application catalog",

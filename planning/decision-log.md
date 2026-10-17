@@ -3908,3 +3908,45 @@ identity status before each model and tool call costs one indexed query
 per step, against model calls that take seconds, and makes the kill
 immediate on every worker. Queued cases are ended at kill time, so none
 of them takes a step.
+
+
+## 2026-10-17 -- Epic 39 build step 3 (inbox, limits, automatic pause)
+
+### Found live: "review before action" was a sentence, not a rule
+
+The first live run of an agent set to `review_before_action` opened the
+account without asking anyone. The setting only ever added "stop for
+human review before taking any action" to the system prompt; the model
+read it and went ahead. The tests didn't catch it because their scripted
+models always asked. That is the same gap Epic 20 closed for permissions
+(FR-SEC-01: authorization mustn't rely on what the model is told), so
+the fix went in the same place: the gateway denies a call through a
+data-changing contract until a person approved in the run, and tells
+the model to ask. It applies in the twin too, so an agent that tries to
+skip its review now shows up there as a policy denial before it ever
+reaches production.
+
+### Seen live: the model asks for review more than once
+
+With the rule in place, the agent asked before its lookup and again
+before the write. One approval is enough for the gateway, so the second
+request is the model being careful, not the runtime insisting. Left as
+it is: forcing "ask once" would mean the gateway answering the model's
+own checkpoint tool, and two reviews for one case is safe, if slower.
+
+### The approval matrix names roles, so tasks go to a role, not a person
+
+Approval authorities (Epic 27) say "Finance Manager may approve up to
+10,000", and nothing links that role to a user. Inventing that link
+would need a directory mapping no customer has given us. So the task
+names the role, and anyone with the new `runtime.review` permission for
+the process's business unit may act on it; escalation walks the
+authorities by limit. A role-to-group mapping (Epic 37's group mappings)
+is the natural next step if customers want tasks routed to people.
+
+### Who "triggered" a case is the caller's to say
+
+Cases arrive from a system, not a signed-in person, so "nobody approves
+a case they triggered" has no user to compare with. The caller passes
+`requested_by` (the person in its own system), and a reviewer whose name
+or email matches is refused.

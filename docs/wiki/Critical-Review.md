@@ -83,15 +83,16 @@ fixable without rethinking the product.
    its parent up first could link a row to another tenant's object (the
    probe found one, now fixed). (`app/tenancy`, Epic 38 steps 2-4)
 3. **Agents run in production, but unwatched.** An approved agent can be
-   deployed and run real cases (`app/runtime`, Epic 39 steps 1-2): the
+   deployed and run real cases (`app/runtime`, Epic 39 steps 1-3): the
    same executor and Tool Gateway as the twin, an identity per deployment,
    production adapters with scoped short-lived credentials, guardrails that
-   fail closed, and a kill switch per deployment, agent and tenant. Still
-   missing: a review inbox (a human checkpoint just suspends the case),
-   limits across cases and automatic pause, shadow and canary rollout,
+   fail closed (a review-before-action checkpoint included), caps and
+   circuit breakers, a review inbox, automatic pause, and a kill switch per
+   deployment, agent and tenant. Still missing: shadow and canary rollout,
    live metrics and drift against the twin, retention and redaction of
-   stored payloads, and any UI. Only agents whose tools were tested
-   through an OpenAPI spec can be deployed. (Epics 15, 23, 39)
+   stored payloads, notifications outside the app, and a Runtime page
+   (only the Inbox has UI). Only agents whose tools were tested through an
+   OpenAPI spec can be deployed. (Epics 15, 23, 39)
 4. **Secrets and data handling are local-grade.** API keys are in
    `backend/.env`; tenants' secrets come from environment variables or
    mounted files (`app/secret_store`), not a secrets manager yet. Uploaded
@@ -237,10 +238,9 @@ The order is in the enterprise-readiness deck. In short:
 3. **Security baseline:** a secrets manager, object storage with
    encryption, KMS, default-deny model policy, DLP-grade redaction, and
    tamper-evident export of the audit log. *(4)*
-4. **Agent runtime: steps 1-2 done in Epic 39** (one executor, deployments,
-   identity, adapters, credentials, kill switch). Left: the review inbox,
-   limits and automatic pause, shadow and canary, monitoring and drift
-   against the twin baseline. *(3)*
+4. **Agent runtime: steps 1-3 done in Epic 39** (one executor, deployments,
+   identity, adapters, credentials, kill switch, inbox, caps, pause). Left:
+   shadow and canary, monitoring and drift against the twin baseline. *(3)*
 5. **Refactor the hot core** behind the ratchet: split `repository.py`
    into per-domain stores plus services, extract the orchestrator's walk
    into a small state machine, remove lazy-import cycles. *(9, 10, 11)*

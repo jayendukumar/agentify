@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -73,6 +73,22 @@ class KnowledgeSourceRef(BaseModel):
 
 ToolSandboxMode = Literal["proxy", "static", "api"]
 
+ArgumentOperator = Literal["eq", "ne", "lt", "le", "gt", "ge", "in", "not_in"]
+
+
+class ArgumentRule(BaseModel):
+    """Epic 39, US39.9: a bound on a tool call's arguments, checked by the
+    Tool Gateway in the twin and in production alike -- "params.body.amount
+    le 10000", "params.body.currency in [EUR, USD]". `field` is a dotted
+    path into the call's arguments. `operation`, when set, limits the rule
+    to calls of that API operation. A call the rule applies to that lacks
+    the field is denied: a bound that can't be checked isn't met."""
+
+    field: str
+    operator: ArgumentOperator
+    value: Any
+    operation: str | None = None
+
 
 class ToolContract(BaseModel):
     """Epic 20, US20.4 (FR-AG-04): a tool's logical contract, split from
@@ -95,6 +111,7 @@ class ToolContract(BaseModel):
     # to, and the classifications of the data it holds.
     application_id: str | None = None
     data_classifications: list[str] = []
+    argument_rules: list[ArgumentRule] = []
 
 
 class ModelPolicy(BaseModel):

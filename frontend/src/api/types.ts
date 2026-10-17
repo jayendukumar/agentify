@@ -988,6 +988,7 @@ export type Permission =
   | 'agent.publish'
   | 'agent.deploy'
   | 'runtime.stop'
+  | 'runtime.review'
   | 'context.edit'
   | 'context.confirm'
   | 'catalog.edit'
@@ -2206,4 +2207,40 @@ export interface TenantExport {
   rows: number | null
   error: string | null
   expires_at: string | null
+}
+
+// Epic 39, US39.10: the review inbox for live cases.
+export interface ReviewTask {
+  id: string
+  execution_id: string
+  deployment_id: string
+  process_id: string
+  agent_name: string
+  kind: 'checkpoint' | 'escalation'
+  status: 'open' | 'decided' | 'resolved' | 'cancelled'
+  summary: string
+  proposed_action: Record<string, unknown>
+  case_input: Record<string, unknown>
+  assignee_role: string | null
+  level: number
+  due_at: string
+  overdue: boolean
+  escalated_at: string | null
+  decision: 'approve' | 'reject' | null
+  outcome: Record<string, unknown> | null
+  comment: string | null
+  decided_by: string | null
+  decided_at: string | null
+  created_at: string
+}
+
+export interface RuntimeNotification {
+  id: string
+  kind: string
+  message: string
+  process_id: string | null
+  deployment_id: string | null
+  task_id: string | null
+  created_at: string
+  read_at: string | null
 }

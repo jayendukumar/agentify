@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-17 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**80 tables, 880 columns (104 JSON), 189 foreign keys, 43 Alembic migrations.**
+**83 tables, 926 columns (111 JSON), 198 foreign keys, 44 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -533,6 +533,8 @@ erDiagram
         string identity_id FK
         string created_by FK
         string approved_by FK
+        json limits
+        json pause_rules
     }
     adapter_bindings {
         string id PK
@@ -555,11 +557,34 @@ erDiagram
         json final_output
         json deviations
         json resume_state
+        json resolution
     }
     execution_steps {
         string id PK
         string execution_id FK
         json step
+    }
+    review_tasks {
+        string id PK
+        string execution_id FK
+        string deployment_id FK
+        string process_id FK
+        string kind
+        string status
+        json proposed_action
+        json case_input
+        json outcome
+        string decided_by FK
+    }
+    runtime_notifications {
+        string id PK
+        string user_id FK
+        string kind
+    }
+    tool_circuits {
+        string deployment_id PK,FK
+        string system_name PK
+        json recent
     }
     agent_artifacts { }
     processes { }
@@ -570,6 +595,10 @@ erDiagram
     agent_deployments ||--o{ agent_executions : "deployment_id"
     processes ||--o{ agent_executions : "process_id"
     agent_executions ||--o{ execution_steps : "execution_id"
+    agent_deployments ||--o{ review_tasks : "deployment_id"
+    agent_executions ||--o{ review_tasks : "execution_id"
+    processes ||--o{ review_tasks : "process_id"
+    agent_deployments ||--o{ tool_circuits : "deployment_id"
 ```
 
 ### Identity and access (Epics 9-10, 37, 38)
@@ -1591,6 +1620,12 @@ Epic 39, US39.2: one approved agent version set up to run for real. `snapshot` p
 | `stopped_at` | datetime | yes |  |
 | `stopped_by` | string | yes |  |
 | `stop_reason` | text | yes |  |
+| `limits` | json | no |  |
+| `pause_rules` | json | no |  |
+| `review_sla_minutes` | int | no |  |
+| `when_paused` | string | no |  |
+| `paused_at` | datetime | yes |  |
+| `pause_reason` | text | yes |  |
 
 #### `adapter_bindings` (AdapterBindingModel)
 
@@ -1642,6 +1677,8 @@ Epic 39, US39.3: one real case run by a deployment. Summary columns are kept up 
 | `deviations` | json | no |  |
 | `resume_state` | json | yes |  |
 | `callback_url` | string | yes |  |
+| `requested_by` | string | yes |  |
+| `resolution` | json | yes |  |
 | `attempt` | int | no |  |
 | `step_count` | int | no |  |
 | `total_cost_usd` | float | yes |  |
@@ -1665,6 +1702,62 @@ Epic 39, US39.3: one step of an execution, appended as it happens. No code updat
 | `target` | string | yes |  |
 | `step` | json | no |  |
 | `occurred_at` | datetime | no |  |
+
+#### `review_tasks` (ReviewTaskModel)
+
+Epic 39, US39.10: one live case waiting for a person. `kind` "checkpoint" is a human checkpoint the agent asked for: deciding it resumes the execution. "escalation" is a case the agent passed on: resolving it records the outcome by hand. `assignee_role` names who should take it (the approval matrix or the escalation policy); `level` is its place in the matrix, raised when it goes overdue.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `execution_id` | string | no | -> `agent_executions.id` (cascade); indexed |
+| `deployment_id` | string | no | -> `agent_deployments.id` (cascade); indexed |
+| `process_id` | string | no | -> `processes.id` (cascade); indexed |
+| `kind` | string | no |  |
+| `status` | string | no | indexed |
+| `summary` | text | no |  |
+| `proposed_action` | json | no |  |
+| `case_input` | json | no |  |
+| `assignee_role` | string | yes |  |
+| `level` | int | no |  |
+| `due_at` | datetime | no | indexed |
+| `escalated_at` | datetime | yes |  |
+| `decision` | string | yes |  |
+| `outcome` | json | yes |  |
+| `comment` | text | yes |  |
+| `decided_by` | string | yes | -> `users.id` (set null) |
+| `decided_at` | datetime | yes |  |
+| `created_at` | datetime | no |  |
+
+#### `runtime_notifications` (RuntimeNotificationModel)
+
+Epic 39, US39.10/US39.12: a message to one person -- an overdue review, an automatic pause. Read in the app; nothing is sent outside.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `user_id` | string | no | -> `users.id` (cascade); indexed |
+| `kind` | string | no |  |
+| `message` | text | no |  |
+| `process_id` | string | yes |  |
+| `deployment_id` | string | yes |  |
+| `task_id` | string | yes |  |
+| `created_at` | datetime | no | indexed |
+| `read_at` | datetime | yes |  |
+
+#### `tool_circuits` (ToolCircuitModel)
+
+Epic 39, US39.9: the circuit breaker for one system of one deployment, shared by every worker. Opened after repeated failures; a call after the cool-down is the probe that closes it again.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `deployment_id` | string | no | primary key; -> `agent_deployments.id` (cascade) |
+| `system_name` | string | no | primary key |
+| `state` | string | no |  |
+| `consecutive_failures` | int | no |  |
+| `recent` | json | no |  |
+| `opened_at` | datetime | yes |  |
+| `reason` | text | yes |  |
 
 ### Identity and access (Epics 9-10, 37, 38)
 

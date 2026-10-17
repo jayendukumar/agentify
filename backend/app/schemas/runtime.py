@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -54,12 +54,40 @@ class DeploymentSummary(BaseModel):
     executions: dict[str, int] = {}
 
 
+class ToolCircuit(BaseModel):
+    system_name: str
+    state: str
+    consecutive_failures: int
+    opened_at: datetime | None = None
+    reason: str | None = None
+
+
 class Deployment(DeploymentSummary):
     identity: AgentIdentity
     bindings: list[AdapterBinding]
     contracts: list[str]
     readiness: list[str]
     shadow_waiver: str | None = None
+    limits: dict[str, Any] = {}
+    pause_rules: dict[str, Any] = {}
+    review_sla_minutes: int = 240
+    when_paused: str = "refuse"
+    paused_at: datetime | None = None
+    pause_reason: str | None = None
+    circuits: list[ToolCircuit] = []
+
+
+class DeploymentSettingsIn(BaseModel):
+    """US39.9/US39.10/US39.12: an admin's changes; omitted fields stay."""
+
+    limits: dict[str, Any] | None = None
+    pause_rules: dict[str, Any] | None = None
+    review_sla_minutes: int | None = Field(default=None, ge=5, le=60 * 24 * 14)
+    when_paused: Literal["refuse", "queue"] | None = None
+
+
+class ResumeIn(BaseModel):
+    comment: str = Field(min_length=1, max_length=2000)
 
 
 class ActivateIn(BaseModel):
@@ -97,15 +125,69 @@ class ExecutionSummary(BaseModel):
 class Execution(ExecutionSummary):
     identity_id: str
     client_id: str | None = None
+    requested_by: str | None = None
     input: dict[str, Any] | None = None
     final_output: dict[str, Any] | None = None
     deviations: list[TwinDeviation] = []
+    resolution: dict[str, Any] | None = None
     steps: list[RunStep] = []
 
 
 class ExecutionIn(BaseModel):
     input: dict[str, Any]
     callback_url: str | None = None
+    # US39.10: the person in the caller's system the case is for. They
+    # can't review it.
+    requested_by: str | None = Field(default=None, max_length=200)
+
+
+class ReviewTask(BaseModel):
+    id: str
+    execution_id: str
+    deployment_id: str
+    process_id: str
+    agent_name: str = ""
+    kind: str
+    status: str
+    summary: str
+    proposed_action: dict[str, Any] = {}
+    case_input: dict[str, Any] = {}
+    assignee_role: str | None = None
+    level: int = 0
+    due_at: datetime
+    overdue: bool = False
+    escalated_at: datetime | None = None
+    decision: str | None = None
+    outcome: dict[str, Any] | None = None
+    comment: str | None = None
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    created_at: datetime
+
+
+class DecisionIn(BaseModel):
+    decision: Literal["approve", "reject"]
+    comment: str | None = Field(default=None, max_length=4000)
+
+
+class ResolutionIn(BaseModel):
+    outcome: dict[str, Any]
+    comment: str | None = Field(default=None, max_length=4000)
+
+
+class ToDatasetIn(BaseModel):
+    dataset_id: str
+
+
+class Notification(BaseModel):
+    id: str
+    kind: str
+    message: str
+    process_id: str | None = None
+    deployment_id: str | None = None
+    task_id: str | None = None
+    created_at: datetime
+    read_at: datetime | None = None
 
 
 class ExecutionAccepted(BaseModel):

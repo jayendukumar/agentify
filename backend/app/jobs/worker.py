@@ -191,15 +191,18 @@ class Worker:
             self._by_tenant.setdefault(tenant_id, set()).add(task)
 
     def _prepare_tenant(self) -> None:
-        """Requeues the tenant's abandoned jobs and enqueues what's due."""
+        """Requeues the tenant's abandoned jobs, enqueues what's due and
+        escalates overdue reviews."""
         from app.batches.service import enqueue_due_batches
         from app.connectors.jobs import enqueue_due_syncs
+        from app.runtime.reviews import escalate_overdue
 
         session = get_session_factory()()
         try:
             queue.recover_expired(session, lease_seconds=self.lease_seconds)
             enqueue_due_syncs(session)
             enqueue_due_batches(session)
+            escalate_overdue(session)  # Epic 39, US39.10: review SLAs
             session.commit()
         finally:
             session.close()

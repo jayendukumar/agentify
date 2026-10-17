@@ -6,6 +6,11 @@ tool schemas the twin tested) and goes through:
 
     pending --activate--> active --kill--> killed
                                  --retire--> retired
+                                 --pause--> paused --resume--> active
+
+Paused (US39.12, by hand or by a pause rule) is a halt, not a stop:
+running cases finish, new ones are refused or queued, and resuming needs
+no new approval.
 
 Creating one needs `agent.deploy`; activating it needs `agent.approve`,
 held by someone who neither built the agent nor asked for the deployment
@@ -24,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import secret_store
+from app.auth import audit
 from app.db.models import (
     AdapterBindingModel,
     AgentArtifactModel,
@@ -41,7 +47,7 @@ from app.schemas.agents import AgentDefinition
 from app.schemas.run import NON_TERMINAL_RUN_STATUSES
 from app.tenancy.identity import current_slug
 
-from . import credentials
+from . import credentials, limits, reviews
 from .adapters import UnsafeProductionEndpoint, check_production_endpoint, is_mutating
 
 LIVE = ("active", "paused")
@@ -128,6 +134,11 @@ def create(session: Session, artifact: AgentArtifactModel, user: UserModel) -> A
         identity_id=identity.id,
         created_by=user.id,
     )
+    # US39.9/US39.12: caps and pause rules from the twin's evidence.
+    evidence = limits.twin_evidence(session, artifact.id, definition)
+    deployment.limits = limits.default_limits(session, artifact.process_id, evidence)
+    deployment.pause_rules = limits.default_pause_rules(evidence)
+    deployment.snapshot = {**deployment.snapshot, "twin_evidence": evidence}
     session.add(deployment)
     session.flush()
     # Prefill each binding with the application's production endpoint and
@@ -319,10 +330,11 @@ def _stop(session: Session, deployment: AgentDeploymentModel, *, status: str, re
         execution.status = "KILLED"
         execution.completed_at = utcnow()
         execution.deviations = [{"reason": f"Stopped before it started: {reason}", "step_index": None}]
-        job = session.scalar(select(JobModel).where(JobModel.dedupe_key == f"runtime:{execution.id}"))
-        if job is not None and job.status == "queued":
+        for job in session.scalars(select(JobModel).where(JobModel.dedupe_key.like(f"runtime:{execution.id}%"),
+                                                         JobModel.status == "queued")):
             job.status = "cancelled"
             job.finished_at = utcnow()
+    reviews.cancel_open(session, deployment.id, f"The deployment was {status}: {reason}")
     session.flush()
     return len(waiting)
 
@@ -346,6 +358,45 @@ def deployments_of_agent(session: Session, process_id: str, group_key: str) -> l
 
 def all_deployments(session: Session) -> list[AgentDeploymentModel]:
     return list(session.scalars(select(AgentDeploymentModel)))
+
+
+def pause(session: Session, deployment: AgentDeploymentModel, *, reason: str, actor: str) -> None:
+    """US39.12: new work is refused or queued (`when_paused`); running cases
+    finish. Owners are told why. Undone by `resume`, with no new approval."""
+    if deployment.status != "active":
+        raise DeploymentError(f"only an active deployment can be paused; this one is {deployment.status}")
+    deployment.status = "paused"
+    deployment.paused_at = utcnow()
+    deployment.pause_reason = reason
+    reviews.notify(session, reviews.owners(deployment), kind="deployment_paused",
+                   message=f"{deployment.snapshot['definition']['name']} v{deployment.artifact_version} was paused: {reason}",
+                   process_id=deployment.process_id, deployment_id=deployment.id)
+    audit.record(session, actor=None, actor_type="system" if actor == "auto" else "user", actor_name=actor,
+                 action="deployment_paused", object_type="deployment", object_id=deployment.id,
+                 process_id=deployment.process_id, detail={"reason": reason})
+    session.flush()
+
+
+def pause_if_needed(session: Session, deployment: AgentDeploymentModel) -> str | None:
+    if deployment.status != "active":
+        return None
+    trigger = limits.pause_trigger(session, deployment)
+    if trigger:
+        pause(session, deployment, reason=f"Paused automatically: {trigger}", actor="auto")
+    return trigger
+
+
+def resume(session: Session, deployment: AgentDeploymentModel, user: UserModel, *, comment: str) -> None:
+    if deployment.status != "paused":
+        raise DeploymentError(f"only a paused deployment can be resumed; this one is {deployment.status}")
+    if not comment.strip():
+        raise DeploymentError("say why it's safe to resume")
+    deployment.status = "active"
+    audit.record(session, actor=user, action="deployment_resumed", object_type="deployment", object_id=deployment.id,
+                 process_id=deployment.process_id, detail={"comment": comment, "was_paused_for": deployment.pause_reason})
+    deployment.paused_at = None
+    deployment.pause_reason = None
+    session.flush()
 
 
 def retire(session: Session, deployment: AgentDeploymentModel, *, actor: str) -> None:

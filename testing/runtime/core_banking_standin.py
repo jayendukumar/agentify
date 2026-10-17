@@ -12,6 +12,8 @@ system, run on the host at :9100.
 - `/_calls`: what production received, for the smoke test to check.
 - `/_slow`: POST {"seconds": n} makes production lookups take n seconds,
   so the smoke test can kill an agent while a call is in flight.
+- `/_fail`: POST {"on": true} makes production lookups answer 503, so the
+  smoke test can open the agent's circuit breaker.
 
     python testing/runtime/core_banking_standin.py
 """
@@ -33,6 +35,7 @@ app = FastAPI(title="Core Banking stand-in")
 calls: list[dict[str, Any]] = []
 accounts: dict[str, dict[str, Any]] = {}
 slow = {"seconds": 0.0}
+failing = {"on": False}
 
 SPEC = {
     "openapi": "3.0.0",
@@ -111,6 +114,8 @@ def sandbox_account(body: dict[str, Any], request: Request) -> dict[str, Any]:
 def customer(customer_id: str, request: Request, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     claims = _check(authorization, "core.read")
     _record(request, "production", claims)
+    if failing["on"]:
+        raise HTTPException(503, "Core banking is down for maintenance")
     if slow["seconds"]:
         time.sleep(slow["seconds"])
     found = CUSTOMERS.get(customer_id)
@@ -142,11 +147,18 @@ def set_slow(body: dict[str, float]) -> dict[str, float]:
     return slow
 
 
+@app.post("/_fail")
+def set_failing(body: dict[str, bool]) -> dict[str, bool]:
+    failing["on"] = bool(body.get("on"))
+    return failing
+
+
 @app.post("/_reset")
 def reset() -> dict[str, bool]:
     calls.clear()
     accounts.clear()
     slow["seconds"] = 0.0
+    failing["on"] = False
     return {"ok": True}
 
 

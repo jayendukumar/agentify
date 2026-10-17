@@ -13,6 +13,7 @@ import DirectoryPage from './pages/DirectoryPage'
 import UsagePage from './pages/UsagePage'
 import DataExportPage from './pages/DataExportPage'
 import GapReviewPage from './pages/GapReviewPage'
+import InboxPage from './pages/InboxPage'
 import ProcessDetailPage from './pages/ProcessDetailPage'
 import OrganizationPage from './pages/OrganizationPage'
 import ProcessListPage from './pages/ProcessListPage'
@@ -63,6 +64,11 @@ function AppHeader() {
             <NavLink to="/registries" className="app-header-nav-link">
               Registries
             </NavLink>
+            {can('runtime.review') && (
+              <NavLink to="/inbox" className="app-header-nav-link">
+                Inbox
+              </NavLink>
+            )}
             {can('audit.read') && (
               <NavLink to="/audit" className="app-header-nav-link">
                 Audit log
@@ -147,6 +153,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<ProcessListPage />} />
       <Route path="/registries" element={<RegistriesPage />} />
+      <Route path="/inbox" element={<InboxPage />} />
       <Route path="/organization" element={<OrganizationPage />} />
       <Route path="/audit" element={<AuditLogPage />} />
       <Route path="/users" element={<UsersPage />} />

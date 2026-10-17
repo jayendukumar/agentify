@@ -187,3 +187,26 @@ async def test_twin_and_production_ports_decide_alike():
     live_text = run_instructions(has_checkpoint=False, output_fields=["decision"], test_run=False)
     assert captured[0].splitlines()[1:] == live_text.splitlines()[1:]
     assert captured[0].splitlines()[0] != live_text.splitlines()[0]
+
+
+@pytest.mark.asyncio
+async def test_review_before_action_is_enforced_not_just_asked_for():
+    """Found live: told to stop for review, the model wrote to production
+    without asking. The gateway now denies a data-changing call until a
+    person approved in this run; lookups stay allowed."""
+    artifact = _artifact(human_checkpoint="review_before_action",
+                         permissions=[ResourcePermission(resource="customer", actions={"read": True}),
+                                      ResourcePermission(resource="invoice", actions={"update": True})])
+    ask = ("request_human_decision", {"summary": "post it", "proposed_action": {"amount": 5}})
+    tools = RecordingTools()
+    first = await _run(
+        ScriptedLLM(_result(calls=[("crm", {"id": "1"}), ("erp", {"amount": 5})]), _result(calls=[ask])),
+        tools, Inbox(), artifact=artifact,
+    )
+    denied = [s for s in first.steps if s.type == "POLICY_CHECK" and s.denied]
+    assert [s.target for s in denied] == ["ERP"] and "approval first" in denied[0].reason
+    assert tools.calls == [("CRM", {"id": "1"})] and first.status == "WAITING_FOR_HUMAN"
+
+    second = await _run(ScriptedLLM(_result(calls=[("erp", {"amount": 5})]), _result(text='{"decision": "x"}')),
+                        tools, Inbox(), artifact=artifact, resume_state=first.resume_state, human_decision="approve")
+    assert tools.calls[-1] == ("ERP", {"amount": 5}) and second.status == "COMPLETED"

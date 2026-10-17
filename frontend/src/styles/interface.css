@@ -252,3 +252,12 @@ button.run-step-row-selected, button.run-step-row-selected:not(:disabled):hover 
 .identity-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: var(--axyntro-space-3); margin: var(--axyntro-space-3) 0; }
 .identity-form label { display: flex; flex-direction: column; gap: var(--axyntro-space-1); }
 .directory-test-ok { color: var(--axyntro-success); background: var(--axyntro-success-bg); padding: var(--axyntro-space-3); border-radius: var(--axyntro-radius-control); margin: var(--axyntro-space-3) 0; }
+/* Epic 39, US39.10: the review inbox. */
+.inbox-list, .inbox-notes { list-style: none; padding: 0; display: grid; gap: var(--axyntro-space-3); }
+.inbox-task { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: var(--axyntro-space-3); }
+.inbox-task-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--axyntro-space-2); }
+.inbox-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); gap: var(--axyntro-space-2); margin: 0 0 var(--axyntro-space-2); }
+.inbox-fields dt { color: var(--muted); font-size: 0.85em; }
+.inbox-fields dd { margin: 0; overflow-wrap: anywhere; }
+.inbox-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--axyntro-space-2); margin-top: var(--axyntro-space-2); }
+.inbox-actions label { display: flex; flex-direction: column; gap: var(--axyntro-space-1); flex: 1 1 14rem; }

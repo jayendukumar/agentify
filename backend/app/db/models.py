@@ -1944,6 +1944,15 @@ class AgentDeploymentModel(TenantScoped, Base):
     stopped_at: Mapped[datetime | None] = mapped_column(nullable=True)
     stopped_by: Mapped[str | None] = mapped_column(String, nullable=True)
     stop_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Epic 39 step 3: caps across executions (US39.9), automatic-pause rules
+    # (US39.12) -- both with the basis of their defaults -- how long a
+    # review may wait (US39.10), and what new work does while paused.
+    limits: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    pause_rules: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    review_sla_minutes: Mapped[int] = mapped_column(nullable=False, default=240)
+    when_paused: Mapped[str] = mapped_column(String, nullable=False, default="refuse")  # refuse | queue
+    paused_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    pause_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class AdapterBindingModel(TenantScoped, Base):
@@ -2005,6 +2014,10 @@ class AgentExecutionModel(TenantScoped, Base):
     deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     resume_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # US39.10: the person in the caller's system the case is for (they may
+    # not review it), and a reviewer's by-hand outcome of an escalated case.
+    requested_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolution: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     attempt: Mapped[int] = mapped_column(nullable=False, default=0)
     step_count: Mapped[int] = mapped_column(nullable=False, default=0)
     total_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
@@ -2031,3 +2044,67 @@ class ExecutionStepModel(TenantScoped, Base):
     target: Mapped[str | None] = mapped_column(String, nullable=True)
     step: Mapped[dict] = mapped_column(JSON, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(nullable=False)
+
+
+class ReviewTaskModel(TenantScoped, Base):
+    """Epic 39, US39.10: one live case waiting for a person. `kind`
+    "checkpoint" is a human checkpoint the agent asked for: deciding it
+    resumes the execution. "escalation" is a case the agent passed on:
+    resolving it records the outcome by hand. `assignee_role` names who
+    should take it (the approval matrix or the escalation policy);
+    `level` is its place in the matrix, raised when it goes overdue."""
+
+    __tablename__ = "review_tasks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    execution_id: Mapped[str] = mapped_column(ForeignKey("agent_executions.id", ondelete="CASCADE"), index=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("agent_deployments.id", ondelete="CASCADE"), index=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # checkpoint | escalation
+    status: Mapped[str] = mapped_column(String, nullable=False, default="open", index=True)  # open | decided | resolved | cancelled
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    proposed_action: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    case_input: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    assignee_role: Mapped[str | None] = mapped_column(String, nullable=True)
+    level: Mapped[int] = mapped_column(nullable=False, default=0)
+    due_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    decision: Mapped[str | None] = mapped_column(String, nullable=True)  # approve | reject
+    outcome: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class RuntimeNotificationModel(TenantScoped, Base):
+    """Epic 39, US39.10/US39.12: a message to one person -- an overdue
+    review, an automatic pause. Read in the app; nothing is sent outside."""
+
+    __tablename__ = "runtime_notifications"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    process_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    deployment_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    task_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    read_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ToolCircuitModel(TenantScoped, Base):
+    """Epic 39, US39.9: the circuit breaker for one system of one
+    deployment, shared by every worker. Opened after repeated failures; a
+    call after the cool-down is the probe that closes it again."""
+
+    __tablename__ = "tool_circuits"
+
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("agent_deployments.id", ondelete="CASCADE"), primary_key=True)
+    system_name: Mapped[str] = mapped_column(String, primary_key=True)
+    state: Mapped[str] = mapped_column(String, nullable=False, default="closed")  # closed | open
+    consecutive_failures: Mapped[int] = mapped_column(nullable=False, default=0)
+    recent: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)  # 1 = failed, newest last
+    opened_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)

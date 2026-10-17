@@ -20,7 +20,7 @@ import asyncio
 import fnmatch
 import re
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Protocol
 from urllib.parse import quote, urlparse
 
 import httpx
@@ -28,9 +28,10 @@ import httpx
 from app.config import get_settings
 from app.llm import ToolCall
 from app.schemas.agents import ToolContract
+from app.twin.gateway import changes_data
 
 from .credentials import CredentialError, headers_for
-from .executor import ExecutionError, ToolResult
+from .executor import EscalationRequired, ExecutionError, ToolResult
 
 _RETRY_STATUSES = {502, 503, 504}
 
@@ -67,8 +68,8 @@ def check_production_endpoint(url: str, environment: str | None) -> None:
     check_production_url(url)
 
 
-def is_mutating(contract: ToolContract) -> bool:
-    return contract.side_effect == "mutating" or contract.action != "read"
+# The gateway's rule for "changes data", kept under the runtime's name.
+is_mutating = changes_data
 
 
 @dataclass
@@ -110,9 +111,19 @@ def _shape(response: httpx.Response) -> dict[str, Any]:
     return payload
 
 
+class Circuit(Protocol):
+    """US39.9: the deployment's circuit breakers (app/runtime/limits.py)."""
+
+    def blocks(self, system_name: str) -> str | None: ...
+
+    def record(self, system_name: str, *, failed: bool) -> None: ...
+
+
 class ProductionTools:
     """The ToolPort for a deployment. `on_call` is told about every call
-    actually sent (for the audit log), never about its credentials."""
+    actually sent (for the audit log), never about its credentials. With
+    a `circuit`, a system whose circuit is open isn't called: the case
+    escalates. A transport error or a 5xx counts as a failure."""
 
     def __init__(
         self,
@@ -120,23 +131,40 @@ class ProductionTools:
         *,
         execution_id: str,
         on_call: Callable[[Binding, ToolCall, int], Awaitable[None]] | None = None,
+        circuit: Circuit | None = None,
     ) -> None:
         self.bindings = bindings
         self.execution_id = execution_id
         self.on_call = on_call
+        self.circuit = circuit
 
-    async def call(self, system_name: str, call: ToolCall) -> ToolResult:
+    def _binding_for(self, system_name: str, call: ToolCall) -> tuple[Binding, ToolResult | None]:
+        """The binding, or a refusal the model sees, before anything is sent."""
         binding = self.bindings.get(system_name)
         if binding is None:
             raise ExecutionError(f"'{system_name}' has no production binding")
         operation_id = call.arguments.get("operation")
         if operation_id not in binding.operations or operation_id not in binding.api_operations:
             reason = f"operation '{operation_id}' isn't allowed on '{system_name}' (allowed: {binding.operations})"
-            return ToolResult(response={"error": "operation_not_allowed", "reason": reason}, failed=True, reason=reason)
+            return binding, ToolResult(response={"error": "operation_not_allowed", "reason": reason}, failed=True,
+                                       reason=reason)
+        blocked = self.circuit.blocks(system_name) if self.circuit is not None else None
+        if blocked:
+            raise EscalationRequired(blocked)
         try:
             check_production_endpoint(binding.base_url, binding.environment)
         except UnsafeProductionEndpoint as exc:
             raise ExecutionError(f"Call to '{system_name}' refused: {exc}") from exc
+        return binding, None
+
+    def _record(self, system_name: str, *, failed: bool) -> None:
+        if self.circuit is not None:
+            self.circuit.record(system_name, failed=failed)
+
+    async def call(self, system_name: str, call: ToolCall) -> ToolResult:
+        binding, refused = self._binding_for(system_name, call)
+        if refused is not None:
+            return refused
         method, url, params, body = _request_parts(binding, call.arguments)
         try:
             headers = await headers_for(binding.credential, scope_key=binding.binding_id, action=binding.contract.action)
@@ -145,7 +173,12 @@ class ProductionTools:
         if is_mutating(binding.contract):
             # The same key on every retry, so the system applies it once.
             headers["Idempotency-Key"] = f"{self.execution_id}:{call.id}"
-        response = await self._send(binding, method, url, params, body, headers)
+        try:
+            response = await self._send(binding, method, url, params, body, headers)
+        except ExecutionError:
+            self._record(system_name, failed=True)
+            raise
+        self._record(system_name, failed=response.status_code >= 500)
         if self.on_call is not None:
             await self.on_call(binding, call, response.status_code)
         return ToolResult(

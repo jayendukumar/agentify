@@ -62,6 +62,7 @@ PARAM_SOURCES: dict[str, tuple[str, str]] = {
     "deployment_id": ("agent_deployments", "id"),
     "execution_id": ("agent_executions", "id"),
     "client_id": ("runtime_clients", "id"),
+    "task_id": ("review_tasks", "id"),
 }
 # Parameters that name something every tenant has, not a tenant's object.
 # A system name is free text within a process, like a node id.
@@ -132,6 +133,10 @@ def _build_tenant_a_runtime(process_id: str, artifact_id: str) -> None:
         conn.execute(text("INSERT INTO agent_executions (id, tenant_id, deployment_id, process_id, artifact_version, "
                           "identity_id, idempotency_key, status, deviations, attempt, step_count, total_tokens, "
                           "turns_used) VALUES ('exe_a', :t, 'dep_a', :p, 1, 'agid_a', 'k', 'COMPLETED', '[]', 1, 0, 0, 0)"),
+                     {"t": TEST_TENANT_ID, "p": process_id})
+        conn.execute(text("INSERT INTO review_tasks (id, tenant_id, execution_id, deployment_id, process_id, kind, "
+                          "status, summary, proposed_action, case_input, level, due_at) VALUES ('rtask_a', :t, "
+                          "'exe_a', 'dep_a', :p, 'checkpoint', 'open', 'Pay?', '{}', '{}', 0, now())"),
                      {"t": TEST_TENANT_ID, "p": process_id})
 
 

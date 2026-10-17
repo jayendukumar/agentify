@@ -22,17 +22,22 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy import select
 
 from app.auth import audit
+from app.auth.permissions import Permission, has_permission
 from app.db import repository
 from app.db.models import (
     AgentDeploymentModel,
     AgentExecutionModel,
     AgentIdentityModel,
+    ReviewTaskModel,
     RuntimeClientModel,
+    RuntimeNotificationModel,
 )
 from app.ids import new_id, utcnow
-from app.runtime import credentials, deployments, jobs
+from app.datasets import service as datasets
+from app.runtime import credentials, deployments, jobs, limits, reviews
 from app.runtime.adapters import UnsafeProductionEndpoint, check_production_url
 from app.schemas.agents import AgentDefinition
+from app.schemas.datasets import DatasetRowInput
 from app.schemas.run import RunStep
 from app.schemas.runtime import (
     ActivateIn,
@@ -40,26 +45,36 @@ from app.schemas.runtime import (
     AdapterBindingIn,
     AgentIdentity,
     CredentialTest,
+    DecisionIn,
     Deployment,
+    DeploymentSettingsIn,
     DeploymentSummary,
     Execution,
     ExecutionAccepted,
     ExecutionIn,
     ExecutionSummary,
+    Notification,
+    ResolutionIn,
+    ResumeIn,
+    ReviewTask,
     RuntimeClient,
     RuntimeClientCreated,
     RuntimeClientIn,
     StopIn,
     StopResult,
+    ToDatasetIn,
+    ToolCircuit,
 )
 
 from .deps import (
     AgentApproveDep,
     AgentDeployDep,
+    AgentTestDep,
     CurrentUserDep,
     DbDep,
     OrgAdminDep,
     ProcessScope,
+    RuntimeReviewDep,
     RuntimeStopDep,
 )
 
@@ -96,7 +111,10 @@ def _detail(db, d: AgentDeploymentModel) -> Deployment:
         identity=AgentIdentity.model_validate(identity, from_attributes=True),
         bindings=bindings, contracts=[c.system_name for c in definition.tool_contracts],
         readiness=deployments.readiness(db, d) if d.status == "pending" else [],
-        shadow_waiver=d.shadow_waiver,
+        shadow_waiver=d.shadow_waiver, limits=d.limits or {}, pause_rules=d.pause_rules or {},
+        review_sla_minutes=d.review_sla_minutes, when_paused=d.when_paused, paused_at=d.paused_at,
+        pause_reason=d.pause_reason,
+        circuits=[ToolCircuit.model_validate(c, from_attributes=True) for c in limits.circuits_of(db, d.id)],
     )
 
 
@@ -246,10 +264,129 @@ def get_execution(process_id: str, execution_id: str, db: DbDep, user: CurrentUs
     if e is None or e.process_id != process_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Execution '{execution_id}' not found")
     return Execution(
-        **_execution_summary(e).model_dump(), identity_id=e.identity_id, client_id=e.client_id, input=e.input,
-        final_output=e.final_output, deviations=e.deviations,
+        **_execution_summary(e).model_dump(), identity_id=e.identity_id, client_id=e.client_id,
+        requested_by=e.requested_by, input=e.input, final_output=e.final_output, deviations=e.deviations,
+        resolution=e.resolution,
         steps=[RunStep.model_validate(s.step) for s in jobs.steps_of(db, e.id)],
     )
+
+
+@router.put("/deployments/{deployment_id}/settings", response_model=Deployment)
+def update_settings(process_id: str, deployment_id: str, body: DeploymentSettingsIn, db: DbDep,
+                    user: OrgAdminDep) -> Deployment:
+    """US39.9/US39.12: an admin adjusts caps, pause rules, the review SLA and
+    what new work does while paused. Given keys replace the defaults."""
+    d = _deployment(db, process_id, deployment_id)
+    before = {"limits": d.limits, "pause_rules": d.pause_rules, "review_sla_minutes": d.review_sla_minutes,
+              "when_paused": d.when_paused}
+    if body.limits is not None:
+        d.limits = {**(d.limits or {}), **body.limits}
+    if body.pause_rules is not None:
+        d.pause_rules = {**(d.pause_rules or {}), **body.pause_rules}
+    if body.review_sla_minutes is not None:
+        d.review_sla_minutes = body.review_sla_minutes
+    if body.when_paused is not None:
+        d.when_paused = body.when_paused
+    audit.record(db, actor=user, action="deployment_settings_changed", object_type="deployment", object_id=d.id,
+                 process_id=process_id, detail={"from": before, "to": body.model_dump(exclude_none=True)})
+    db.flush()
+    return _detail(db, d)
+
+
+@router.post("/deployments/{deployment_id}/pause", response_model=Deployment)
+def pause_deployment(process_id: str, deployment_id: str, body: StopIn, db: DbDep, user: RuntimeStopDep) -> Deployment:
+    d = _deployment(db, process_id, deployment_id)
+    try:
+        deployments.pause(db, d, reason=body.reason, actor=user.name)
+    except deployments.DeploymentError as exc:
+        raise _refused(exc) from exc
+    return _detail(db, d)
+
+
+@router.post("/deployments/{deployment_id}/resume", response_model=Deployment)
+def resume_deployment(process_id: str, deployment_id: str, body: ResumeIn, db: DbDep,
+                      user: RuntimeStopDep) -> Deployment:
+    d = _deployment(db, process_id, deployment_id)
+    try:
+        deployments.resume(db, d, user, comment=body.comment)
+    except deployments.DeploymentError as exc:
+        raise _refused(exc) from exc
+    return _detail(db, d)
+
+
+# ---- the review inbox -----------------------------------------------------------------------
+
+
+def _task_out(db, task: ReviewTaskModel) -> ReviewTask:
+    deployment = db.get(AgentDeploymentModel, task.deployment_id)
+    out = ReviewTask.model_validate(task, from_attributes=True)
+    out.agent_name = deployment.snapshot["definition"]["name"] if deployment else ""
+    out.overdue = task.status == "open" and task.due_at <= utcnow().replace(tzinfo=None)
+    return out
+
+
+def _task(db, process_id: str, task_id: str) -> ReviewTaskModel:
+    task = db.get(ReviewTaskModel, task_id)
+    if task is None or task.process_id != process_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Review task '{task_id}' not found")
+    return task
+
+
+def _review_refused(exc: reviews.ReviewError, *, user, action: str, task: ReviewTaskModel, request: Request) -> HTTPException:
+    if exc.status == 403:
+        audit.record_refusal(actor=user, action=action, reason=exc.detail, object_type="review_task",
+                             object_id=task.id, process_id=task.process_id, request=request)
+    return HTTPException(exc.status, detail=exc.detail)
+
+
+@router.get("/review-tasks/{task_id}", response_model=ReviewTask)
+def get_review_task(process_id: str, task_id: str, db: DbDep, user: CurrentUserDep) -> ReviewTask:
+    del user
+    return _task_out(db, _task(db, process_id, task_id))
+
+
+@router.post("/review-tasks/{task_id}/decide", response_model=ReviewTask)
+def decide_review_task(process_id: str, task_id: str, body: DecisionIn, db: DbDep, request: Request,
+                       user: RuntimeReviewDep) -> ReviewTask:
+    """Approve or reject a checkpoint; the case resumes on a worker."""
+    task = _task(db, process_id, task_id)
+    try:
+        reviews.decide(db, task, user, decision=body.decision, comment=body.comment)
+    except reviews.ReviewError as exc:
+        raise _review_refused(exc, user=user, action="decide_review_task", task=task, request=request) from exc
+    execution = db.get(AgentExecutionModel, task.execution_id)
+    jobs.queue_resume(db, execution, task_id=task.id, decision=body.decision, note=reviews.note_for(task, user))
+    deployments.pause_if_needed(db, db.get(AgentDeploymentModel, task.deployment_id))
+    return _task_out(db, task)
+
+
+@router.post("/review-tasks/{task_id}/resolve", response_model=ReviewTask)
+def resolve_review_task(process_id: str, task_id: str, body: ResolutionIn, db: DbDep, request: Request,
+                        user: RuntimeReviewDep) -> ReviewTask:
+    """Close an escalated case by hand, with the outcome reached."""
+    task = _task(db, process_id, task_id)
+    try:
+        reviews.resolve(db, task, user, outcome=body.outcome, comment=body.comment)
+    except reviews.ReviewError as exc:
+        raise _review_refused(exc, user=user, action="resolve_review_task", task=task, request=request) from exc
+    return _task_out(db, task)
+
+
+@router.post("/review-tasks/{task_id}/to-dataset", response_model=ReviewTask)
+def review_task_to_dataset(process_id: str, task_id: str, body: ToDatasetIn, db: DbDep, request: Request,
+                           user: AgentTestDep) -> ReviewTask:
+    """US39.10: a person's answer on a live case becomes a golden row."""
+    task = _task(db, process_id, task_id)
+    try:
+        row = reviews.to_dataset_row(task)
+    except reviews.ReviewError as exc:
+        raise _review_refused(exc, user=user, action="review_task_to_dataset", task=task, request=request) from exc
+    dataset = datasets.get_dataset_model(db, process_id, body.dataset_id)
+    try:
+        datasets.add_rows(db, dataset, [DatasetRowInput.model_validate(row)], created_by=user.id)
+    except datasets.DatasetError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _task_out(db, task)
 
 
 # ---- the whole tenant -----------------------------------------------------------------
@@ -263,6 +400,29 @@ def kill_every_agent(body: StopIn, db: DbDep, user: RuntimeStopDep) -> StopResul
         return StopResult(**deployments.kill(db, deployments.all_deployments(db), reason=body.reason, actor=user.id))
     except deployments.DeploymentError as exc:
         raise _refused(exc) from exc
+
+
+@tenant_router.get("/inbox", response_model=list[ReviewTask])
+def inbox(db: DbDep, user: CurrentUserDep, include_closed: bool = False) -> list[ReviewTask]:
+    """US39.10: the tasks this person may act on, soonest due first."""
+    query = select(ReviewTaskModel).order_by(ReviewTaskModel.due_at)
+    if not include_closed:
+        query = query.where(ReviewTaskModel.status == "open")
+    allowed: dict[str, bool] = {}
+    out = []
+    for task in db.scalars(query.limit(500)):
+        if task.process_id not in allowed:
+            allowed[task.process_id] = has_permission(db, user, Permission.RUNTIME_REVIEW, process_id=task.process_id)
+        if allowed[task.process_id]:
+            out.append(_task_out(db, task))
+    return out
+
+
+@tenant_router.get("/notifications", response_model=list[Notification])
+def notifications(db: DbDep, user: CurrentUserDep) -> list[Notification]:
+    rows = db.scalars(select(RuntimeNotificationModel).where(RuntimeNotificationModel.user_id == user.id)
+                      .order_by(RuntimeNotificationModel.created_at.desc()).limit(100))
+    return [Notification.model_validate(r, from_attributes=True) for r in rows]
 
 
 @tenant_router.get("/clients", response_model=list[RuntimeClient])
@@ -335,7 +495,8 @@ def start_execution(deployment_id: str, body: ExecutionIn, db: DbDep, caller: Cl
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"callback_url: {exc}") from exc
     try:
         execution, created = jobs.submit(db, deployment, caller, data=body.input,
-                                         idempotency_key=idempotency_key or "", callback_url=body.callback_url)
+                                         idempotency_key=idempotency_key or "", callback_url=body.callback_url,
+                                         requested_by=body.requested_by)
     except jobs.SubmitError as exc:
         raise HTTPException(exc.status, detail=exc.detail) from exc
     if not created:

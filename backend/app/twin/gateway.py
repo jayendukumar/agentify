@@ -31,7 +31,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from app.schemas.agents import AgentDefinition, RuntimeGuardrails
+from app.schemas.agents import AgentDefinition, RuntimeGuardrails, ToolContract
 
 
 @dataclass
@@ -40,7 +40,73 @@ class PolicyDecision:
     reason: str | None = None
 
 
-def check_tool_permission(artifact: AgentDefinition, system_name: str) -> PolicyDecision:
+_MISSING = object()
+_COMPARE = {
+    "eq": lambda a, b: a == b,
+    "ne": lambda a, b: a != b,
+    "lt": lambda a, b: a < b,
+    "le": lambda a, b: a <= b,
+    "gt": lambda a, b: a > b,
+    "ge": lambda a, b: a >= b,
+    "in": lambda a, b: a in b,
+    "not_in": lambda a, b: a not in b,
+}
+
+
+def _lookup(arguments: dict[str, Any], path: str) -> Any:
+    value: Any = arguments
+    for part in path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return _MISSING
+        value = value[part]
+    return value
+
+
+def check_argument_rules(contract: ToolContract, arguments: dict[str, Any]) -> PolicyDecision:
+    """Epic 39, US39.9: the contract's bounds on this call's arguments."""
+    for rule in contract.argument_rules:
+        if rule.operation is not None and arguments.get("operation") != rule.operation:
+            continue
+        value = _lookup(arguments, rule.field)
+        try:
+            ok = value is not _MISSING and bool(_COMPARE[rule.operator](value, rule.value))
+        except TypeError:
+            ok = False
+        if not ok:
+            shown = "missing" if value is _MISSING else repr(value)
+            return PolicyDecision(
+                allowed=False,
+                reason=f"'{rule.field}' is {shown}, which breaks the rule '{rule.field} {rule.operator} {rule.value!r}'",
+            )
+    return PolicyDecision(allowed=True)
+
+
+def changes_data(contract: ToolContract) -> bool:
+    """A call through this contract may change something outside the agent."""
+    return contract.side_effect == "mutating" or contract.action != "read"
+
+
+def check_review_before_action(artifact: AgentDefinition, system_name: str, *, approved: bool) -> PolicyDecision:
+    """Epic 39: an agent that must stop for review before acting may not
+    call a contract that changes data until a person approved in this run.
+    Found live: the checkpoint was only a sentence in the prompt, and a
+    model that skipped it wrote to production unreviewed. Like the rest of
+    the gateway, this needs declared tool contracts."""
+    if artifact.human_checkpoint != "review_before_action" or approved:
+        return PolicyDecision(allowed=True)
+    contract = next((c for c in artifact.tool_contracts if c.system_name == system_name), None)
+    if contract is None or not changes_data(contract):
+        return PolicyDecision(allowed=True)
+    return PolicyDecision(
+        allowed=False,
+        reason=(f"'{system_name}' changes data, and this agent must get a person's approval first: "
+                "call request_human_decision with the action you propose"),
+    )
+
+
+def check_tool_permission(
+    artifact: AgentDefinition, system_name: str, arguments: dict[str, Any] | None = None
+) -> PolicyDecision:
     """US20.1/US20.4: is `system_name` a tool this artifact may call right
     now? Fails open (allowed) when the artifact declares no tool contracts
     at all -- see module docstring -- and fails closed (denied) once
@@ -64,7 +130,7 @@ def check_tool_permission(artifact: AgentDefinition, system_name: str) -> Policy
                 f"(required by tool '{system_name}')"
             ),
         )
-    return PolicyDecision(allowed=True)
+    return check_argument_rules(contract, arguments or {})
 
 
 class GuardrailExceeded(Exception):

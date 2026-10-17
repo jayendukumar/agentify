@@ -72,7 +72,7 @@ with tenant_scope(tid), get_session_factory()() as s:
                 AgentIOField(name="decision", source_or_destination="Loan system", format="approve or reject"),
             ],
             tools_systems_needed=["Core Banking"],
-            human_checkpoint="none",
+            human_checkpoint=sys.argv[4] if len(sys.argv) > 4 else "none",
         )
         repository.set_blueprint_overlay(s, process_id, version_id, [BlueprintNodeResult(
             node_id="Task_a", verdict="automatable", step_type="data_retrieval_transformation",
@@ -138,69 +138,90 @@ def preflight() -> None:
                  "-f docker-compose.sso.yml up -d keycloak")
 
 
+def prepare(arch: httpx.Client, appr: httpx.Client, state: dict, *, checkpoint: str = "none",
+            name: str = "Smoke: loan onboarding") -> tuple[str, dict, dict, str]:
+    """Steps 1-3: the catalog, the agent tested in the twin, and an active
+    deployment bound to production. `state` collects what to clean up."""
+    # ---- 1. the catalog ---------------------------------------------------------------
+    app = state["app"] = arch.post("/api/organization/entities",
+                                  json={"kind": "application", "name": "Core Banking"}).json()
+    spec = httpx.get(f"{STANDIN}/openapi-spec.json").content
+    arch.put(f"/api/organization/applications/{app['id']}/api-spec",
+             files={"file": ("spec.json", spec, "application/json")}).raise_for_status()
+    endpoints = arch.put(f"/api/organization/applications/{app['id']}/endpoints", json=[
+        {"url": f"{STANDIN_FROM_API}/sandbox", "environment": "sandbox"},
+        {"url": STANDIN_FROM_API, "environment": "production"},
+    ])
+    check(endpoints.status_code == 200, f"Core Banking registered with sandbox and production endpoints ({endpoints.status_code})")
+
+    # ---- 2. the agent, tested in the twin --------------------------------------------
+    process_id = state["process_id"] = arch.post("/api/processes", json={"name": name}).json()["id"]
+    arch.put(f"/api/processes/{process_id}/bpmn", json={"xml": bpmn(process_id)}).raise_for_status()
+    seed(process_id, "gaps")
+    version = arch.post(f"/api/processes/{process_id}/finalize").json()
+    appr.post(f"/api/processes/{process_id}/versions/{version['id']}/approve", json={}).raise_for_status()
+    seed(process_id, "blueprint", version["id"], checkpoint)
+    arch.put(f"/api/processes/{process_id}/systems/Core Banking", json={"application_id": app["id"]}).raise_for_status()
+    artifact = arch.post(f"/api/processes/{process_id}/blueprint/nodes/Task_a/agent-artifact").json()
+    contract = artifact["definition"]["tool_contracts"][0]
+    check(contract["application_id"] == app["id"] and contract["action"] == "update",
+          f"the agent's Core Banking contract is linked and may update ({contract['action']})")
+
+    scenario = arch.post(f"/api/processes/{process_id}/agent-artifacts/{artifact['id']}/scenarios", json={
+        "name": "Low-risk applicant", "inputs": {"customerId": "C-100"},
+        "system_stubs": {"Core Banking": {"mode": "api"}},
+    }).json()
+    run = arch.post(f"/api/processes/{process_id}/scenarios/{scenario['id']}/run").json()
+    run = wait_for(lambda: arch.get(f"/api/processes/{process_id}/twin-runs/{run['id']}").json(),
+                   lambda r: r["status"] not in ("QUEUED", "RUNNING", "WAITING_FOR_MODEL", "WAITING_FOR_TOOL"))
+    sandbox_calls = [c for c in httpx.get(f"{STANDIN}/_calls").json() if c["environment"] == "sandbox"]
+    check(run["status"] == "COMPLETED" and sandbox_calls,
+          f"twin run in API mode {run['status']}, {len(sandbox_calls)} sandbox call(s), output {run.get('final_output')}")
+
+    # ---- 3. deploy, bind, activate ---------------------------------------------------
+    appr.post(f"/api/processes/{process_id}/blueprint/agent-artifacts/{artifact['id']}/approve").raise_for_status()
+    deployment = arch.post(f"/api/processes/{process_id}/agent-artifacts/{artifact['id']}/deployments").json()
+    check(deployment.get("status") == "pending" and deployment["bindings"][0]["base_url"] == STANDIN_FROM_API,
+          f"deployed as pending, bound to the production endpoint ({deployment.get('readiness')})")
+    dep = f"/api/processes/{process_id}/deployments/{deployment['id']}"
+    bound = arch.put(f"{dep}/bindings/Core Banking", json={
+        "base_url": STANDIN_FROM_API, "operations": ["getCustomer", "openAccount"],
+        "credential": {"kind": "oauth_client_credentials", "token_url": TOKEN_URL, "client_id": "agent-loans",
+                       "secret_ref": "secret://tenant/core_banking_secret",
+                       "scopes": {"update": ["core.read", "core.write"]}},
+    })
+    check(bound.status_code == 200, f"bound with OAuth client credentials ({bound.status_code} {bound.text[:200]})")
+    tested = arch.post(f"{dep}/bindings/Core Banking/test-credential").json()
+    check(tested.get("ok") is True, f"Keycloak issued the agent a token ({tested})")
+    own = arch.post(f"{dep}/activate", json={"shadow_waiver": "Smoke test"})
+    check(own.status_code == 403, "the architect who asked for it can't activate it")
+    no_waiver = appr.post(f"{dep}/activate", json={})
+    check(no_waiver.status_code == 409 and "shadow" in no_waiver.text, "a data-changing agent needs shadow or a waiver")
+    active = appr.post(f"{dep}/activate", json={"shadow_waiver": "Smoke test against a stand-in"})
+    check(active.status_code == 200 and active.json()["status"] == "active", "an approver activated it")
+
+    return process_id, app, deployment, dep
+
+
+def cleanup(arch: httpx.Client, state: dict) -> None:
+    httpx.post(f"{STANDIN}/_reset")
+    if state.get("process_id"):
+        arch.delete(f"/api/processes/{state['process_id']}")
+    if state.get("app"):
+        # The catalog only retires entities; remove the smoke test's own row.
+        subprocess.run(["docker", "exec", "axyntro-db-1", "psql", "-U", "agentic", "-d", "agentic_solution_generator",
+                        "-qc", f"DELETE FROM context_entities WHERE id = '{state['app']['id']}'"], check=False)
+
+
 def main() -> None:
     preflight()
     httpx.post(f"{STANDIN}/_reset")
     arch = session("rt-architect", ["architect", "analyst", "admin", "process_owner"])
     appr = session("rt-approver", ["approver", "process_owner"])
-    process_id = app = None
+    state: dict = {}
+    process_id = None
     try:
-        # ---- 1. the catalog ---------------------------------------------------------------
-        app = arch.post("/api/organization/entities", json={"kind": "application", "name": "Core Banking"}).json()
-        spec = httpx.get(f"{STANDIN}/openapi-spec.json").content
-        arch.put(f"/api/organization/applications/{app['id']}/api-spec",
-                 files={"file": ("spec.json", spec, "application/json")}).raise_for_status()
-        endpoints = arch.put(f"/api/organization/applications/{app['id']}/endpoints", json=[
-            {"url": f"{STANDIN_FROM_API}/sandbox", "environment": "sandbox"},
-            {"url": STANDIN_FROM_API, "environment": "production"},
-        ])
-        check(endpoints.status_code == 200, f"Core Banking registered with sandbox and production endpoints ({endpoints.status_code})")
-
-        # ---- 2. the agent, tested in the twin --------------------------------------------
-        process_id = arch.post("/api/processes", json={"name": "Smoke: loan onboarding"}).json()["id"]
-        arch.put(f"/api/processes/{process_id}/bpmn", json={"xml": bpmn(process_id)}).raise_for_status()
-        seed(process_id, "gaps")
-        version = arch.post(f"/api/processes/{process_id}/finalize").json()
-        appr.post(f"/api/processes/{process_id}/versions/{version['id']}/approve", json={}).raise_for_status()
-        seed(process_id, "blueprint", version["id"])
-        arch.put(f"/api/processes/{process_id}/systems/Core Banking", json={"application_id": app["id"]}).raise_for_status()
-        artifact = arch.post(f"/api/processes/{process_id}/blueprint/nodes/Task_a/agent-artifact").json()
-        contract = artifact["definition"]["tool_contracts"][0]
-        check(contract["application_id"] == app["id"] and contract["action"] == "update",
-              f"the agent's Core Banking contract is linked and may update ({contract['action']})")
-
-        scenario = arch.post(f"/api/processes/{process_id}/agent-artifacts/{artifact['id']}/scenarios", json={
-            "name": "Low-risk applicant", "inputs": {"customerId": "C-100"},
-            "system_stubs": {"Core Banking": {"mode": "api"}},
-        }).json()
-        run = arch.post(f"/api/processes/{process_id}/scenarios/{scenario['id']}/run").json()
-        run = wait_for(lambda: arch.get(f"/api/processes/{process_id}/twin-runs/{run['id']}").json(),
-                       lambda r: r["status"] not in ("QUEUED", "RUNNING", "WAITING_FOR_MODEL", "WAITING_FOR_TOOL"))
-        sandbox_calls = [c for c in httpx.get(f"{STANDIN}/_calls").json() if c["environment"] == "sandbox"]
-        check(run["status"] == "COMPLETED" and sandbox_calls,
-              f"twin run in API mode {run['status']}, {len(sandbox_calls)} sandbox call(s), output {run.get('final_output')}")
-
-        # ---- 3. deploy, bind, activate ---------------------------------------------------
-        appr.post(f"/api/processes/{process_id}/blueprint/agent-artifacts/{artifact['id']}/approve").raise_for_status()
-        deployment = arch.post(f"/api/processes/{process_id}/agent-artifacts/{artifact['id']}/deployments").json()
-        check(deployment.get("status") == "pending" and deployment["bindings"][0]["base_url"] == STANDIN_FROM_API,
-              f"deployed as pending, bound to the production endpoint ({deployment.get('readiness')})")
-        dep = f"/api/processes/{process_id}/deployments/{deployment['id']}"
-        bound = arch.put(f"{dep}/bindings/Core Banking", json={
-            "base_url": STANDIN_FROM_API, "operations": ["getCustomer", "openAccount"],
-            "credential": {"kind": "oauth_client_credentials", "token_url": TOKEN_URL, "client_id": "agent-loans",
-                           "secret_ref": "secret://tenant/core_banking_secret",
-                           "scopes": {"update": ["core.read", "core.write"]}},
-        })
-        check(bound.status_code == 200, f"bound with OAuth client credentials ({bound.status_code} {bound.text[:200]})")
-        tested = arch.post(f"{dep}/bindings/Core Banking/test-credential").json()
-        check(tested.get("ok") is True, f"Keycloak issued the agent a token ({tested})")
-        own = arch.post(f"{dep}/activate", json={"shadow_waiver": "Smoke test"})
-        check(own.status_code == 403, "the architect who asked for it can't activate it")
-        no_waiver = appr.post(f"{dep}/activate", json={})
-        check(no_waiver.status_code == 409 and "shadow" in no_waiver.text, "a data-changing agent needs shadow or a waiver")
-        active = appr.post(f"{dep}/activate", json={"shadow_waiver": "Smoke test against a stand-in"})
-        check(active.status_code == 200 and active.json()["status"] == "active", "an approver activated it")
+        process_id, app, deployment, dep = prepare(arch, appr, state)
 
         # ---- 4. a real case --------------------------------------------------------------
         runtime_client = arch.post("/api/runtime/clients", json={"label": "Smoke loan system"}).json()
@@ -250,13 +271,7 @@ def main() -> None:
         caller.close()
         arch.post(f"/api/runtime/clients/{runtime_client['id']}/revoke")
     finally:
-        httpx.post(f"{STANDIN}/_reset")
-        if process_id:
-            arch.delete(f"/api/processes/{process_id}")
-        if app:
-            # The catalog only retires entities; remove the smoke test's own row.
-            subprocess.run(["docker", "exec", "axyntro-db-1", "psql", "-U", "agentic", "-d", "agentic_solution_generator",
-                            "-qc", f"DELETE FROM context_entities WHERE id = '{app['id']}'"], check=False)
+        cleanup(arch, state)
 
     failed = [what for ok, what in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} passed")
