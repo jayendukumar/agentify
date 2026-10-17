@@ -9,6 +9,7 @@ process runs today.
 
 | Page | What's in it |
 |---|---|
+| [How the Platform Works](How-Platform-Works.md) | Step-by-step flows: document upload to BPMN, generating the agentic blueprint, publishing an agent to a registry, testing agents in the digital twin without real tools, and end-to-end rehearsal with generated test cases; the exact prompts for each |
 | [Architecture](Architecture.md) | System context, containers, the pipeline, run and process twin sequence diagrams, state machines, cross-cutting concerns |
 | [Data Model](Data-Model.md) | ER diagrams by domain, lifecycles, every table and column |
 | [Prompts and LLM](Prompts-and-LLM.md) | How model calls are made and governed; every prompt, from the code |
