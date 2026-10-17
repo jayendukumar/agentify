@@ -1,6 +1,6 @@
 # Prompts and LLM use
 
-Last reviewed: 2026-10-16 · Sources: `backend/app/llm`, `backend/app/blueprint/prompts.py`, `backend/app/chat/prompts.py`, `backend/app/gap_analysis/prompts.py`
+Last reviewed: 2026-10-17 · Sources: `backend/app/llm`, `backend/app/blueprint/prompts.py`, `backend/app/chat/prompts.py`, `backend/app/gap_analysis/prompts.py`
 
 ## How model calls are made
 
@@ -15,7 +15,9 @@ OpenRouter by default (`LLM_MODEL=qwen/qwen3.7-flash`, chosen for cost; see
    reason. PII is redacted first when the policy says so. A self-hosted
    endpoint's key is the tenant's own secret (`secret://tenant/<name>`,
    Epic 38, US38.10); only the first tenant may name an environment
-   variable.
+   variable. On a regional deployment (`DEPLOYMENT_REGION`, US38.15) a
+   call is refused unless its provider is hosted in that region; a
+   provider of unknown region doesn't count.
 2. **Holds the tenant to its limits** (`llm/metering.py`, Epic 38,
    US38.9): refused once its monthly budget is spent (`LLMBudgetError`),
    and held back to its requests per minute.
@@ -32,9 +34,13 @@ OpenRouter by default (`LLM_MODEL=qwen/qwen3.7-flash`, chosen for cost; see
 
 Callers ask for JSON (`response_format={"type": "json_object"}`) wherever
 they parse the reply. The reply is validated with Pydantic, and malformed
-output becomes a domain error, never data. Agent runs in the twin are the
-exception: they use tool calling, and their final answer is parsed as JSON
-(a stray ```` ```json ```` fence is tolerated).
+output becomes a domain error, never data. Agent runs are the exception:
+they use tool calling, and their final answer is parsed as JSON (a stray
+```` ```json ```` fence is tolerated). In the twin (`twin_run`) and in
+production (`runtime_execution`, Epic 39) they go through the same loop,
+`app/runtime/executor.py`, with the same run instructions
+(`app/runtime/instructions.py`); only the header differs, since the
+twin's says it's a test run.
 
 ```mermaid
 flowchart LR
@@ -91,6 +97,7 @@ plus any prompt helpers or constants it uses.
 | `oracle_rule_structuring` | Turn a gateway's condition text into an executable rule expression | `backend/app/oracles/service.py` `propose_rules()` | JSON | no | 8000 |
 | `orchestration_data_adapter` | Reshape the case file into the next agent's input fields | `backend/app/twin/orchestrator.py` `_adapt_data()` | JSON | no | 8000 |
 | `policy_extraction` | Extract obligations, controls and approval rules from an uploaded policy document | `backend/app/context/ingestion.py` `extract_proposals()` | JSON | no | 16000 |
+| `runtime_execution` | The agent itself, running a real case in production through its bound systems | `backend/app/runtime/jobs.py` `runtime_execution()` | text / tool calls | yes | default |
 | `twin_builder_describe` | Turn a plain-language description into a test situation | `backend/app/twin/test_builder.py` `describe_situation()` | JSON | no | default |
 | `twin_builder_personas` | Cast reviewer personas for a test | `backend/app/twin/test_builder.py` `generate_personas()` | JSON | no | default |
 | `twin_builder_suggest` | Draft test situations from the blueprint (guided test builder) | `backend/app/twin/test_builder.py` `suggest_situations()` | JSON | no | default |
@@ -98,7 +105,7 @@ plus any prompt helpers or constants it uses.
 | `twin_system_simulation` | Play a system (Proxy mode) and fabricate a plausible response | `backend/app/twin/simulators.py` `_fabricate_proxy_response()` | JSON | no | 8000 |
 | `twin_tool_schema_inference` | Invent a callable tool schema for each system an agent needs | `backend/app/twin/schema_inference.py` `infer_tool_schemas()` | JSON | no | 16000 |
 
-**15 call sites, 14 operations.** Every call goes through `LLMClient.complete` (`backend/app/llm/client.py`), which applies the business unit's model policy (residency, PII redaction, provider allow-list) and logs usage and cost per operation.
+**16 call sites, 15 operations.** Every call goes through `LLMClient.complete` (`backend/app/llm/client.py`), which applies the business unit's model policy (residency, PII redaction, provider allow-list) and logs usage and cost per operation.
 
 ### `blueprint_evaluation`
 
@@ -726,6 +733,137 @@ Passages:
 
 {passages_text}
 """
+```
+
+</details>
+
+### `runtime_execution`
+
+The agent itself, running a real case in production through its bound systems
+
+<details>
+<summary><code>backend/app/runtime/jobs.py -- runtime_execution()</code></summary>
+
+```python
+async def runtime_execution(payload: dict[str, Any], session: Session) -> dict[str, Any]:
+    from app.connectors.jobs import get_job_llm
+
+    execution = session.get(AgentExecutionModel, payload["execution_id"])
+    if execution is None or execution.status in TERMINAL_RUN_STATUSES:
+        return {"skipped": True}
+    deployment = session.get(AgentDeploymentModel, execution.deployment_id)
+    definition = AgentDefinition.model_validate(deployment.snapshot["definition"])
+    if _ended_before_starting(session, execution, deployment, definition):
+        session.commit()
+        return {"status": execution.status}
+
+    execution.attempt += 1
+    execution.status = "RUNNING"
+    execution.started_at = execution.started_at or utcnow()
+    session.commit()
+    attempt = execution.attempt
+    identity = session.get(AgentIdentityModel, execution.identity_id)
+
+    async def on_step(step: RunStep) -> None:
+        session.add(ExecutionStepModel(
+            id=new_id("xstep"), execution_id=execution.id, attempt=attempt, seq=step.seq, type=step.type,
+            target=step.target, step=step.model_dump(mode="json"), occurred_at=step.occurred_at,
+        ))
+        execution.step_count += 1
+        session.commit()
+
+    async def on_phase(status: RunStatus) -> None:
+        # US39.11: the kill switch, checked before every model and tool call.
+        current = session.execute(
+            select(AgentDeploymentModel.status, AgentDeploymentModel.stop_reason, AgentIdentityModel.status)
+            .join(AgentIdentityModel, AgentIdentityModel.id == AgentDeploymentModel.identity_id)
+            .where(AgentDeploymentModel.id == deployment.id)
+        ).one()
+        if current[0] not in ("active", "paused") or current[2] != "active":
+            raise RunCancelled("KILLED", f"Stopped by the kill switch: {current[1] or 'the identity was revoked'}")
+        execution.status = status
+        session.commit()
+
+    async def on_call(binding: Binding, call: ToolCall, status_code: int) -> None:
+        if is_mutating(binding.contract):
+            audit.record(
+                session, actor=None, actor_type="agent", actor_name=identity.display_name, action="agent_tool_call",
+                object_type="agent_execution", object_id=execution.id, process_id=execution.process_id,
+                detail={"identity_id": identity.id, "on_behalf_of": execution.client_id, "system": binding.system_name,
+                        "operation": call.arguments.get("operation"), "status_code": status_code},
+            )
+
+    schemas = deployment.snapshot["tool_schemas"]
+    tools = {
+        name: ToolDefinition(name=s["tool_name"], description=s["description"], parameters=s["parameters"])
+        for name, s in schemas.items()
+    }
+    output_fields = [f.name for f in definition.output_schema]
+    outcome = await execute(
+        get_job_llm(),
+        artifact=definition,
+        tools=tools,
+        tool_port=ProductionTools(_bindings(session, deployment, definition), execution_id=execution.id, on_call=on_call),
+        human_port=_AwaitReview(),
+        inputs=execution.input or {},
+        instructions=run_instructions(has_checkpoint=definition.human_checkpoint != "none",
+                                      output_fields=output_fields, test_run=False),
+        output_fields=output_fields,
+        max_turns=get_settings().runtime_max_turns,
+        operation="runtime_execution",
+        on_step=on_step,
+        on_phase=on_phase,
+    )
+    _record_outcome(execution, outcome)
+    session.commit()
+    if outcome.status in TERMINAL_RUN_STATUSES:
+        await _callback(execution)
+    return {"status": execution.status}
+```
+
+</details>
+
+<details>
+<summary><code>backend/app/runtime/instructions.py -- run_instructions</code></summary>
+
+```python
+def run_instructions(
+    *, has_checkpoint: bool, output_fields: list[str], decision_field: str | None = None,
+    routing: tuple[str, list[str]] | None = None, test_run: bool,
+) -> str:
+    lines = [
+        _TEST_HEADER if test_run else _LIVE_HEADER,
+        "- Every system you have access to is available as a callable tool -- call the matching "
+        "tool instead of describing what you would do.",
+    ]
+    if has_checkpoint:
+        lines.append(
+            '- When you need human review/approval as instructed above, call the '
+            '"request_human_decision" tool instead of stopping -- you will get back a decision of '
+            '"approve" or "reject" and should continue accordingly.'
+        )
+    if output_fields:
+        lines.append(
+            "- Once you are completely finished and have no more tool calls to make, respond with "
+            f"ONLY a JSON object whose keys are exactly: {output_fields}. Do not include any other text."
+        )
+    else:
+        lines.append(
+            "- Once you are completely finished and have no more tool calls to make, respond with "
+            "ONLY a short JSON object summarizing what you did. Do not include any other text."
+        )
+    if decision_field:
+        lines.append(
+            f'- Set "{decision_field}" to how you decided the case: "approve", "reject", or "escalate" '
+            "(you could not decide it yourself and passed it to someone else)."
+        )
+    if routing:
+        question, options = routing
+        lines.append(
+            f'- Set "{ROUTE_FIELD}" to exactly one of {json.dumps(options)}: the branch the next decision point '
+            f'("{question}") should take for this case, based on what you found.'
+        )
+    return "\n".join(lines)
 ```
 
 </details>

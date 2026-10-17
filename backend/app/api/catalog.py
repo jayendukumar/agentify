@@ -60,9 +60,10 @@ async def attach_api_spec(application_id: str, db: DbDep, user: CatalogEditDep, 
 def set_endpoints(
     application_id: str, body: list[ApplicationEndpoint], db: DbDep, user: CatalogEditDep
 ) -> ContextEntity:
-    """US29.5: register endpoints. A production-tagged endpoint may be
-    recorded for reference but is never called. Any other endpoint must
-    pass the production-safety check, or the whole request is refused."""
+    """US29.5: register endpoints. A production-tagged endpoint is never
+    called by the twin; only a deployed agent's production adapter calls
+    it (Epic 39, app/runtime/adapters.py). Any other endpoint must pass the
+    production-safety check, or the whole request is refused."""
     app = context_repository.get_entity_model(db, application_id)
     if app.kind != "application":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"'{application_id}' is not an application")

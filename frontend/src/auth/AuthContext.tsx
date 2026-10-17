@@ -15,7 +15,7 @@ interface AuthContextValue {
 const ALL_PERMISSIONS: Permission[] = [
   'process.edit', 'process.finalize', 'process.approve', 'process.delete', 'blueprint.edit',
   'agent.build', 'agent.test', 'agent.release_candidate', 'agent.approve', 'agent.release_criteria',
-  'agent.publish', 'context.edit', 'context.confirm', 'catalog.edit', 'org.admin', 'users.manage', 'audit.read',
+  'agent.publish', 'agent.deploy', 'runtime.stop', 'context.edit', 'context.confirm', 'catalog.edit', 'org.admin', 'users.manage', 'audit.read',
 ]
 
 // Permissive default so a page calling useAuth() outside a wrapping

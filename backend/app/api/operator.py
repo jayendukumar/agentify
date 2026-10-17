@@ -25,6 +25,7 @@ from app.db.models import OperatorLoginRequestModel, OperatorSessionModel, Platf
 from app.db.session import get_platform_session_factory
 from app.ids import utcnow
 from app.operators import auth, tenants
+from app.runtime.deployments import DeploymentError
 from app.schemas.operator import (
     HostKind,
     OperatorConfig,
@@ -45,6 +46,7 @@ from app.schemas.operator import (
     TenantOut,
     TenantUsage,
 )
+from app.schemas.runtime import StopIn, StopResult
 from app.schemas.usage import TenantLimitsIn, TenantLimitsOut
 from app.tenancy import identity, lifecycle, onboarding
 from app.tenancy.hosts import normalize_host
@@ -390,6 +392,21 @@ def erase_tenant(tenant_id: str, body: TenantErase, record: OperatorSession, db:
     db.refresh(event)
     return DeletionCertificate(id=event.id, occurred_at=event.occurred_at, operator_name=event.operator_name,
                                tenant_id=tenant_id, certificate=cert)
+
+
+@router.post("/tenants/{tenant_id}/agents/stop", response_model=StopResult)
+def stop_tenant_agents(tenant_id: str, body: StopIn, record: OperatorSession, db: PlatformDb,
+                       request: Request) -> StopResult:
+    """Epic 39, US39.11: every agent of this tenant, in an incident."""
+    tenant = _tenant(db, tenant_id)
+    operator = record.operator
+    try:
+        result = tenants.stop_agents(tenant.id, reason=body.reason, operator_id=operator.id, operator_name=operator.name)
+    except DeploymentError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    auth.record(db, operator=operator, action="tenant_agents_stopped", request=request, tenant_id=tenant.id,
+                detail={"slug": tenant.slug, "reason": body.reason, **result})
+    return StopResult(**result)
 
 
 @router.post("/tenants/{tenant_id}/{action}", response_model=TenantOut)

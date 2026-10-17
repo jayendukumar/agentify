@@ -1,0 +1,35 @@
+{
+  "realm": "core-banking",
+  "displayName": "Core Banking (stand-in authorization server)",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "clientScopes": [
+    {
+      "name": "core.read",
+      "protocol": "openid-connect",
+      "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "false"}
+    },
+    {
+      "name": "core.write",
+      "protocol": "openid-connect",
+      "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "false"}
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "agent-loans",
+      "name": "Loan onboarding agent (Epic 39 live test)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "agent-loans-dev-only-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "defaultClientScopes": [],
+      "optionalClientScopes": ["core.read", "core.write"]
+    }
+  ]
+}

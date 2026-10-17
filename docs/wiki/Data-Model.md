@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-17 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**74 tables, 804 columns (95 JSON), 171 foreign keys, 42 Alembic migrations.**
+**80 tables, 880 columns (104 JSON), 189 foreign keys, 43 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -513,6 +513,63 @@ erDiagram
     processes { }
     processes ||--o{ process_operating_models : "process_id"
     processes ||--o{ process_twin_batches : "process_id"
+```
+
+### Agent runtime (Epic 39)
+
+```mermaid
+erDiagram
+    agent_identities {
+        string id PK
+        string status
+        string revoked_by FK
+    }
+    agent_deployments {
+        string id PK
+        string process_id FK
+        string agent_artifact_id FK
+        json snapshot
+        string status
+        string identity_id FK
+        string created_by FK
+        string approved_by FK
+    }
+    adapter_bindings {
+        string id PK
+        string deployment_id FK
+        json operations
+        json credential
+        json accepted_differences
+        string updated_by FK
+    }
+    runtime_clients {
+        string id PK
+        string created_by FK
+    }
+    agent_executions {
+        string id PK
+        string deployment_id FK
+        string process_id FK
+        string status
+        json input
+        json final_output
+        json deviations
+        json resume_state
+    }
+    execution_steps {
+        string id PK
+        string execution_id FK
+        json step
+    }
+    agent_artifacts { }
+    processes { }
+    agent_artifacts ||--o{ agent_deployments : "agent_artifact_id"
+    agent_identities ||--o{ agent_deployments : "identity_id"
+    processes ||--o{ agent_deployments : "process_id"
+    agent_deployments ||--o{ adapter_bindings : "deployment_id"
+    agent_deployments ||--o{ agent_executions : "deployment_id"
+    processes ||--o{ agent_executions : "process_id"
+    agent_executions ||--o{ execution_steps : "execution_id"
 ```
 
 ### Identity and access (Epics 9-10, 37, 38)
@@ -1494,6 +1551,120 @@ Epic 36, US36.5: the whole process run as a digital twin over a dataset -- one o
 | `created_by` | string | yes | -> `users.id` (set null) |
 | `created_at` | datetime | no |  |
 | `finished_at` | datetime | yes |  |
+
+### Agent runtime (Epic 39)
+
+#### `agent_identities` (AgentIdentityModel)
+
+Epic 39, US39.5: the identity a deployed agent acts as. Not a user: it has no password, session or UI role. `directory_client_id` is the customer's IdP service principal for it, if they mapped one, so their own logs name the same agent. Revoking it stops its deployment.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `display_name` | string | no |  |
+| `status` | string | no |  |
+| `directory_client_id` | string | yes |  |
+| `created_at` | datetime | no |  |
+| `revoked_at` | datetime | yes |  |
+| `revoked_by` | string | yes | -> `users.id` (set null) |
+
+#### `agent_deployments` (AgentDeploymentModel)
+
+Epic 39, US39.2: one approved agent version set up to run for real. `snapshot` pins everything it runs with -- the definition and the tool schemas the twin tested -- so editing or regenerating the artifact never changes a running deployment. Status runs pending -> active, then paused, killed or retired; a killed one never comes back (US39.11).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `process_id` | string | no | -> `processes.id` (cascade); indexed |
+| `agent_artifact_id` | string | no | -> `agent_artifacts.id` (cascade); indexed |
+| `group_key` | string | no | indexed |
+| `artifact_version` | int | no |  |
+| `snapshot` | json | no |  |
+| `environment` | string | no |  |
+| `status` | string | no | indexed |
+| `identity_id` | string | no | -> `agent_identities.id` |
+| `shadow_waiver` | text | yes |  |
+| `created_by` | string | yes | -> `users.id` (set null) |
+| `created_at` | datetime | no |  |
+| `approved_by` | string | yes | -> `users.id` (set null) |
+| `activated_at` | datetime | yes |  |
+| `stopped_at` | datetime | yes |  |
+| `stopped_by` | string | yes |  |
+| `stop_reason` | text | yes |  |
+
+#### `adapter_bindings` (AdapterBindingModel)
+
+Epic 39, US39.6/US39.7: one tool contract of a deployment bound to a real system -- the catalog application's production endpoint, the operations the agent may call there, and how it authenticates. `credential` holds secret references only, never a value.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `deployment_id` | string | no | -> `agent_deployments.id` (cascade); indexed |
+| `system_name` | string | no |  |
+| `application_id` | string | yes |  |
+| `base_url` | string | no |  |
+| `operations` | json | no |  |
+| `credential` | json | no |  |
+| `accepted_differences` | json | no |  |
+| `updated_by` | string | yes | -> `users.id` (set null) |
+| `updated_at` | datetime | no |  |
+
+#### `runtime_clients` (RuntimeClientModel)
+
+Epic 39, US39.4: a system of the tenant that may start executions: a bearer token, shown once and stored as a SHA-256 hash (the SCIM token pattern, US37.10).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `label` | string | no |  |
+| `token_hash` | string | no |  |
+| `created_at` | datetime | no |  |
+| `created_by` | string | yes | -> `users.id` (set null) |
+| `last_used_at` | datetime | yes |  |
+| `revoked_at` | datetime | yes |  |
+
+#### `agent_executions` (AgentExecutionModel)
+
+Epic 39, US39.3: one real case run by a deployment. Summary columns are kept up to date as it runs; its steps are rows of their own (ExecutionStepModel), appended and never changed. `attempt` counts starts, so a restart after a worker died is visible.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `deployment_id` | string | no | -> `agent_deployments.id` (cascade); indexed |
+| `process_id` | string | no | -> `processes.id` (cascade); indexed |
+| `artifact_version` | int | no |  |
+| `identity_id` | string | no |  |
+| `client_id` | string | yes |  |
+| `idempotency_key` | string | no |  |
+| `status` | string | no | indexed |
+| `input` | json | yes |  |
+| `final_output` | json | yes |  |
+| `deviations` | json | no |  |
+| `resume_state` | json | yes |  |
+| `callback_url` | string | yes |  |
+| `attempt` | int | no |  |
+| `step_count` | int | no |  |
+| `total_cost_usd` | float | yes |  |
+| `total_tokens` | int | no |  |
+| `turns_used` | int | no |  |
+| `created_at` | datetime | no | indexed |
+| `started_at` | datetime | yes |  |
+| `completed_at` | datetime | yes |  |
+
+#### `execution_steps` (ExecutionStepModel)
+
+Epic 39, US39.3: one step of an execution, appended as it happens. No code updates or deletes a row, so a crash leaves every step that already happened in place.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `execution_id` | string | no | -> `agent_executions.id` (cascade); indexed |
+| `attempt` | int | no |  |
+| `seq` | int | no |  |
+| `type` | string | no |  |
+| `target` | string | yes |  |
+| `step` | json | no |  |
+| `occurred_at` | datetime | no |  |
 
 ### Identity and access (Epics 9-10, 37, 38)
 

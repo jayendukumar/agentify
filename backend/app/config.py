@@ -84,6 +84,18 @@ class Settings(BaseSettings):
     # rules in app/catalog/endpoints.py.
     twin_api_allowed_hosts: str = ""
     twin_api_timeout_seconds: float = Field(default=20.0, gt=0)
+    # Epic 39: the agent runtime. Production adapters call only https
+    # endpoints, except these hosts (comma separated fnmatch patterns),
+    # meant for a local stand-in of a production system.
+    runtime_http_hosts: str = ""
+    # Hosts a run's completion callback may be sent to (comma separated
+    # fnmatch patterns). Empty: callbacks are refused, so a caller can't
+    # make the worker call an arbitrary address.
+    runtime_callback_hosts: str = ""
+    runtime_max_turns: int = Field(default=8, ge=1)
+    # Job kinds this process's worker claims ("all", or comma separated):
+    # `runtime_execution` alone gives production its own workers (US39.3).
+    job_worker_kinds: str = "all"
     # Epic 31, US31.1: the durable job queue (app/jobs/). The worker runs in
     # the API process unless disabled (tests disable it and drain the queue
     # explicitly); run `python -m app.jobs.worker` for a separate worker.

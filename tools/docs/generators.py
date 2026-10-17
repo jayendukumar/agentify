@@ -55,6 +55,10 @@ DOMAINS: dict[str, list[str]] = {
         "batch_runs", "batch_schedules",
     ],
     "Process twin (Epic 36)": ["process_operating_models", "process_twin_batches"],
+    "Agent runtime (Epic 39)": [
+        "agent_identities", "agent_deployments", "adapter_bindings", "runtime_clients", "agent_executions",
+        "execution_steps",
+    ],
     "Identity and access (Epics 9-10, 37, 38)": [
         "users", "user_roles", "user_identities", "sessions", "session_tokens", "oidc_login_requests",
         "scim_tokens", "directory_groups", "directory_group_members", "group_role_mappings", "tenant_identity",
@@ -284,7 +288,7 @@ def llm_call_sites() -> list[dict]:
         source = path.read_text(encoding="utf-8")
         # Epic 39: agent runs call the model through app/runtime/executor.py's
         # `execute(..., operation="x")`, so its callers count as call sites.
-        if ".complete(" not in source and "app.runtime.executor import" not in source:
+        if ".complete(" not in source and "executor import" not in source:
             continue
         tree = ast.parse(source)
         for fn in ast.walk(tree):
@@ -328,6 +332,7 @@ _PURPOSE = {
     "oracle_rule_structuring": "Turn a gateway's condition text into an executable rule expression",
     "oracle_judge": "Grade a free-text output against a calibrated rubric (LLM judge)",
     "twin_run": "The agent itself, running in the twin with tools and the review tool",
+    "runtime_execution": "The agent itself, running a real case in production through its bound systems",
     "orchestration_data_adapter": "Reshape the case file into the next agent's input fields",
     "twin_tool_schema_inference": "Invent a callable tool schema for each system an agent needs",
     "twin_system_simulation": "Play a system (Proxy mode) and fabricate a plausible response",

@@ -35,6 +35,7 @@ from app.api import (
     publish,
     registries,
     results,
+    runtime,
     scim,
     twin,
     twin_builder,
@@ -180,6 +181,9 @@ app.include_router(oracles.router)
 app.include_router(batches.router)
 app.include_router(results.router)
 app.include_router(process_twin.router)
+app.include_router(runtime.router)
+app.include_router(runtime.tenant_router)
+app.include_router(runtime.client_router)
 
 
 app.add_exception_handler(ScimError, scim.scim_error_handler)

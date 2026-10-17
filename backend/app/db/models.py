@@ -1895,3 +1895,139 @@ class ProcessTwinBatchModel(TenantScoped, Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
+
+
+# ---- Epic 39: the agent runtime ------------------------------------------------------
+
+
+class AgentIdentityModel(TenantScoped, Base):
+    """Epic 39, US39.5: the identity a deployed agent acts as. Not a user:
+    it has no password, session or UI role. `directory_client_id` is the
+    customer's IdP service principal for it, if they mapped one, so their
+    own logs name the same agent. Revoking it stops its deployment."""
+
+    __tablename__ = "agent_identities"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    display_name: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active")  # active | revoked
+    directory_client_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    revoked_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class AgentDeploymentModel(TenantScoped, Base):
+    """Epic 39, US39.2: one approved agent version set up to run for real.
+    `snapshot` pins everything it runs with -- the definition and the tool
+    schemas the twin tested -- so editing or regenerating the artifact
+    never changes a running deployment. Status runs pending -> active,
+    then paused, killed or retired; a killed one never comes back (US39.11)."""
+
+    __tablename__ = "agent_deployments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    agent_artifact_id: Mapped[str] = mapped_column(ForeignKey("agent_artifacts.id", ondelete="CASCADE"), index=True)
+    group_key: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    artifact_version: Mapped[int] = mapped_column(nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    environment: Mapped[str] = mapped_column(String, nullable=False, default="production")
+    # pending | active | paused | killed | retired
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
+    identity_id: Mapped[str] = mapped_column(ForeignKey("agent_identities.id"), nullable=False)
+    shadow_waiver: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    approved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    activated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    stopped_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    stopped_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    stop_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AdapterBindingModel(TenantScoped, Base):
+    """Epic 39, US39.6/US39.7: one tool contract of a deployment bound to a
+    real system -- the catalog application's production endpoint, the
+    operations the agent may call there, and how it authenticates.
+    `credential` holds secret references only, never a value."""
+
+    __tablename__ = "adapter_bindings"
+    __table_args__ = (UniqueConstraint("deployment_id", "system_name", name="uq_adapter_bindings_system"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("agent_deployments.id", ondelete="CASCADE"), index=True)
+    system_name: Mapped[str] = mapped_column(String, nullable=False)
+    application_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    base_url: Mapped[str] = mapped_column(String, nullable=False)
+    operations: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    credential: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    accepted_differences: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class RuntimeClientModel(TenantScoped, Base):
+    """Epic 39, US39.4: a system of the tenant that may start executions:
+    a bearer token, shown once and stored as a SHA-256 hash (the SCIM
+    token pattern, US37.10)."""
+
+    __tablename__ = "runtime_clients"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class AgentExecutionModel(TenantScoped, Base):
+    """Epic 39, US39.3: one real case run by a deployment. Summary columns
+    are kept up to date as it runs; its steps are rows of their own
+    (ExecutionStepModel), appended and never changed. `attempt` counts
+    starts, so a restart after a worker died is visible."""
+
+    __tablename__ = "agent_executions"
+    __table_args__ = (UniqueConstraint("deployment_id", "idempotency_key", name="uq_agent_executions_idempotency"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("agent_deployments.id", ondelete="CASCADE"), index=True)
+    process_id: Mapped[str] = mapped_column(ForeignKey("processes.id", ondelete="CASCADE"), index=True)
+    artifact_version: Mapped[int] = mapped_column(nullable=False)
+    identity_id: Mapped[str] = mapped_column(String, nullable=False)
+    client_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="QUEUED", index=True)
+    input: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    deviations: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    resume_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    attempt: Mapped[int] = mapped_column(nullable=False, default=0)
+    step_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    total_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    total_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    turns_used: Mapped[int] = mapped_column(nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ExecutionStepModel(TenantScoped, Base):
+    """Epic 39, US39.3: one step of an execution, appended as it happens.
+    No code updates or deletes a row, so a crash leaves every step that
+    already happened in place."""
+
+    __tablename__ = "execution_steps"
+    __table_args__ = (UniqueConstraint("execution_id", "attempt", "seq", name="uq_execution_steps_seq"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    execution_id: Mapped[str] = mapped_column(ForeignKey("agent_executions.id", ondelete="CASCADE"), index=True)
+    attempt: Mapped[int] = mapped_column(nullable=False, default=1)
+    seq: Mapped[int] = mapped_column(nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    target: Mapped[str | None] = mapped_column(String, nullable=True)
+    step: Mapped[dict] = mapped_column(JSON, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(nullable=False)

@@ -986,6 +986,8 @@ export type Permission =
   | 'agent.approve'
   | 'agent.release_criteria'
   | 'agent.publish'
+  | 'agent.deploy'
+  | 'runtime.stop'
   | 'context.edit'
   | 'context.confirm'
   | 'catalog.edit'

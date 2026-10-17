@@ -1,7 +1,11 @@
 # Epic 39 -- Agent Runtime: Running Approved Agents in Production
 
 **Status: groomed 2026-10-17. Build step 1 implemented 2026-10-17:
-US39.1 (one executor). Decisions confirmed 2026-10-17 (see Notes).** Weakness 3 in the wiki's Critical Review
+US39.1 (one executor). Step 2 implemented 2026-10-17: US39.2-39.8 and
+US39.11 (deployments, executions, the API trigger, identity, adapters,
+credentials, guardrails failing closed, the kill switch), with open
+items listed under "Step 2 as built". Decisions confirmed 2026-10-17
+(see Notes).** Weakness 3 in the wiki's Critical Review
 ("Agents never run in production") and item 4 of its recommended order.
 Section 3 of the enterprise-readiness deck ("Production agent runtime").
 
@@ -147,6 +151,83 @@ Deviations from the story, decided while building:
 - **The gateway stays in `app/twin/gateway.py`.** It is the one twin
   module `app/runtime` may import. Moving it would touch every governance
   import for no change in behaviour.
+
+## Step 2 as built (US39.2-39.8, US39.11)
+
+- **Code.** `app/runtime/`: `deployments.py` (create, bindings,
+  readiness, activation with segregation of duties, kill, retire,
+  identity revocation), `adapters.py` (the production ToolPort and the
+  endpoint rule), `credentials.py` (OAuth client credentials and static
+  keys, by secret reference), `jobs.py` (submitting a case and the
+  `runtime_execution` job), `instructions.py` (moved in step 1). Routes in
+  `app/api/runtime.py`: management under `/api/processes/{id}/...` and
+  `/api/runtime/...`; the tenant's own systems call `/runtime/v1/...` with
+  a runtime client's bearer token. Operator stop:
+  `POST /api/operator/tenants/{id}/agents/stop`. Migration `d3e4f5a6b7c8`
+  adds six tenant tables with row-level security. New permissions:
+  `agent.deploy` (architect) and `runtime.stop` (process owner, approver,
+  admin).
+- **Tests.** `tests/test_runtime.py` (15): deploy, bind, activate and run
+  a case; regenerating leaves a running deployment alone; deploying refuses
+  an unapproved or simulated-tool agent; bindings take only tested
+  operations on registered production endpoints and refuse an inline
+  secret; a changing agent needs a waiver; an unset secret blocks
+  activation; input is checked before any model call; OAuth tokens are
+  scoped and cached, and no secret or token reaches a stored row or the
+  model; the kill stops a running case after its in-flight call, stops 20
+  waiting cases without a step, and refuses new work; tenant-wide kill,
+  identity revocation, operator stop; a restart after a sent write
+  escalates; another tenant's client gets 404. `tests/test_runtime_executor.py`
+  adds the US39.8 parity test. The cross-tenant probe covers the new routes,
+  calling `/runtime/v1` with tenant B's own runtime client.
+- **Live.** `testing/runtime/smoke_runtime.py`, against the running stack:
+  a stand-in core-banking system (`testing/runtime/core_banking_standin.py`)
+  that checks Keycloak tokens from a `core-banking` realm
+  (`testing/keycloak/core-banking-realm.json`), a real model, and the
+  twin in API mode against the stand-in's sandbox. 21/21 on 2026-10-17:
+  twin test, deploy, OAuth binding, a separate approver's activation, a
+  real case (two production calls, token issued to the agent with the
+  bound scopes, idempotency key on the write), then a kill while a call
+  was in flight: new work refused at once, the call finished, nothing ran
+  after it.
+
+Deviations from the stories, decided while building:
+
+- **Only OpenAPI-backed tools can be deployed.** A production adapter
+  turns the model's call into an HTTP request, which needs the operation
+  shape the twin tested (Epic 29's `operation` + `params` tool). An agent
+  tested with an LLM-simulated tool is refused at deployment, with the
+  fix named: link the system to a catalog application with a spec and test
+  again.
+- **The tool schemas are pinned at deployment.** Twin runs rebuild
+  spec-backed tools from the current spec and record no spec version
+  (Epic 22's snapshot doesn't include tools). So deployment pins the spec
+  as it is, and a later change to the application's spec appears as a
+  difference that blocks activation until it's accepted.
+- **Scopes are per tool contract, not per operation.** A contract has one
+  action, so one token serves every allowed operation of that system. In
+  the live test, the agent's Core Banking contract (action `update`)
+  needed `core.read` and `core.write` in one token to look up and then
+  open an account.
+- **A restart reruns or escalates; it doesn't resume mid-case.** The
+  executor's state between turns isn't persisted, so a restarted case
+  starts again as a new attempt (steps are kept per attempt), unless the
+  dead attempt let a data-changing call through the gateway, in which case
+  it ends ESCALATED.
+- **The kill check reads the database at every step**, with no cache, so
+  "within 5 seconds" holds trivially and on every instance. A kill also
+  ends queued cases KILLED and cancels their jobs on the spot.
+- **Runtime clients use a bearer token** (the SCIM token pattern), not
+  OAuth client credentials. The token is tenant-wide; limiting a client
+  to some deployments is open.
+- **A human checkpoint suspends the case** (WAITING_FOR_HUMAN) with no way
+  to resume it until the review inbox (US39.10, step 3).
+- **Callbacks** go only to hosts in `RUNTIME_CALLBACK_HOSTS` and aren't
+  signed yet.
+- **Not built in this step:** retention and redaction of stored inputs,
+  outputs and payloads (US39.3), setting the identity's directory client
+  id (the column exists), the pause action (US39.12), and any UI. Every
+  action is in the API; the Runtime page is US39.14.
 
 ## User Stories
 

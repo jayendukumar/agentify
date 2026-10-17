@@ -1,12 +1,12 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1386,
-   "mean_cyclomatic": 4.55,
-   "mean_cognitive": 4.32,
+   "functions": 1467,
+   "mean_cyclomatic": 4.52,
+   "mean_cognitive": 4.26,
    "max_cognitive": 98,
-   "over_cognitive_limit": 89,
-   "over_cyclomatic_limit": 132
+   "over_cognitive_limit": 90,
+   "over_cyclomatic_limit": 133
   },
   "frontend": {
    "functions": 653,
@@ -297,9 +297,9 @@
  },
  "duplication": {
   "backend": {
-   "loc": 28774,
+   "loc": 30138,
    "duplicated_lines": 72,
-   "percent": 0.25,
+   "percent": 0.24,
    "clones": [
     {
      "tokens": 89,
@@ -307,8 +307,8 @@
      "a_start": 126,
      "a_end": 137,
      "b_file": "backend/app/api/operator.py",
-     "b_start": 201,
-     "b_end": 210,
+     "b_start": 203,
+     "b_end": 212,
      "lines": 12
     },
     {
@@ -333,8 +333,8 @@
     }
    ],
    "clone_count": 3,
-   "structural_percent": 3.46,
-   "structural_clone_count": 39,
+   "structural_percent": 3.51,
+   "structural_clone_count": 43,
    "structural_clones": [
     {
      "tokens": 283,
@@ -357,14 +357,14 @@
      "lines": 34
     },
     {
-     "tokens": 199,
+     "tokens": 223,
      "a_file": "backend/app/main.py",
-     "a_start": 144,
-     "a_end": 170,
+     "a_start": 145,
+     "a_end": 174,
      "b_file": "backend/app/main.py",
-     "b_start": 158,
-     "b_end": 185,
-     "lines": 28
+     "b_start": 159,
+     "b_end": 189,
+     "lines": 31
     },
     {
      "tokens": 185,
@@ -467,6 +467,16 @@
      "lines": 10
     },
     {
+     "tokens": 125,
+     "a_file": "backend/app/db/models.py",
+     "a_start": 1124,
+     "a_end": 1146,
+     "b_file": "backend/app/db/models.py",
+     "b_start": 1915,
+     "b_end": 1932,
+     "lines": 23
+    },
+    {
      "tokens": 124,
      "a_file": "backend/app/api/environments.py",
      "a_start": 11,
@@ -474,16 +484,6 @@
      "b_file": "backend/app/api/evaluation.py",
      "b_start": 15,
      "b_end": 33,
-     "lines": 19
-    },
-    {
-     "tokens": 124,
-     "a_file": "backend/app/api/environments.py",
-     "a_start": 11,
-     "a_end": 27,
-     "b_file": "backend/app/api/orchestration.py",
-     "b_start": 16,
-     "b_end": 34,
      "lines": 19
     }
    ],
@@ -511,12 +511,12 @@
     {
      "file": "backend/app/api/operator.py",
      "duplicated_lines": 10,
-     "percent": 2.5
+     "percent": 2.4
     }
    ]
   },
   "frontend": {
-   "loc": 17015,
+   "loc": 17017,
    "duplicated_lines": 14,
    "percent": 0.08,
    "clones": [
@@ -581,14 +581,14 @@
    {
     "node": "app.api",
     "afferent": 1,
-    "efferent": 27,
-    "instability": 0.96
+    "efferent": 28,
+    "instability": 0.97
    },
    {
     "node": "app.auth",
-    "afferent": 5,
+    "afferent": 6,
     "efferent": 5,
-    "instability": 0.5
+    "instability": 0.45
    },
    {
     "node": "app.batches",
@@ -610,9 +610,9 @@
    },
    {
     "node": "app.catalog",
-    "afferent": 3,
+    "afferent": 4,
     "efferent": 6,
-    "instability": 0.67
+    "instability": 0.6
    },
    {
     "node": "app.chat",
@@ -622,15 +622,15 @@
    },
    {
     "node": "app.config",
-    "afferent": 18,
+    "afferent": 19,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.connectors",
-    "afferent": 5,
+    "afferent": 6,
     "efferent": 11,
-    "instability": 0.69
+    "instability": 0.65
    },
    {
     "node": "app.context",
@@ -646,9 +646,9 @@
    },
    {
     "node": "app.db",
-    "afferent": 20,
+    "afferent": 21,
     "efferent": 16,
-    "instability": 0.44
+    "instability": 0.43
    },
    {
     "node": "app.gap_analysis",
@@ -670,9 +670,9 @@
    },
    {
     "node": "app.jobs",
-    "afferent": 8,
-    "efferent": 10,
-    "instability": 0.56
+    "afferent": 9,
+    "efferent": 11,
+    "instability": 0.55
    },
    {
     "node": "app.llm",
@@ -689,8 +689,8 @@
    {
     "node": "app.operators",
     "afferent": 1,
-    "efferent": 7,
-    "instability": 0.88
+    "efferent": 8,
+    "instability": 0.89
    },
    {
     "node": "app.oracles",
@@ -718,9 +718,9 @@
    },
    {
     "node": "app.runtime",
-    "afferent": 1,
-    "efferent": 4,
-    "instability": 0.8
+    "afferent": 4,
+    "efferent": 12,
+    "instability": 0.75
    },
    {
     "node": "app.schemas",
@@ -736,9 +736,9 @@
    },
    {
     "node": "app.secret_store",
-    "afferent": 5,
+    "afferent": 6,
     "efferent": 1,
-    "instability": 0.17
+    "instability": 0.14
    },
    {
     "node": "app.store",
@@ -748,9 +748,9 @@
    },
    {
     "node": "app.tenancy",
-    "afferent": 13,
+    "afferent": 14,
     "efferent": 6,
-    "instability": 0.32
+    "instability": 0.3
    },
    {
     "node": "app.twin",
@@ -762,39 +762,39 @@
   "backend_modules_top": [
    {
     "node": "app.db.repository",
-    "afferent": 29,
+    "afferent": 30,
     "efferent": 44,
-    "instability": 0.6
+    "instability": 0.59
    },
    {
     "node": "app.db.models",
-    "afferent": 66,
-    "efferent": 0,
-    "instability": 0.0
-   },
-   {
-    "node": "app.config",
-    "afferent": 44,
+    "afferent": 69,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.ids",
-    "afferent": 44,
+    "afferent": 47,
+    "efferent": 0,
+    "instability": 0.0
+   },
+   {
+    "node": "app.config",
+    "afferent": 46,
     "efferent": 0,
     "instability": 0.0
    },
    {
     "node": "app.main",
     "afferent": 1,
-    "efferent": 40,
+    "efferent": 41,
     "instability": 0.98
    },
    {
     "node": "app.api.deps",
-    "afferent": 30,
+    "afferent": 31,
     "efferent": 10,
-    "instability": 0.25
+    "instability": 0.24
    },
    {
     "node": "app.db.session",
@@ -804,15 +804,21 @@
    },
    {
     "node": "app.jobs.worker",
-    "afferent": 9,
-    "efferent": 14,
-    "instability": 0.61
+    "afferent": 10,
+    "efferent": 15,
+    "instability": 0.6
    },
    {
     "node": "app.tenancy.identity",
-    "afferent": 18,
+    "afferent": 20,
     "efferent": 5,
-    "instability": 0.22
+    "instability": 0.2
+   },
+   {
+    "node": "app.llm",
+    "afferent": 19,
+    "efferent": 4,
+    "instability": 0.17
    },
    {
     "node": "app.api.organization",
@@ -821,32 +827,26 @@
     "instability": 0.95
    },
    {
+    "node": "app.auth.audit",
+    "afferent": 18,
+    "efferent": 3,
+    "instability": 0.14
+   },
+   {
     "node": "app.context.repository",
     "afferent": 15,
     "efferent": 6,
     "instability": 0.29
    },
    {
-    "node": "app.llm",
-    "afferent": 17,
-    "efferent": 4,
-    "instability": 0.19
+    "node": "app.schemas.agents",
+    "afferent": 19,
+    "efferent": 1,
+    "instability": 0.05
    },
    {
     "node": "app.schemas.context",
     "afferent": 20,
-    "efferent": 0,
-    "instability": 0.0
-   },
-   {
-    "node": "app.auth.audit",
-    "afferent": 15,
-    "efferent": 3,
-    "instability": 0.17
-   },
-   {
-    "node": "app.tenancy.context",
-    "afferent": 18,
     "efferent": 0,
     "instability": 0.0
    }
@@ -990,12 +990,14 @@
     "app.api.connectors",
     "app.api.data_export",
     "app.api.process_twin",
+    "app.api.runtime",
     "app.connectors.jobs",
     "app.context.jobs",
     "app.jobs.worker",
     "app.main",
     "app.oracles.jobs",
     "app.process_twin.jobs",
+    "app.runtime.jobs",
     "app.tenancy.export"
    ],
    [
@@ -1005,6 +1007,10 @@
    [
     "app.context.consumers",
     "app.db.repository"
+   ],
+   [
+    "app.runtime.adapters",
+    "app.runtime.credentials"
    ]
   ],
   "backend_packages": [
@@ -1067,7 +1073,7 @@
     "frontend/src/components"
    ]
   ],
-  "deferred_import_count": 70
+  "deferred_import_count": 76
  },
  "dead_code": {
   "python": [
@@ -1178,7 +1184,7 @@
    },
    {
     "file": "backend/app/jobs/worker.py",
-    "line": 61,
+    "line": 62,
     "name": "registered_kinds",
     "kind": "function",
     "status": "unused"
@@ -1579,168 +1585,168 @@
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1024,
+    "line": 1026,
     "name": "ScimToken",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1125,
+    "line": 1127,
     "name": "SupportSessionInfo",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1169,
+    "line": 1171,
     "name": "RoleOption",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1190,
+    "line": 1192,
     "name": "ChangeEntry",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1199,
+    "line": 1201,
     "name": "ApprovalRecord",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1267,
+    "line": 1269,
     "name": "ContextStatus",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1269,
+    "line": 1271,
     "name": "AppliesTo",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1423,
+    "line": 1425,
     "name": "ContextPackEntry",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1433,
+    "line": 1435,
     "name": "ContextPackPassage",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1443,
+    "line": 1445,
     "name": "StaleEntry",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1487,
+    "line": 1489,
     "name": "ApiOperation",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1504,
+    "line": 1506,
     "name": "ApplicationImportRow",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1539,
+    "line": 1541,
     "name": "SituationEvidence",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1654,
+    "line": 1656,
     "name": "Provenance",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1715,
+    "line": 1717,
     "name": "RowChange",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1896,
+    "line": 1898,
     "name": "SegmentResult",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1902,
+    "line": 1904,
     "name": "FailureCluster",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1910,
+    "line": 1912,
     "name": "Distribution",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 1985,
+    "line": 1987,
     "name": "RoleCost",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2061,
+    "line": 2063,
     "name": "CaseEfficiency",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2083,
+    "line": 2085,
     "name": "NodeEfficiency",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2133,
+    "line": 2135,
     "name": "BudgetState",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2142,
+    "line": 2144,
     "name": "OperationUsage",
     "kind": "export",
     "status": "export-unneeded"
    },
    {
     "file": "frontend/src/api/types.ts",
-    "line": 2152,
+    "line": 2154,
     "name": "MonthUsage",
     "kind": "export",
     "status": "export-unneeded"
@@ -1978,11 +1984,11 @@
   },
   {
    "file": "backend/app/twin/engine.py",
-   "commits": 9,
-   "lines_changed": 1054,
+   "commits": 10,
+   "lines_changed": 1649,
    "cognitive": 84,
    "loc": 354,
-   "score": 756
+   "score": 840
   },
   {
    "file": "frontend/src/pages/ProcessDetailPage.tsx",
@@ -2045,7 +2051,7 @@
    "commits": 15,
    "lines_changed": 348,
    "cognitive": 28,
-   "loc": 288,
+   "loc": 300,
    "score": 420
   },
   {
@@ -2073,20 +2079,20 @@
    "score": 345
   },
   {
+   "file": "backend/app/jobs/worker.py",
+   "commits": 7,
+   "lines_changed": 342,
+   "cognitive": 49,
+   "loc": 232,
+   "score": 343
+  },
+  {
    "file": "backend/app/scim/service.py",
    "commits": 2,
    "lines_changed": 443,
    "cognitive": 158,
    "loc": 335,
    "score": 316
-  },
-  {
-   "file": "backend/app/jobs/worker.py",
-   "commits": 7,
-   "lines_changed": 342,
-   "cognitive": 44,
-   "loc": 226,
-   "score": 308
   },
   {
    "file": "frontend/src/App.tsx",
@@ -2727,6 +2733,16 @@
    "endpoints": 245,
    "stories": 287,
    "stories_implemented": 241
+  },
+  {
+   "commit": "59dcad3",
+   "date": "2026-10-17",
+   "subject": "Build Epic 39 US39.1: one executor for the twin and production",
+   "prod_loc": 45789,
+   "test_loc": 15860,
+   "endpoints": 245,
+   "stories": 287,
+   "stories_implemented": 259
   }
  ],
  "mutation": {
@@ -3056,9 +3072,9 @@
   }
  },
  "size": {
-  "backend_prod_loc": 28774,
-  "backend_test_loc": 12225,
-  "frontend_prod_loc": 17015,
+  "backend_prod_loc": 30138,
+  "backend_test_loc": 12642,
+  "frontend_prod_loc": 17017,
   "frontend_test_loc": 3635
  }
 }

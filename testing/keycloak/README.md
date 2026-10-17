@@ -51,6 +51,14 @@ IdP for the operator console (http://ops.localhost:3000). Only members of
 | `otto` | platform-operators | Operator | `MF4HS3TUOJXS2ZDFOYWW65DQFVXXI5DP` |
 | `petra` | (none) | Refused: not an operator | `MF4HS3TUOJXS2ZDFOYWW65DQFVYGK5DS` |
 
+Epic 39: a fourth realm, `core-banking`, isn't anyone's sign-in. It
+stands in for a customer system's own authorization server. Its one
+client, `agent-loans` (secret `agent-loans-dev-only-secret`), is a
+service account a deployed agent gets tokens for by client credentials,
+with the optional scopes `core.read` and `core.write`. The production
+stand-in in `testing/runtime/` accepts only those tokens; see
+`testing/runtime/smoke_runtime.py`.
+
 To get a one-time code, add the person's secret to an authenticator app
 (Google Authenticator, Microsoft Authenticator, 1Password). The secret is
 `axyntro-dev-otp-<username>`, cut or zero-padded to exactly 20 characters and then

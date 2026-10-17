@@ -43,6 +43,8 @@ class Permission(StrEnum):
     AGENT_APPROVE = "agent.approve"
     RELEASE_CRITERIA_SET = "agent.release_criteria"
     AGENT_PUBLISH = "agent.publish"
+    AGENT_DEPLOY = "agent.deploy"  # Epic 39: set up a deployment and its bindings
+    RUNTIME_STOP = "runtime.stop"  # Epic 39, US39.11: kill switch
     CONTEXT_EDIT = "context.edit"
     CONTEXT_CONFIRM = "context.confirm"
     CATALOG_EDIT = "catalog.edit"
@@ -65,15 +67,25 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             P.AGENT_TEST,
             P.AGENT_RELEASE_CANDIDATE,
             P.AGENT_PUBLISH,
+            P.AGENT_DEPLOY,
             P.CATALOG_EDIT,
         }
     ),
     Role.PROCESS_OWNER: frozenset(
-        {P.PROCESS_EDIT, P.PROCESS_FINALIZE, P.PROCESS_APPROVE, P.PROCESS_DELETE, P.CONTEXT_EDIT, P.CONTEXT_CONFIRM}
+        {
+            P.PROCESS_EDIT,
+            P.PROCESS_FINALIZE,
+            P.PROCESS_APPROVE,
+            P.PROCESS_DELETE,
+            P.CONTEXT_EDIT,
+            P.CONTEXT_CONFIRM,
+            P.RUNTIME_STOP,
+        }
     ),
-    Role.APPROVER: frozenset({P.AGENT_APPROVE, P.RELEASE_CRITERIA_SET, P.AUDIT_READ}),
+    Role.APPROVER: frozenset({P.AGENT_APPROVE, P.RELEASE_CRITERIA_SET, P.AUDIT_READ, P.RUNTIME_STOP}),
     Role.AUDITOR: frozenset({P.AUDIT_READ}),
-    Role.ADMIN: frozenset({P.ORG_ADMIN, P.USERS_MANAGE, P.AUDIT_READ}),
+    # Stopping an agent is a safety action, so admins may; starting one isn't.
+    Role.ADMIN: frozenset({P.ORG_ADMIN, P.USERS_MANAGE, P.AUDIT_READ, P.RUNTIME_STOP}),
 }
 
 # Organization-wide by nature: a business-unit grant never satisfies them.
@@ -100,6 +112,8 @@ PERMISSION_LABELS: dict[Permission, str] = {
     P.AGENT_APPROVE: "approving agent releases",
     P.RELEASE_CRITERIA_SET: "setting release criteria",
     P.AGENT_PUBLISH: "publishing agents",
+    P.AGENT_DEPLOY: "deploying agents",
+    P.RUNTIME_STOP: "stopping running agents",
     P.CONTEXT_EDIT: "editing organization context",
     P.CONTEXT_CONFIRM: "confirming organization context",
     P.CATALOG_EDIT: "editing the application catalog",

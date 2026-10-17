@@ -139,3 +139,51 @@ async def test_a_checkpoint_waits_for_a_person_and_resumes():
     assert second.final_output == {"decision": "approve"}
     assert [s.type for s in second.steps if s.type.startswith("HUMAN")] == ["HUMAN_APPROVAL_REQUESTED", "HUMAN_APPROVED"]
     assert inbox.asked == [{"amount": 5}]  # the resumed call wasn't asked again
+
+
+@pytest.mark.asyncio
+async def test_twin_and_production_ports_decide_alike():
+    """US39.8: the same model replies through the twin's ports and through
+    production-style ports give the same policy decisions and outcome, and
+    the same instructions apart from their header."""
+    from datetime import datetime, timezone
+
+    from app.runtime.instructions import run_instructions
+    from app.schemas.twin import InferredToolSchema, StaticResponseRule, TwinScenario, TwinSystemStub
+    from app.twin.engine import run_scenario
+
+    artifact = _artifact(output_schema=[{"name": "decision", "source_or_destination": "AP", "format": "string"}])
+    replies = lambda: [  # noqa: E731
+        _result(calls=[("crm", {"id": "1"}), ("erp", {"amount": 5})]),
+        _result(calls=[("crm", {"id": "1"})]),
+        _result(text='{"decision": "approve"}'),
+    ]
+    schemas = {name: InferredToolSchema(system_name=name, tool_name=tool.name, description="", parameters=tool.parameters,
+                                        response_shape_description="") for name, tool in _TOOLS.items()}
+    stub = TwinSystemStub(mode="static", static_responses=[StaticResponseRule(match={}, response={"ok": True})])
+    scenario = TwinScenario(id="s", agent_artifact_id="a", name="n", inputs={"id": "1"},
+                            system_stubs={"CRM": stub, "ERP": stub}, created_at=datetime.now(timezone.utc))
+    twin_llm = ScriptedLLM(*replies())
+    captured = []
+
+    async def capture(messages, **kwargs):
+        captured.append(messages[1].content)
+        return await twin_llm_complete(messages, **kwargs)
+
+    twin_llm_complete = twin_llm.complete
+    twin_llm.complete = capture
+    twin = await run_scenario(twin_llm, artifact=artifact, tool_schemas=schemas, scenario=scenario, max_turns=5)
+    live = await execute(
+        ScriptedLLM(*replies()), artifact=artifact, tools=_TOOLS, tool_port=RecordingTools(), human_port=Inbox(),
+        inputs={"id": "1"}, output_fields=["decision"], max_turns=5, operation="runtime_execution",
+        instructions=run_instructions(has_checkpoint=False, output_fields=["decision"], test_run=False),
+    )
+
+    def decisions(steps):
+        return [(s.target, s.denied) for s in steps if s.type == "POLICY_CHECK"]
+
+    assert decisions(twin.steps) == decisions(live.steps) == [("CRM", False), ("ERP", True), ("CRM", False)]
+    assert twin.status == live.status == "COMPLETED"
+    live_text = run_instructions(has_checkpoint=False, output_fields=["decision"], test_run=False)
+    assert captured[0].splitlines()[1:] == live_text.splitlines()[1:]
+    assert captured[0].splitlines()[0] != live_text.splitlines()[0]

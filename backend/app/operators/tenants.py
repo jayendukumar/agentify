@@ -191,3 +191,20 @@ def open_support(tenant_id: str, grant_id: str, *, operator_id: str, operator_na
         token = support.create_entry(db, grant, operator_id=operator_id, operator_name=operator_name,
                                      operator_email=operator_email)
         return grant, token
+
+
+# ---- the agent runtime ----------------------------------------------------------------
+
+
+def stop_agents(tenant_id: str, *, reason: str, operator_id: str, operator_name: str) -> dict:
+    """Epic 39, US39.11: an operator stops every agent of a tenant during an
+    incident. It runs as the tenant, records an event in the tenant's own
+    audit log, and returns counts only -- no tenant data."""
+    from app.auth import audit
+    from app.runtime import deployments
+
+    with tenant_scope(tenant_id), get_session_factory()() as db, db.begin():
+        result = deployments.kill(db, deployments.all_deployments(db), reason=reason, actor=f"operator:{operator_id}")
+        audit.record(db, actor=None, actor_type="operator", actor_name=operator_name, action="runtime_stopped_by_operator",
+                     detail={"reason": reason, **result})
+        return result

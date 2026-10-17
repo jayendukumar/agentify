@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**256 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**275 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -75,7 +75,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | POST | `/api/organization/applications/import` | `catalog.edit` | US29.2: preview first (`dry_run=true`, the default), then import. |
 | GET | `/api/organization/applications/register` | signed in | US29.8. |
 | PUT | `/api/organization/applications/{application_id}/api-spec` | `catalog.edit` | US29.4: attach an OpenAPI document (JSON or YAML). |
-| PUT | `/api/organization/applications/{application_id}/endpoints` | `catalog.edit` | US29.5: register endpoints. A production-tagged endpoint may be recorded for reference but is never called. Any other endpoint must pass the |
+| PUT | `/api/organization/applications/{application_id}/endpoints` | `catalog.edit` | US29.5: register endpoints. A production-tagged endpoint is never called by the twin; only a deployed agent's production adapter calls it (E |
 | GET | `/api/processes/{process_id}/systems` | signed in | US29.3: every system name in the process and what it resolves to. Exact matches are linked automatically on read. |
 | PUT | `/api/processes/{process_id}/systems/{system_name}` | `agent.build` |  |
 
@@ -217,6 +217,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/operator/oidc/login` | public |  |
 | GET | `/api/operator/tenants` | public |  |
 | POST | `/api/operator/tenants` | public | US38.12: a tenant, its first host, and how its first admin gets in -- an invitation to their email, or the tenant's IdP with its admins grou |
+| POST | `/api/operator/tenants/{tenant_id}/agents/stop` | public | Epic 39, US39.11: every agent of this tenant, in an incident. |
 | POST | `/api/operator/tenants/{tenant_id}/erase` | public | US38.13: erases a deleted tenant's data once its waiting period is over -- every tenant row, its files and its secrets -- and keeps a deleti |
 | POST | `/api/operator/tenants/{tenant_id}/invitation` | public | US38.12: a new one-time link for the first admin (the earlier one stops working). Only while the tenant has no single sign-on and no admin. |
 | PUT | `/api/operator/tenants/{tenant_id}/limits` | public | US38.9: concurrent jobs, LLM requests per minute, monthly LLM budget. Empty means the deployment's default. |
@@ -349,6 +350,29 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/processes/{process_id}/batch-comparison` | signed in | US35.6: paired on the cases both batches ran. |
 | GET | `/api/processes/{process_id}/batches/{batch_id}/evidence` | signed in | US35.9. |
 | GET | `/api/processes/{process_id}/batches/{batch_id}/results` | signed in | US35.1-US35.5, US35.8 -- partial while the batch is still running. |
+
+### runtime
+
+| Method | Path | Access | What it does |
+|---|---|---|---|
+| POST | `/api/processes/{process_id}/agent-artifacts/{artifact_id}/deployments` | `agent.deploy` |  |
+| POST | `/api/processes/{process_id}/agent-artifacts/{artifact_id}/kill` | `runtime.stop` | Every deployment of this agent, whatever its version. |
+| GET | `/api/processes/{process_id}/deployments` | signed in |  |
+| GET | `/api/processes/{process_id}/deployments/{deployment_id}` | signed in |  |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/activate` | `agent.approve` |  |
+| PUT | `/api/processes/{process_id}/deployments/{deployment_id}/bindings/{system_name}` | `agent.deploy` |  |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/bindings/{system_name}/test-credential` | `agent.deploy` | US39.7: fetches a token (or reads the key) without calling the system. |
+| GET | `/api/processes/{process_id}/deployments/{deployment_id}/executions` | signed in |  |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/identity/revoke` | `runtime.stop` |  |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/kill` | `runtime.stop` |  |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/retire` | `agent.deploy` |  |
+| GET | `/api/processes/{process_id}/executions/{execution_id}` | signed in |  |
+| GET | `/api/runtime/clients` | `org.admin` |  |
+| POST | `/api/runtime/clients` | `org.admin` | The token is shown once; only its hash is kept. |
+| POST | `/api/runtime/clients/{client_id}/revoke` | `org.admin` |  |
+| POST | `/api/runtime/kill` | `runtime.stop` | US39.11: every agent in the organization. Needs the stop permission organization-wide. |
+| POST | `/runtime/v1/deployments/{deployment_id}/executions` | public |  |
+| GET | `/runtime/v1/executions/{execution_id}` | public |  |
 
 ### scim
 

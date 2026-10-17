@@ -3859,3 +3859,52 @@ and without it the release evidence no longer applies. It can't keep
 calling a live case a test either. The executor takes the instructions
 from its caller, and production will send the twin's text minus that
 heading (US39.8 checks this), rather than writing new instructions.
+
+
+## 2026-10-17 -- Epic 39 build step 2 (deployments, adapters, kill switch)
+
+### Only spec-backed tools reach production
+
+A production adapter has to turn the model's tool call into a real HTTP
+request, in the shape the twin tested. The twin's LLM-simulated tools
+have parameters an LLM invented, with nothing to map them to. Writing a
+mapping per system would be a second, untested contract. So deployment
+requires every tool contract to have been tested through Epic 29's
+OpenAPI-backed tool (`operation` + `params`), and says how to get there
+when it wasn't.
+
+### The tool schemas are pinned when deploying, not taken from a run
+
+The plan said a deployment pins "the tool schemas the twin tested". Twin
+runs don't record them: spec-backed tools are rebuilt from the current
+spec on every run, and Epic 22's run snapshot leaves tools out. Pinning
+the spec as it is at deployment, and blocking activation on any later
+change to an allowed operation's method or path until someone accepts
+it, was the honest version. Recording tool schemas in the run snapshot
+would close the gap properly.
+
+### One token per contract carries both read and write scopes
+
+Setting up the live test showed it before it ran: the agent's one
+contract for Core Banking has the action `update` and covers the lookup
+as well as the account opening, while the stand-in wants `core.read` for
+one and `core.write` for the other. Scopes are mapped per contract
+action, so the binding asks for `core.read core.write` together.
+Per-operation scopes would need a contract per operation.
+
+### A restart escalates after a sent write instead of resuming
+
+Resuming mid-case would need the executor's messages persisted after
+every turn. Instead, a restarted case runs again from the start as a new
+attempt, unless the dead attempt passed a data-changing call through the
+gateway: then its outcome is unknown and the case goes to a person. The
+gateway's POLICY_CHECK step is the "requested" marker; it's written
+before the call is sent.
+
+### The kill switch reads the database before every step
+
+The plan allowed a cache up to 5 seconds old. Reading the deployment and
+identity status before each model and tool call costs one indexed query
+per step, against model calls that take seconds, and makes the kill
+immediate on every worker. Queued cases are ended at kill time, so none
+of them takes a step.

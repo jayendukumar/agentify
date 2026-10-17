@@ -2,7 +2,8 @@
 
 Runs inside the API process by default (started from app/main.py's
 lifespan when `JOB_WORKER_ENABLED` is true), or on its own with
-`python -m app.jobs.worker`. Several workers may run against one database:
+`python -m app.jobs.worker`; `JOB_WORKER_KINDS` limits which kinds a
+worker claims (Epic 39: production executions on workers of their own). Several workers may run against one database:
 claiming uses SKIP LOCKED, so a job runs once.
 
 Handlers are async functions `(payload, session) -> dict | None`,
@@ -69,6 +70,7 @@ def _load_handlers() -> None:
     from app.context import jobs as _context_jobs  # noqa: F401
     from app.oracles import jobs as _oracle_jobs  # noqa: F401
     from app.process_twin import jobs as _process_twin_jobs  # noqa: F401
+    from app.runtime import jobs as _runtime_jobs  # noqa: F401
     from app.tenancy import export as _tenant_export  # noqa: F401
 
 
@@ -149,6 +151,10 @@ class Worker:
         self._by_tenant: dict[str, set[asyncio.Task]] = {}
         self._stopping = asyncio.Event()
         self._turn = 0
+        # Epic 39, US39.3: `JOB_WORKER_KINDS=runtime_execution` makes a
+        # worker that runs production executions and nothing else.
+        kinds = settings.job_worker_kinds.strip()
+        self.kinds = None if kinds in ("", "all") else {k.strip() for k in kinds.split(",") if k.strip()}
 
     def _capacity(self, kind: str) -> int:
         tasks = self._running.setdefault(kind, set())
@@ -202,7 +208,7 @@ class Worker:
         """Round-robin: each round, every tenant still holding due work
         claims one job of a kind with capacity left. A tenant drops out once
         it has nothing due, or is at its own limit."""
-        free = {kind: self._capacity(kind) for kind in _HANDLERS}
+        free = {kind: self._capacity(kind) for kind in _HANDLERS if self.kinds is None or kind in self.kinds}
         claimed: list[tuple[str, str, str]] = []
         waiting = list(order)
         while waiting:

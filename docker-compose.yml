@@ -56,6 +56,13 @@ services:
       # Epic 37, US37.14: the image defaults to production, which refuses
       # local sign-in. start.ps1 sets demo for -Demo runs.
       ENVIRONMENT: ${APP_ENVIRONMENT:-development}
+      # Epic 39: production adapters call only https -- except these hosts,
+      # the local stand-in of a production system and Keycloak as its
+      # authorization server (testing/runtime/). Local only.
+      RUNTIME_HTTP_HOSTS: ${RUNTIME_HTTP_HOSTS:-host.docker.internal,keycloak}
+      # The stand-in's client secret for Meridian's agent, referenced from
+      # a binding as secret://tenant/core_banking_secret. Local only.
+      TENANT_MERIDIAN_CORE_BANKING_SECRET: agent-loans-dev-only-secret
     ports:
       - "8000:8000"
     depends_on:

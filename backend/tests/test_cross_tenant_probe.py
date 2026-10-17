@@ -59,6 +59,9 @@ PARAM_SOURCES: dict[str, tuple[str, str]] = {
     "rule_id": ("decision_rules", "id"),
     "relation_id": ("metamorphic_relations", "id"),
     "schedule_id": ("batch_schedules", "id"),
+    "deployment_id": ("agent_deployments", "id"),
+    "execution_id": ("agent_executions", "id"),
+    "client_id": ("runtime_clients", "id"),
 }
 # Parameters that name something every tenant has, not a tenant's object.
 # A system name is free text within a process, like a node id.
@@ -111,6 +114,25 @@ def _build_tenant_a(client, fake_llm) -> None:
     scim = TestClient(app, headers={"Authorization": f"Bearer {token}", "Content-Type": SCIM_JSON})
     group = scim.post("/scim/v2/Groups", json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"], "displayName": "Analysts"})
     assert group.status_code == 201, group.text
+    _build_tenant_a_runtime(process["id"], artifact["id"])
+    assert client.post("/api/runtime/clients", json={"label": "Loan system"}).status_code == 201
+
+
+def _build_tenant_a_runtime(process_id: str, artifact_id: str) -> None:
+    """Epic 39: a deployment and an execution, written directly -- deploying
+    through the API needs a spec-backed, approved agent the fixtures above
+    don't build, and the probe only needs the rows to exist."""
+    with get_owner_engine().begin() as conn:
+        conn.execute(text("INSERT INTO agent_identities (id, tenant_id, display_name, status) "
+                          "VALUES ('agid_a', :t, 'A agent', 'active')"), {"t": TEST_TENANT_ID})
+        conn.execute(text("INSERT INTO agent_deployments (id, tenant_id, process_id, agent_artifact_id, group_key, "
+                          "artifact_version, snapshot, environment, status, identity_id) VALUES ('dep_a', :t, :p, :a, "
+                          "'g', 1, '{\"definition\": {}, \"tool_schemas\": {}}', 'production', 'active', 'agid_a')"),
+                     {"t": TEST_TENANT_ID, "p": process_id, "a": artifact_id})
+        conn.execute(text("INSERT INTO agent_executions (id, tenant_id, deployment_id, process_id, artifact_version, "
+                          "identity_id, idempotency_key, status, deviations, attempt, step_count, total_tokens, "
+                          "turns_used) VALUES ('exe_a', :t, 'dep_a', :p, 1, 'agid_a', 'k', 'COMPLETED', '[]', 1, 0, 0, 0)"),
+                     {"t": TEST_TENANT_ID, "p": process_id})
 
 
 def _probe_routes():
@@ -136,6 +158,10 @@ def tenant_b(fake_llm):
     assert sign_in(b, "b-admin", ALL_ROLES).status_code == 200
     token = b.post("/api/directory/scim/tokens", json={"label": "B's IdP"}).json()["token"]
     b_scim = TestClient(app, base_url=f"http://{B_HOST}", headers={"Authorization": f"Bearer {token}", "Content-Type": SCIM_JSON})
+    # Epic 39: B's own runtime client, for the routes B's systems call.
+    runtime_token = b.post("/api/runtime/clients", json={"label": "B's loan system"}).json()["token"]
+    b.runtime = TestClient(app, base_url=f"http://{B_HOST}",
+                           headers={"Authorization": f"Bearer {runtime_token}", "Idempotency-Key": "probe"})
     yield b, b_scim
     app.dependency_overrides.pop(get_llm_client, None)
 
@@ -153,7 +179,7 @@ def test_no_route_reaches_another_tenants_objects(client, fake_llm, tenant_b):
 
     leaks, probed, real_ids, handled = [], 0, 0, 0
     for method, path, params in _probe_routes():
-        caller = b_scim if path.startswith("/scim/") else b
+        caller = b_scim if path.startswith("/scim/") else b.runtime if path.startswith("/runtime/") else b
         variants = [{**SHARED_PARAMS, **{p: a_ids.get(p, f"missing_{p}") for p in params if p in PARAM_SOURCES}}]
         if "process_id" in params and len(set(params) & set(PARAM_SOURCES)) > 1:
             variants.append({**variants[0], "process_id": b_process})  # B's own process, A's child ids
