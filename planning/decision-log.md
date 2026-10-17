@@ -4009,3 +4009,43 @@ The first live callback carried `completed_at` as
 `2026-10-17T08:02:12.567861`. The columns are naive UTC, and a caller
 would read that as its own local time. Tests had only checked that the
 field was present. The callback now marks the time as UTC (`+00:00`).
+
+## 2026-10-17 -- Epic 39 US39.4: runtime clients sign in with the tenant's IdP
+
+### Client credentials from the tenant's own IdP; bearer tokens stay for tenants without one
+
+Closes step 2's deviation. A runtime client is now registered with an
+`oauth_client_id`. The system gets an access token from the tenant's IdP
+(the client credentials grant), and `/runtime/v1` checks it against that
+IdP's keys, issuer and expiry (`OidcProvider.validate_access_token`). The
+client it names (`azp`, else `client_id`, else Entra's `appid`) must be
+registered and unrevoked. The token must also carry that client's audience
+(default `RUNTIME_OAUTH_AUDIENCE`, `axyntro-runtime`), not the sign-in
+client's. The issuer is always the tenant's, so another tenant's IdP can't
+vouch for a system here. ID tokens (a nonce, or `typ` ID) are refused.
+
+The bearer token stays, because a tenant on local sign-in has no IdP to
+issue tokens. The token's `axr_` prefix decides which check runs. The
+audience is kept per client, not per tenant: an Entra tenant names its
+audience after its own app registration (`api://...`). That meant no new
+field on the tenant's identity settings, which feed the Directory page,
+the operator console and the CLI.
+
+### Gated on "the tenant has an IdP", not "its people sign in through it"
+
+An OAuth client is accepted when the tenant has an issuer configured,
+even while its people still sign in locally. The first idea was to
+require `auth_mode == "oidc"`. That would have made the live test
+impossible without the whole SSO sign-in with MFA. It would also block a
+tenant that set up its IdP for machines before moving people onto it. The
+local stack now points Meridian at Keycloak's realm `axyntro`
+(`OIDC_ISSUER` in docker-compose.yml) while people sign in locally. The
+only other code that reads the issuer in local mode is SCIM adopting an
+existing SSO identity, which is harmless. Without Keycloak running, an
+OAuth token gets 503 (the IdP can't be reached) and bearer clients are
+unaffected.
+
+Live (`testing/runtime/smoke_runtime_oauth.py`, 18/18): Keycloak's
+service-account client `loan-system` with an audience mapper. Its real
+token had the claims the unit tests assume (`azp`, `aud` a list with
+`axyntro-runtime` and `account`, `typ` Bearer).

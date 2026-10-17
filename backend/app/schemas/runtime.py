@@ -203,6 +203,10 @@ class ExecutionAccepted(BaseModel):
 class RuntimeClient(BaseModel):
     id: str
     label: str
+    # Set for a client that signs in with the tenant's IdP (client
+    # credentials); None for one that holds a bearer token.
+    oauth_client_id: str | None = None
+    oauth_audience: str | None = None
     # None: may start any of the tenant's deployments.
     deployment_ids: list[str] | None = None
     created_at: datetime
@@ -213,10 +217,16 @@ class RuntimeClient(BaseModel):
 class RuntimeClientIn(BaseModel):
     label: str = Field(min_length=1, max_length=200)
     deployment_ids: list[str] | None = None
+    # The client id the tenant's IdP issues tokens to. Without one, the
+    # client gets a bearer token instead.
+    oauth_client_id: str | None = Field(default=None, min_length=1, max_length=255)
+    # Defaults to RUNTIME_OAUTH_AUDIENCE.
+    oauth_audience: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class RuntimeClientCreated(RuntimeClient):
-    """Both secrets are shown once."""
+    """Its secrets are shown once: the bearer token (None for an OAuth
+    client, whose secret stays at the IdP) and the callback signing secret."""
 
-    token: str
+    token: str | None = None
     signing_secret: str

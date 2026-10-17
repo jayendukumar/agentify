@@ -1977,17 +1977,24 @@ class AdapterBindingModel(TenantScoped, Base):
 
 
 class RuntimeClientModel(TenantScoped, Base):
-    """Epic 39, US39.4: a system of the tenant that may start executions:
-    a bearer token, shown once and stored as a SHA-256 hash (the SCIM
-    token pattern, US37.10). `deployment_ids` limits it to some
-    deployments (None: all of the tenant's); `signing_secret` signs its
-    callbacks (app/runtime/callbacks.py), so it's kept, not hashed."""
+    """Epic 39, US39.4: a system of the tenant that may start executions.
+    It proves who it is one of two ways: an OAuth client of the tenant's
+    IdP (`oauth_client_id`), whose client-credentials access tokens must
+    carry `oauth_audience`; or, for a tenant without an IdP, a bearer
+    token shown once and stored as a SHA-256 hash (the SCIM token pattern,
+    US37.10). `deployment_ids` limits it to some deployments (None: all of
+    the tenant's); `signing_secret` signs its callbacks
+    (app/runtime/callbacks.py), so it's kept, not hashed."""
 
     __tablename__ = "runtime_clients"
+    __table_args__ = (Index("uq_runtime_clients_oauth_client", "tenant_id", "oauth_client_id", unique=True,
+                            postgresql_where=text("oauth_client_id IS NOT NULL AND revoked_at IS NULL")),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     label: Mapped[str] = mapped_column(String, nullable=False)
-    token_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    token_hash: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    oauth_client_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    oauth_audience: Mapped[str | None] = mapped_column(String, nullable=True)
     deployment_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     signing_secret: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

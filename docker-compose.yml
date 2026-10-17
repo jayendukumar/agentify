@@ -66,6 +66,12 @@ services:
       # The stand-in's client secret for Meridian's agent, referenced from
       # a binding as secret://tenant/core_banking_secret. Local only.
       TENANT_MERIDIAN_CORE_BANKING_SECRET: agent-loans-dev-only-secret
+      # US39.4: Meridian's IdP is Keycloak's realm "axyntro" even while its
+      # people sign in locally, so its systems can start agents with
+      # client-credentials tokens (client "loan-system"). Unreachable
+      # without Keycloak: then only bearer-token clients get in.
+      OIDC_ISSUER: http://localhost:8180/realms/axyntro
+      OIDC_DISCOVERY_URL: http://keycloak:8080/realms/axyntro/.well-known/openid-configuration
     ports:
       - "8000:8000"
     depends_on:

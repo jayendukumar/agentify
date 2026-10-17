@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     # make the worker call an arbitrary address.
     runtime_callback_hosts: str = ""
     runtime_max_turns: int = Field(default=8, ge=1)
+    # US39.4: the audience an OAuth runtime client's access token must
+    # carry, unless the client is registered with its own (an Entra ID
+    # tenant names it after its app registration, api://...).
+    runtime_oauth_audience: str = "axyntro-runtime"
     # Job kinds this process's worker claims ("all", or comma separated):
     # `runtime_execution` alone gives production its own workers (US39.3).
     job_worker_kinds: str = "all"

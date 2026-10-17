@@ -32,7 +32,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Callable
 from urllib.parse import urlencode
 
 import httpx
@@ -140,7 +140,7 @@ class OidcProvider:
             raise OidcError("invalid_token", f"No signing key {kid!r} in the IdP's JWKS")
         return jwt.PyJWK(found).key
 
-    def _decode(self, token: str, *, require: list[str]) -> dict[str, Any]:
+    def _decode(self, token: str, *, require: list[str], check_audience: bool = True) -> dict[str, Any]:
         try:
             header = jwt.get_unverified_header(token)
         except jwt.PyJWTError as exc:
@@ -157,10 +157,12 @@ class OidcProvider:
                 audience=self.config.client_id,
                 issuer=self.config.issuer,
                 leeway=CLOCK_SKEW_SECONDS,
-                options={"require": require},
+                options={"require": require, "verify_aud": check_audience},
             )
         except jwt.PyJWTError as exc:
             raise OidcError("invalid_token", f"Token rejected: {exc}") from exc
+        if not check_audience:
+            return claims
         audience = claims.get("aud")
         if isinstance(audience, list) and len(audience) > 1 and claims.get("azp") != self.config.client_id:
             raise OidcError("invalid_token", "Token has several audiences and wasn't issued to this client (azp)")
@@ -214,6 +216,29 @@ class OidcProvider:
         if not hmac.compare_digest(str(claims.get("nonce", "")), nonce):
             raise OidcError("invalid_token", "ID token nonce doesn't match this sign-in (a replayed token?)")
         return claims
+
+    def validate_access_token(self, token: str, *, audience_for: Callable[[str], str | None]) -> tuple[str, dict[str, Any]]:
+        """Epic 39, US39.4: an access token the IdP issued to one of the
+        tenant's systems through the client credentials grant. Signature,
+        issuer and expiry as for an ID token. The client it was issued to
+        (`azp`, `client_id` or Entra's `appid`) must be one we know --
+        `audience_for` gives its expected audience, or None -- and the
+        token must carry that audience, not the sign-in client's."""
+        claims = self._decode(token, require=["iss", "exp", "aud"], check_audience=False)
+        # An ID token (it has a nonce, or says so) proves who signed in,
+        # not what a system may call: never accepted here.
+        if "nonce" in claims or str(claims.get("typ", "")).lower() in ("id", "refresh", "logout"):
+            raise OidcError("invalid_token", "Not an access token")
+        client_id = claims.get("azp") or claims.get("client_id") or claims.get("appid")
+        if not client_id:
+            raise OidcError("invalid_token", "Token names no client (azp, client_id or appid)")
+        audience = audience_for(str(client_id))
+        if audience is None:
+            raise OidcError("unknown_client", f"Client {client_id!r} isn't registered")
+        audiences = claims["aud"] if isinstance(claims["aud"], list) else [claims["aud"]]
+        if audience not in audiences:
+            raise OidcError("invalid_token", f"Token audience {claims['aud']!r} doesn't include {audience!r}")
+        return str(client_id), claims
 
     def mfa_satisfied(self, claims: dict[str, Any]) -> bool:
         """US37.8: the IdP must say MFA happened -- an `amr` method, or an

@@ -5,7 +5,8 @@ executor (US39.1); deployments, executions, the API trigger, identity,
 adapters, credentials, guardrails failing closed, the kill switch
 (US39.2-39.8, US39.11); the review inbox, limits and circuit breakers,
 automatic pause (US39.9, US39.10, US39.12). US39.4 completed 2026-10-17
-(typed input, internal triggers, client limits, signed callbacks). Open
+(typed input, internal triggers, client limits, signed callbacks, OAuth
+client credentials from the tenant's IdP). Open
 items are listed under each step's "as built". Decisions confirmed 2026-10-17 (see Notes).**
 Weakness 3 in the wiki's Critical Review ("Agents never run in
 production") and item 4 of its recommended order.
@@ -221,7 +222,7 @@ Deviations from the stories, decided while building:
   ends queued cases KILLED and cancels their jobs on the spot.
 - **Runtime clients use a bearer token** (the SCIM token pattern), not
   OAuth client credentials. The token is tenant-wide; limiting a client
-  to some deployments is open.
+  to some deployments is open. (Both closed in US39.4.)
 - **A human checkpoint suspends the case** (WAITING_FOR_HUMAN) with no way
   to resume it until the review inbox (US39.10, step 3).
 - **Callbacks** go only to hosts in `RUNTIME_CALLBACK_HOSTS` and aren't
@@ -340,8 +341,17 @@ Deviations from the stories, decided while building:
   failed once and was retried, and its signature checked out. A sweep
   queued through `runtime_submit` completed with no client, and queuing
   the same key again started nothing.
-- **Still a deviation:** runtime clients authenticate with a bearer token,
-  not OAuth client credentials (see step 2).
+- **OAuth client credentials (closed 2026-10-17).** A runtime client
+  registered with `oauth_client_id` signs in with an access token from
+  the tenant's own IdP (client credentials grant). The token's signature,
+  issuer and expiry are checked against that IdP, the client it names
+  (`azp`/`client_id`/`appid`) must be registered and unrevoked, and its
+  audience must be the client's (default `RUNTIME_OAUTH_AUDIENCE`,
+  `axyntro-runtime`). Bearer tokens remain for tenants without an IdP.
+  Migration `f6a7b8c9d0e1`. Tests: `tests/test_runtime_oauth.py` (6).
+  Live: `testing/runtime/smoke_runtime_oauth.py` (18/18 on 2026-10-17)
+  with Keycloak's service account client `loan-system` in realm
+  `axyntro`.
 
 ## User Stories
 

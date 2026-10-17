@@ -7,9 +7,12 @@ Two audiences:
   it, and read its executions. Stopping one agent, every deployment of an
   agent, or every agent in the tenant is one action each (US39.11).
 - **The tenant's own systems** (`/runtime/v1/...`): start an execution
-  and read its result, with a runtime client's bearer token (US39.4),
-  the way the IdP reaches `/scim/v2`. A client limited to some
-  deployments gets 404 for the others, as if they didn't exist.
+  and read its result (US39.4). A system signs in as an OAuth client of
+  the tenant's own IdP: it gets an access token through the client
+  credentials grant, checked here against the IdP's keys, issuer, expiry
+  and our audience. A tenant without an IdP gives its systems a bearer
+  token instead, the way the IdP reaches `/scim/v2`. A client limited to
+  some deployments gets 404 for the others, as if they didn't exist.
 """
 
 from __future__ import annotations
@@ -23,6 +26,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy import select
 
 from app.auth import audit
+from app.auth.oidc import IdpUnavailable, OidcError, OidcProvider, get_oidc_provider
+from app.config import get_settings
 from app.auth.permissions import Permission, has_permission
 from app.db import repository
 from app.db.models import (
@@ -434,17 +439,38 @@ def list_clients(db: DbDep, user: OrgAdminDep) -> list[RuntimeClient]:
 
 
 @tenant_router.post("/clients", response_model=RuntimeClientCreated, status_code=201)
-def create_client(body: RuntimeClientIn, db: DbDep, user: OrgAdminDep) -> RuntimeClientCreated:
-    """The token and the callback signing secret are shown once; only the
-    token's hash is kept."""
+def create_client(body: RuntimeClientIn, db: DbDep, user: OrgAdminDep,
+                  idp: Annotated[OidcProvider, Depends(get_oidc_provider)]) -> RuntimeClientCreated:
+    """With `oauth_client_id`, the system signs in through the tenant's
+    IdP and no token is issued here. Without, it gets a bearer token. The
+    token and the callback signing secret are shown once; only the token's
+    hash is kept."""
     if body.deployment_ids is not None:
         unknown = [d for d in body.deployment_ids if db.get(AgentDeploymentModel, d) is None]
         if unknown:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
                                 detail=f"Unknown deployments: {', '.join(unknown)}")
-    token = "axr_" + secrets.token_urlsafe(32)
+    token = None
+    audience = None
+    if body.oauth_client_id is not None:
+        if not idp.config.issuer:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                                detail="This tenant has no identity provider to issue the client's tokens; "
+                                       "leave out oauth_client_id to get a bearer token instead")
+        taken = db.scalar(select(RuntimeClientModel.id).where(
+            RuntimeClientModel.oauth_client_id == body.oauth_client_id, RuntimeClientModel.revoked_at.is_(None)))
+        if taken is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                detail=f"OAuth client '{body.oauth_client_id}' is already registered ({taken})")
+        audience = body.oauth_audience or get_settings().runtime_oauth_audience
+    elif body.oauth_audience is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                            detail="oauth_audience needs an oauth_client_id")
+    else:
+        token = "axr_" + secrets.token_urlsafe(32)
     signing_secret = "axs_" + secrets.token_urlsafe(32)
-    row = RuntimeClientModel(id=new_id("rtc"), label=body.label, token_hash=_hash(token), created_by=user.id,
+    row = RuntimeClientModel(id=new_id("rtc"), label=body.label, token_hash=_hash(token) if token else None,
+                             oauth_client_id=body.oauth_client_id, oauth_audience=audience, created_by=user.id,
                              deployment_ids=body.deployment_ids, signing_secret=signing_secret)
     db.add(row)
     db.flush()
@@ -471,14 +497,50 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def runtime_client(db: DbDep, authorization: Annotated[str | None, Header()] = None) -> RuntimeClientModel:
+def _unauthorized(reason: str | None = None) -> HTTPException:
+    challenge = 'Bearer realm="runtime"' + (', error="invalid_token"' if reason else "")
+    detail = "A valid runtime client token is required" + (f": {reason}" if reason else "")
+    return HTTPException(status.HTTP_401_UNAUTHORIZED, detail=detail, headers={"WWW-Authenticate": challenge})
+
+
+def _oauth_client(db, provider: OidcProvider, token: str) -> RuntimeClientModel:
+    """A client-credentials access token from the tenant's own IdP. The
+    issuer is the tenant's, so another tenant's IdP can't vouch for a
+    system here; the client it names must be registered and unrevoked."""
+    # The tenant's IdP, whether or not its people sign in through it yet.
+    if not provider.config.issuer:
+        raise _unauthorized()
+    clients: dict[str, RuntimeClientModel] = {}
+
+    def audience_for(client_id: str) -> str | None:
+        row = db.scalar(select(RuntimeClientModel).where(RuntimeClientModel.oauth_client_id == client_id,
+                                                         RuntimeClientModel.revoked_at.is_(None)))
+        if row is None:
+            return None
+        clients[client_id] = row
+        return row.oauth_audience or get_settings().runtime_oauth_audience
+
+    try:
+        client_id, _ = provider.validate_access_token(token, audience_for=audience_for)
+    except OidcError as exc:
+        raise _unauthorized(str(exc)) from exc
+    except IdpUnavailable as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="The identity provider can't be reached to check the token") from exc
+    return clients[client_id]
+
+
+def runtime_client(db: DbDep, provider: Annotated[OidcProvider, Depends(get_oidc_provider)],
+                   authorization: Annotated[str | None, Header()] = None) -> RuntimeClientModel:
     scheme, _, token = (authorization or "").partition(" ")
-    row = None
-    if scheme.lower() == "bearer" and token:
+    if scheme.lower() != "bearer" or not token:
+        raise _unauthorized()
+    if token.startswith("axr_"):
         row = db.scalar(select(RuntimeClientModel).where(RuntimeClientModel.token_hash == _hash(token)))
-    if row is None or row.revoked_at is not None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="A valid runtime client token is required",
-                            headers={"WWW-Authenticate": 'Bearer realm="runtime"'})
+        if row is None or row.revoked_at is not None:
+            raise _unauthorized()
+    else:
+        row = _oauth_client(db, provider, token)
     now = utcnow().replace(tzinfo=None)
     if row.last_used_at is None or now - row.last_used_at > timedelta(minutes=1):
         row.last_used_at = now
