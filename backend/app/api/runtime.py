@@ -6,7 +6,8 @@ Two audiences:
   approved agent version, bind its tools, approve and activate it, stop
   it, and read its executions. Stopping one agent, every deployment of an
   agent, or every agent in the tenant is one action each (US39.11).
-- **The tenant's own systems** (`/runtime/v1/...`): start an execution
+- **The tenant's own systems** (`/runtime/v1/...`): send a signed event
+  that starts the agent (US39.16, app/runtime/events.py), or start an execution
   and read its result (US39.4). A system signs in as an OAuth client of
   the tenant's own IdP: it gets an access token through the client
   credentials grant, checked here against the IdP's keys, issuer, expiry
@@ -23,6 +24,7 @@ from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 from app.auth import audit
@@ -31,18 +33,20 @@ from app.config import get_settings
 from app.auth.permissions import Permission, has_permission
 from app.db import repository
 from app.db.models import (
-    ProcessModel,
     AgentDeploymentModel,
     AgentExecutionModel,
     AgentIdentityModel,
+    EventSubscriptionModel,
+    ProcessModel,
     ReviewTaskModel,
     RuntimeClientModel,
     RuntimeNotificationModel,
 )
 from app.ids import new_id, utcnow
 from app.datasets import service as datasets
-from app.runtime import credentials, deployments, drift, jobs, limits, metrics, monitoring, reviews, rollout
+from app.runtime import credentials, deployments, drift, events, jobs, limits, metrics, monitoring, reviews, rollout
 from app.runtime.adapters import UnsafeProductionEndpoint, check_production_url
+from app.tenancy.identity import current_slug
 from app.schemas.agents import AgentDefinition
 from app.schemas.datasets import DatasetRowInput
 from app.schemas.run import RunStep
@@ -57,6 +61,8 @@ from app.schemas.runtime import (
     Deployment,
     DeploymentSettingsIn,
     DeploymentSummary,
+    EventSubscription,
+    EventSubscriptionIn,
     Execution,
     ExecutionAccepted,
     ExecutionIn,
@@ -382,6 +388,59 @@ def update_monitoring(process_id: str, deployment_id: str, body: MonitoringIn, d
     return _detail(db, d)
 
 
+# ---- US39.16: event triggers ------------------------------------------------------------
+
+
+def _subscription_out(row: EventSubscriptionModel) -> EventSubscription:
+    return EventSubscription(
+        id=row.id, deployment_id=row.deployment_id, label=row.label, secret_ref=row.secret_ref,
+        signature_header=row.signature_header, signature_prefix=row.signature_prefix,
+        timestamp_header=row.timestamp_header, event_id_path=row.event_id_path, input_mapping=row.input_mapping,
+        event_filter=row.event_filter or {}, url=f"/runtime/v1/events/{row.id}", created_at=row.created_at,
+        last_event_at=row.last_event_at, revoked_at=row.revoked_at,
+    )
+
+
+@router.get("/deployments/{deployment_id}/event-subscriptions", response_model=list[EventSubscription])
+def list_event_subscriptions(process_id: str, deployment_id: str, db: DbDep,
+                             user: CurrentUserDep) -> list[EventSubscription]:
+    del user
+    d = _deployment(db, process_id, deployment_id)
+    rows = db.scalars(select(EventSubscriptionModel).where(EventSubscriptionModel.deployment_id == d.id)
+                      .order_by(EventSubscriptionModel.created_at))
+    return [_subscription_out(r) for r in rows]
+
+
+@router.post("/deployments/{deployment_id}/event-subscriptions", response_model=EventSubscription, status_code=201)
+def create_event_subscription(process_id: str, deployment_id: str, body: EventSubscriptionIn, db: DbDep,
+                              user: AgentDeployDep) -> EventSubscription:
+    """The secret is a reference; the sender holds the value."""
+    d = _deployment(db, process_id, deployment_id)
+    problems = events.check_subscription(d, secret_ref=body.secret_ref, input_mapping=body.input_mapping,
+                                         tenant_slug=current_slug() or "")
+    if problems:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(problems))
+    row = EventSubscriptionModel(id=new_id("evs"), deployment_id=d.id, created_by=user.id, **body.model_dump())
+    db.add(row)
+    db.flush()
+    db.refresh(row)
+    return _subscription_out(row)
+
+
+@router.post("/deployments/{deployment_id}/event-subscriptions/{subscription_id}/revoke",
+             response_model=EventSubscription)
+def revoke_event_subscription(process_id: str, deployment_id: str, subscription_id: str, db: DbDep,
+                              user: AgentDeployDep) -> EventSubscription:
+    del user
+    d = _deployment(db, process_id, deployment_id)
+    row = db.get(EventSubscriptionModel, subscription_id)
+    if row is None or row.deployment_id != d.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Subscription '{subscription_id}' not found")
+    row.revoked_at = row.revoked_at or utcnow()
+    db.flush()
+    return _subscription_out(row)
+
+
 @router.put("/deployments/{deployment_id}/settings", response_model=Deployment)
 def update_settings(process_id: str, deployment_id: str, body: DeploymentSettingsIn, db: DbDep,
                     user: OrgAdminDep) -> Deployment:
@@ -703,6 +762,25 @@ def start_execution(deployment_id: str, body: ExecutionIn, db: DbDep, caller: Cl
     if not created:
         response.status_code = status.HTTP_200_OK
     return _accepted(execution)
+
+
+@client_router.post("/events/{subscription_id}", response_model=ExecutionAccepted, status_code=202)
+async def receive_event(subscription_id: str, request: Request, db: DbDep) -> JSONResponse:
+    """US39.16: a signed event from the tenant's system starts the agent.
+    202 with the execution; 200 for a repeated event id (the same
+    execution) or one the subscription's filter ignores."""
+    row = db.get(EventSubscriptionModel, subscription_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Subscription '{subscription_id}' not found")
+    body = await request.body()
+    try:
+        received = events.receive(db, row, {k.lower(): v for k, v in request.headers.items()}, body)
+    except events.EventRefused as exc:
+        raise HTTPException(exc.status, detail=exc.detail) from exc
+    if received.ignored:
+        return JSONResponse({"ignored": received.ignored}, status_code=status.HTTP_200_OK)
+    accepted = _accepted(received.execution).model_dump(mode="json")
+    return JSONResponse(accepted, status_code=status.HTTP_202_ACCEPTED if received.created else status.HTTP_200_OK)
 
 
 @client_router.post("/executions/{execution_id}/outcome", response_model=ExecutionAccepted)

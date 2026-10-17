@@ -5,7 +5,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 `/healthz` and login needs a session cookie from `POST /api/auth/login`.
 
 <!-- BEGIN GENERATED: api-catalogue -->
-**293 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
+**297 endpoints.** Access: a `permission` (granted by roles, checked against the process's business unit -- see Glossary); *signed in* needs any session; *SCIM token* needs a provisioning token from the Directory page; *public* needs none.
 
 ### agents
 
@@ -365,6 +365,9 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | GET | `/api/processes/{process_id}/deployments/{deployment_id}/comparison` | signed in | The new version against the one it would replace, shown before each step up. |
 | GET | `/api/processes/{process_id}/deployments/{deployment_id}/drift` | signed in | Checked now (and remembered, so a flag still notifies or pauses). |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/drift/to-dataset` | `agent.test` | US39.15/Epic 32: the window's cases become dataset rows. |
+| GET | `/api/processes/{process_id}/deployments/{deployment_id}/event-subscriptions` | signed in |  |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/event-subscriptions` | `agent.deploy` | The secret is a reference; the sender holds the value. |
+| POST | `/api/processes/{process_id}/deployments/{deployment_id}/event-subscriptions/{subscription_id}/revoke` | `agent.deploy` |  |
 | GET | `/api/processes/{process_id}/deployments/{deployment_id}/executions` | signed in |  |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/identity/revoke` | `runtime.stop` |  |
 | POST | `/api/processes/{process_id}/deployments/{deployment_id}/kill` | `runtime.stop` |  |
@@ -389,6 +392,7 @@ interactive docs at `http://localhost:8000/docs`). Every route except
 | POST | `/api/runtime/kill` | `runtime.stop` | US39.11: every agent in the organization. Needs the stop permission organization-wide. |
 | GET | `/api/runtime/notifications` | signed in |  |
 | POST | `/runtime/v1/deployments/{deployment_id}/executions` | public |  |
+| POST | `/runtime/v1/events/{subscription_id}` | public | US39.16: a signed event from the tenant's system starts the agent. 202 with the execution; 200 for a repeated event id (the same execution)  |
 | GET | `/runtime/v1/executions/{execution_id}` | public |  |
 | POST | `/runtime/v1/executions/{execution_id}/outcome` | public | US39.13/US39.15: what really happened to the case. It is what a shadow version is checked against, and live accuracy for drift. |
 

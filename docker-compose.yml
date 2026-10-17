@@ -66,6 +66,9 @@ services:
       # The stand-in's client secret for Meridian's agent, referenced from
       # a binding as secret://tenant/core_banking_secret. Local only.
       TENANT_MERIDIAN_CORE_BANKING_SECRET: agent-loans-dev-only-secret
+      # US39.16: the loan system signs its events with this, referenced from
+      # an event subscription as secret://tenant/loan_events. Local only.
+      TENANT_MERIDIAN_LOAN_EVENTS: loan-events-dev-only-secret
       # US39.4: Meridian's IdP is Keycloak's realm "axyntro" even while its
       # people sign in locally, so its systems can start agents with
       # client-credentials tokens (client "loan-system"). Unreachable

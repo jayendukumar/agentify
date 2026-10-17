@@ -1,9 +1,9 @@
 {
  "complexity": {
   "backend": {
-   "functions": 1672,
-   "mean_cyclomatic": 4.48,
-   "mean_cognitive": 4.16,
+   "functions": 1685,
+   "mean_cyclomatic": 4.47,
+   "mean_cognitive": 4.15,
    "max_cognitive": 98,
    "over_cognitive_limit": 90,
    "over_cyclomatic_limit": 133
@@ -297,7 +297,7 @@
  },
  "duplication": {
   "backend": {
-   "loc": 32691,
+   "loc": 32920,
    "duplicated_lines": 72,
    "percent": 0.22,
    "clones": [
@@ -333,7 +333,7 @@
     }
    ],
    "clone_count": 3,
-   "structural_percent": 3.61,
+   "structural_percent": 3.65,
    "structural_clone_count": 49,
    "structural_clones": [
     {
@@ -377,6 +377,16 @@
      "lines": 33
     },
     {
+     "tokens": 168,
+     "a_file": "backend/app/db/models.py",
+     "a_start": 1759,
+     "a_end": 1777,
+     "b_file": "backend/app/db/models.py",
+     "b_start": 2108,
+     "b_end": 2129,
+     "lines": 22
+    },
+    {
      "tokens": 149,
      "a_file": "backend/app/db/repository.py",
      "a_start": 942,
@@ -407,23 +417,13 @@
      "lines": 17
     },
     {
-     "tokens": 141,
-     "a_file": "backend/app/db/models.py",
-     "a_start": 1759,
-     "a_end": 1776,
-     "b_file": "backend/app/db/models.py",
-     "b_start": 2108,
-     "b_end": 2124,
-     "lines": 18
-    },
-    {
      "tokens": 132,
      "a_file": "backend/app/api/runtime.py",
-     "a_start": 221,
-     "a_end": 234,
+     "a_start": 227,
+     "a_end": 240,
      "b_file": "backend/app/api/runtime.py",
-     "b_start": 308,
-     "b_end": 322,
+     "b_start": 314,
+     "b_end": 328,
      "lines": 15
     },
     {
@@ -762,7 +762,7 @@
   "backend_modules_top": [
    {
     "node": "app.db.models",
-    "afferent": 77,
+    "afferent": 78,
     "efferent": 0,
     "instability": 0.0
    },
@@ -774,7 +774,7 @@
    },
    {
     "node": "app.ids",
-    "afferent": 52,
+    "afferent": 53,
     "efferent": 0,
     "instability": 0.0
    },
@@ -803,22 +803,28 @@
     "instability": 0.55
    },
    {
+    "node": "app.tenancy.identity",
+    "afferent": 23,
+    "efferent": 5,
+    "instability": 0.18
+   },
+   {
     "node": "app.db.session",
     "afferent": 23,
     "efferent": 4,
     "instability": 0.15
    },
    {
-    "node": "app.tenancy.identity",
-    "afferent": 21,
-    "efferent": 5,
-    "instability": 0.19
-   },
-   {
     "node": "app.api.runtime",
     "afferent": 1,
-    "efferent": 23,
+    "efferent": 25,
     "instability": 0.96
+   },
+   {
+    "node": "app.schemas.agents",
+    "afferent": 23,
+    "efferent": 1,
+    "instability": 0.04
    },
    {
     "node": "app.auth.audit",
@@ -831,12 +837,6 @@
     "afferent": 19,
     "efferent": 4,
     "instability": 0.17
-   },
-   {
-    "node": "app.schemas.agents",
-    "afferent": 22,
-    "efferent": 1,
-    "instability": 0.04
    },
    {
     "node": "app.api.organization",
@@ -1001,6 +1001,7 @@
     "app.process_twin.jobs",
     "app.runtime.callbacks",
     "app.runtime.deployments",
+    "app.runtime.events",
     "app.runtime.jobs",
     "app.runtime.monitoring",
     "app.runtime.telemetry",
@@ -1026,6 +1027,7 @@
     "app.batches",
     "app.bpmn",
     "app.catalog",
+    "app.connectors",
     "app.context",
     "app.datasets",
     "app.db",
@@ -1965,11 +1967,11 @@
   },
   {
    "file": "frontend/src/api/client.ts",
-   "commits": 30,
-   "lines_changed": 1654,
+   "commits": 31,
+   "lines_changed": 1711,
    "cognitive": 71,
    "loc": 1252,
-   "score": 2130
+   "score": 2201
   },
   {
    "file": "frontend/src/pages/BlueprintPage.tsx",
@@ -2012,6 +2014,14 @@
    "score": 740
   },
   {
+   "file": "backend/app/api/runtime.py",
+   "commits": 5,
+   "lines_changed": 845,
+   "cognitive": 128,
+   "loc": 664,
+   "score": 640
+  },
+  {
    "file": "backend/app/llm/client.py",
    "commits": 7,
    "lines_changed": 385,
@@ -2028,6 +2038,14 @@
    "score": 544
   },
   {
+   "file": "backend/app/jobs/worker.py",
+   "commits": 11,
+   "lines_changed": 366,
+   "cognitive": 49,
+   "loc": 236,
+   "score": 539
+  },
+  {
    "file": "backend/app/context/ingestion.py",
    "commits": 3,
    "lines_changed": 665,
@@ -2036,20 +2054,20 @@
    "score": 525
   },
   {
+   "file": "backend/app/runtime/deployments.py",
+   "commits": 4,
+   "lines_changed": 616,
+   "cognitive": 129,
+   "loc": 462,
+   "score": 516
+  },
+  {
    "file": "frontend/src/components/OrchestrationPanel.tsx",
    "commits": 5,
    "lines_changed": 525,
    "cognitive": 103,
    "loc": 461,
    "score": 515
-  },
-  {
-   "file": "backend/app/jobs/worker.py",
-   "commits": 10,
-   "lines_changed": 362,
-   "cognitive": 49,
-   "loc": 236,
-   "score": 490
   },
   {
    "file": "backend/app/config.py",
@@ -2068,20 +2086,20 @@
    "score": 468
   },
   {
-   "file": "backend/app/api/runtime.py",
-   "commits": 4,
-   "lines_changed": 646,
-   "cognitive": 116,
-   "loc": 598,
-   "score": 464
-  },
-  {
    "file": "frontend/src/operator/OperatorConsole.tsx",
    "commits": 4,
    "lines_changed": 606,
    "cognitive": 109,
    "loc": 540,
    "score": 436
+  },
+  {
+   "file": "backend/app/runtime/jobs.py",
+   "commits": 4,
+   "lines_changed": 895,
+   "cognitive": 106,
+   "loc": 447,
+   "score": 424
   },
   {
    "file": "backend/app/batches/results.py",
@@ -2098,22 +2116,6 @@
    "cognitive": 99,
    "loc": 420,
    "score": 396
-  },
-  {
-   "file": "backend/app/runtime/deployments.py",
-   "commits": 3,
-   "lines_changed": 427,
-   "cognitive": 129,
-   "loc": 462,
-   "score": 387
-  },
-  {
-   "file": "backend/app/twin/test_builder.py",
-   "commits": 2,
-   "lines_changed": 564,
-   "cognitive": 177,
-   "loc": 491,
-   "score": 354
   }
  ],
  "growth": [
@@ -2796,6 +2798,16 @@
    "endpoints": 265,
    "stories": 287,
    "stories_implemented": 259
+  },
+  {
+   "commit": "c36934f",
+   "date": "2026-10-17",
+   "subject": "Build Epic 39 step 4: shadow, canary, rollback, live metrics, drift",
+   "prod_loc": 50765,
+   "test_loc": 17349,
+   "endpoints": 272,
+   "stories": 287,
+   "stories_implemented": 259
   }
  ],
  "mutation": {
@@ -3125,8 +3137,8 @@
   }
  },
  "size": {
-  "backend_prod_loc": 32691,
-  "backend_test_loc": 13554,
+  "backend_prod_loc": 32920,
+  "backend_test_loc": 13654,
   "frontend_prod_loc": 18074,
   "frontend_test_loc": 3795
  }

@@ -4146,3 +4146,26 @@ percentile flags cost or latency. Input drift is reported apart from
 behaviour drift. Only a behaviour flag pauses (when the rule says pause),
 because the cases changing is not the agent's fault. The check runs at
 most once an hour after a case, and on demand from the page.
+
+## 2026-10-17 -- Epic 39 build step 5: event triggers (US39.16)
+
+### Events are signed over a timestamp, and only that scheme is offered
+
+A subscription accepts one signature scheme: HMAC-SHA256 over
+`"<timestamp>.<raw body>"`, with the header names and a prefix
+configurable (Stripe and Slack sign this way). Schemes that sign the body
+alone, such as GitHub's, were left out on purpose: without a signed
+timestamp a captured event can be replayed forever, and the event id only
+protects against a replay of the same event, not against one replayed
+after its execution was purged. The secret is a tenant secret reference,
+so the value is never stored with the subscription, and an unset secret
+answers 503 rather than accepting unsigned events.
+
+### An event is just another caller of `submit`
+
+The mapped event goes through `jobs.submit` like an API call. So a
+canary, shadow copies, caps, the input check (an unmappable event gets the
+same 422 naming the field) and the kill switch need no event-specific
+code. The idempotency key is `event:<subscription>:<event id>`, so the
+same event id from two subscriptions is two cases, and a redelivery is
+one.

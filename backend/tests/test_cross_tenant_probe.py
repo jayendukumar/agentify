@@ -63,6 +63,7 @@ PARAM_SOURCES: dict[str, tuple[str, str]] = {
     "execution_id": ("agent_executions", "id"),
     "client_id": ("runtime_clients", "id"),
     "task_id": ("review_tasks", "id"),
+    "subscription_id": ("event_subscriptions", "id"),
 }
 # Parameters that name something every tenant has, not a tenant's object.
 # A system name is free text within a process, like a node id.
@@ -138,6 +139,10 @@ def _build_tenant_a_runtime(process_id: str, artifact_id: str) -> None:
                           "status, summary, proposed_action, case_input, level, due_at) VALUES ('rtask_a', :t, "
                           "'exe_a', 'dep_a', :p, 'checkpoint', 'open', 'Pay?', '{}', '{}', 0, now())"),
                      {"t": TEST_TENANT_ID, "p": process_id})
+        conn.execute(text("INSERT INTO event_subscriptions (id, tenant_id, deployment_id, label, secret_ref, "
+                          "signature_header, timestamp_header, event_id_path, input_mapping) VALUES ('evs_a', :t, "
+                          "'dep_a', 'A events', 'secret://tenant/a_events', 'X-Signature', 'X-Timestamp', 'id', '{}')"),
+                     {"t": TEST_TENANT_ID})
 
 
 def _probe_routes():

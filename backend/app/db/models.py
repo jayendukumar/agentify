@@ -2111,6 +2111,32 @@ class ReviewTaskModel(TenantScoped, Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class EventSubscriptionModel(TenantScoped, Base):
+    """Epic 39, US39.16: a webhook from the tenant's own systems that starts
+    a deployment. The sender signs `"<timestamp>.<raw body>"` with
+    HMAC-SHA256 using the secret `secret_ref` names (never stored here);
+    the event id at `event_id_path` is the idempotency key, and
+    `input_mapping` ({input field: dotted path}, Epic 31's mapping) builds
+    the agent's input. `event_filter` ({path: value}) ignores other events."""
+
+    __tablename__ = "event_subscriptions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    deployment_id: Mapped[str] = mapped_column(ForeignKey("agent_deployments.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    secret_ref: Mapped[str] = mapped_column(String, nullable=False)
+    signature_header: Mapped[str] = mapped_column(String, nullable=False)
+    signature_prefix: Mapped[str] = mapped_column(String, nullable=False, default="")
+    timestamp_header: Mapped[str] = mapped_column(String, nullable=False)
+    event_id_path: Mapped[str] = mapped_column(String, nullable=False)
+    input_mapping: Mapped[dict] = mapped_column(JSON, nullable=False)
+    event_filter: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_event_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
 class RuntimeNotificationModel(TenantScoped, Base):
     """Epic 39, US39.10/US39.12: a message to one person -- an overdue
     review, an automatic pause. Read in the app; nothing is sent outside."""

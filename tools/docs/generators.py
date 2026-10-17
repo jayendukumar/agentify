@@ -56,8 +56,8 @@ DOMAINS: dict[str, list[str]] = {
     ],
     "Process twin (Epic 36)": ["process_operating_models", "process_twin_batches"],
     "Agent runtime (Epic 39)": [
-        "agent_identities", "agent_deployments", "adapter_bindings", "runtime_clients", "agent_executions",
-        "execution_steps", "review_tasks", "runtime_notifications", "tool_circuits",
+        "agent_identities", "agent_deployments", "adapter_bindings", "runtime_clients", "event_subscriptions",
+        "agent_executions", "execution_steps", "review_tasks", "runtime_notifications", "tool_circuits",
     ],
     "Identity and access (Epics 9-10, 37, 38)": [
         "users", "user_roles", "user_identities", "sessions", "session_tokens", "oidc_login_requests",

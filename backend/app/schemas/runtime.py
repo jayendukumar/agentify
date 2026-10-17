@@ -287,3 +287,26 @@ class RuntimeOverviewRow(BaseModel):
 
 class AddedRows(BaseModel):
     added: int
+
+
+class EventSubscriptionIn(BaseModel):
+    """US39.16: how the tenant's system signs its events and how an event
+    maps onto the agent's input ({input field: dotted path})."""
+
+    label: str = Field(min_length=1, max_length=200)
+    secret_ref: str
+    signature_header: str = Field(default="X-Signature", min_length=1, max_length=100)
+    signature_prefix: str = Field(default="sha256=", max_length=40)
+    timestamp_header: str = Field(default="X-Timestamp", min_length=1, max_length=100)
+    event_id_path: str = Field(default="id", min_length=1, max_length=200)
+    input_mapping: dict[str, str]
+    event_filter: dict[str, Any] = {}
+
+
+class EventSubscription(EventSubscriptionIn):
+    id: str
+    deployment_id: str
+    url: str
+    created_at: datetime
+    last_event_at: datetime | None = None
+    revoked_at: datetime | None = None

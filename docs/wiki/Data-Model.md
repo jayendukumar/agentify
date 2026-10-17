@@ -3,7 +3,7 @@
 Last reviewed: 2026-10-17 · Sources: `backend/app/db/models.py`, `backend/migrations`
 
 <!-- BEGIN GENERATED: schema-stats -->
-**83 tables, 940 columns (116 JSON), 198 foreign keys, 47 Alembic migrations.**
+**84 tables, 955 columns (118 JSON), 201 foreign keys, 48 Alembic migrations.**
 <!-- END GENERATED: schema-stats -->
 
 One PostgreSQL database holds everything: configuration, process data,
@@ -552,6 +552,13 @@ erDiagram
         json deployment_ids
         string created_by FK
     }
+    event_subscriptions {
+        string id PK
+        string deployment_id FK
+        json input_mapping
+        json event_filter
+        string created_by FK
+    }
     agent_executions {
         string id PK
         string deployment_id FK
@@ -597,6 +604,7 @@ erDiagram
     agent_identities ||--o{ agent_deployments : "identity_id"
     processes ||--o{ agent_deployments : "process_id"
     agent_deployments ||--o{ adapter_bindings : "deployment_id"
+    agent_deployments ||--o{ event_subscriptions : "deployment_id"
     agent_deployments ||--o{ agent_executions : "deployment_id"
     processes ||--o{ agent_executions : "process_id"
     agent_executions ||--o{ execution_steps : "execution_id"
@@ -1671,6 +1679,27 @@ Epic 39, US39.4: a system of the tenant that may start executions. It proves who
 | `created_at` | datetime | no |  |
 | `created_by` | string | yes | -> `users.id` (set null) |
 | `last_used_at` | datetime | yes |  |
+| `revoked_at` | datetime | yes |  |
+
+#### `event_subscriptions` (EventSubscriptionModel)
+
+Epic 39, US39.16: a webhook from the tenant's own systems that starts a deployment. The sender signs `"<timestamp>.<raw body>"` with HMAC-SHA256 using the secret `secret_ref` names (never stored here); the event id at `event_id_path` is the idempotency key, and `input_mapping` ({input field: dotted path}, Epic 31's mapping) builds the agent's input. `event_filter` ({path: value}) ignores other events.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | string | no | primary key |
+| `deployment_id` | string | no | -> `agent_deployments.id` (cascade); indexed |
+| `label` | string | no |  |
+| `secret_ref` | string | no |  |
+| `signature_header` | string | no |  |
+| `signature_prefix` | string | no |  |
+| `timestamp_header` | string | no |  |
+| `event_id_path` | string | no |  |
+| `input_mapping` | json | no |  |
+| `event_filter` | json | no |  |
+| `created_by` | string | yes | -> `users.id` (set null) |
+| `created_at` | datetime | no |  |
+| `last_event_at` | datetime | yes |  |
 | `revoked_at` | datetime | yes |  |
 
 #### `agent_executions` (AgentExecutionModel)

@@ -30,6 +30,11 @@ def _get(record: dict[str, Any], path: str) -> Any:
     return value
 
 
+# Epic 39, US39.16: the same dotted-path reading maps an event onto an
+# agent's input.
+value_at = _get
+
+
 def _as_list(value: Any) -> list[str]:
     if value is None:
         return []

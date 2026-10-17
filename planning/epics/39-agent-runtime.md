@@ -8,7 +8,8 @@ automatic pause (US39.9, US39.10, US39.12). US39.4 completed 2026-10-17
 (typed input, internal triggers, client limits, signed callbacks, OAuth
 client credentials from the tenant's IdP). Step 4 implemented 2026-10-17:
 shadow, canary and rollback, live metrics, traces and alerts, drift
-against the twin, and the Runtime page (US39.13-39.15). Open
+against the twin, and the Runtime page (US39.13-39.15). Step 5 started
+2026-10-17: event triggers (US39.16). Open
 items are listed under each step's "as built". Decisions confirmed 2026-10-17 (see Notes).**
 Weakness 3 in the wiki's Critical Review ("Agents never run in
 production") and item 4 of its recommended order.
@@ -421,6 +422,38 @@ Deviations from the stories, decided while building:
     timestamps on the deployment (`monitor_state`), not a lock, so two
     workers finishing cases at the same moment may both evaluate and,
     rarely, both fire the same alert.
+
+## US39.16 as built (step 5)
+
+- **Code.** `app/runtime/events.py`: a deployment's event subscriptions
+  (`event_subscriptions`, migration `a8b9c0d1e2f3`). The tenant's system
+  POSTs to `/runtime/v1/events/{subscription id}`, signing
+  `"<timestamp>.<raw body>"` with HMAC-SHA256 (the Stripe/Slack scheme;
+  header names and the signature prefix are per subscription). The secret
+  is a `secret://tenant/...` reference resolved when the event arrives. A
+  timestamp outside five minutes is refused, so a captured event can't be
+  replayed. The event id (`event_id_path`) is the idempotency key, and
+  `input_mapping` uses Epic 31's dotted paths (`connectors.mapping.value_at`).
+  The event then goes through the same `submit` as the API, so routing,
+  caps, input checks, canary and shadow all apply. `event_filter` ignores
+  other event types with a 200. Subscriptions are managed under
+  `/api/processes/{id}/deployments/{id}/event-subscriptions` (`agent.deploy`).
+  A subscription must map every input field and nothing else.
+- **Tests.** `tests/test_runtime_events.py` (4): a subscription is checked
+  before saving (an inline secret, an unknown field, a field left out). A
+  signed event starts the agent with the mapped input, trigger `event`, and
+  a redelivery is the same case. Forged, tampered, replayed and unsigned
+  events get 401 and start nothing. A filtered event, one without an id, an
+  unmappable one, a non-object body, an unset secret (503) and a revoked
+  subscription (404) are each handled.
+- **Live.** `testing/runtime/smoke_runtime_events.py` (19/19 on
+  2026-10-17): the loan system's signed `loan.submitted` event ran a real
+  case that opened the account; redelivery, another type, a forged, a
+  10-minute-old and an unsigned event did not.
+- **Not built:** pulling events from a queue (Kafka, SQS) -- only pushed
+  webhooks. A signature scheme other than HMAC over timestamp and body
+  (e.g. GitHub's, without a timestamp) can't be configured, because then
+  replays couldn't be refused.
 
 ## User Stories
 
